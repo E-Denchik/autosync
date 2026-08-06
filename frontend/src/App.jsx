@@ -8,9 +8,10 @@ import RepairOrdersList from "./pages/repair-orders/RepairOrdersList.jsx";
 import Login from "./pages/Login.jsx";
 import Setup from "./pages/Setup.jsx";
 import Users from "./pages/admin/Users.jsx";
+import LlmSettings from "./pages/admin/LlmSettings.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Spinner from "./components/Spinner.jsx";
-import { HomeIcon, TagIcon, SparklesIcon, ListIcon, UploadIcon, UsersIcon } from "./components/icons.jsx";
+import { HomeIcon, TagIcon, SparklesIcon, ListIcon, UploadIcon, UsersIcon, CpuIcon } from "./components/icons.jsx";
 
 function ProtectedShell() {
   const { user, loading, setupRequired, logout } = useAuth();
@@ -73,6 +74,9 @@ function ProtectedShell() {
               <NavLink to="/admin/users">
                 <UsersIcon /> Пользователи
               </NavLink>
+              <NavLink to="/admin/llm">
+                <CpuIcon /> LLM-модель
+              </NavLink>
             </nav>
           </>
         )}
@@ -108,6 +112,7 @@ function ProtectedShell() {
             <Route path="/repair-orders/upload" element={<UploadPage />} />
             <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
             {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
+            {user.role === "admin" && <Route path="/admin/llm" element={<LlmSettings />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

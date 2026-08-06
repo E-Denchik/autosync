@@ -21,10 +21,26 @@ class LLMClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
+    def list_models(self) -> dict:
+        """Discovery всех LLM-раннеров, которые видит llm-service (Ollama,
+        LM Studio) — что реально скачано на этой машине прямо сейчас."""
+        resp = requests.get(f"{self.base_url}/models", timeout=5)
+        if not resp.ok:
+            raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
+        return resp.json()
+
     def _generate(self, prompt: str, *, json_response: bool = False) -> str:
+        from app.services.llm_settings import get_selection
+
+        payload = {"prompt": prompt, "json_response": json_response}
+        selection = get_selection()
+        if selection is not None:
+            payload["provider"] = selection.provider
+            payload["model"] = selection.model_name
+
         resp = requests.post(
             f"{self.base_url}/generate",
-            json={"prompt": prompt, "json_response": json_response},
+            json=payload,
             timeout=self.timeout,
         )
         if not resp.ok:

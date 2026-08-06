@@ -31,6 +31,7 @@ def create_app(config_class=Config):
     from app.api.repair_orders.upload import bp as repair_upload_bp
     from app.api.repair_orders.matching import bp as repair_matching_bp
     from app.api.dashboard import bp as dashboard_bp
+    from app.api.llm import bp as llm_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
@@ -38,6 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(repair_upload_bp, url_prefix="/api/repair-orders/upload")
     app.register_blueprint(repair_matching_bp, url_prefix="/api/repair-orders/matching")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(llm_bp, url_prefix="/api/llm")
 
     @app.get("/api/health")
     def health():
@@ -47,7 +49,7 @@ def create_app(config_class=Config):
         _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, user  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, user, llm_setting  # noqa: F401
 
     register_cli(app)
 
