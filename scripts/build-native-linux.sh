@@ -21,12 +21,25 @@ if [ ! -d "$REPO_ROOT/backend" ]; then
 fi
 
 echo "==> Собираю frontend"
-(cd "$REPO_ROOT/frontend" && npm install --silent && npm run build --silent)
+# VITE_API_BASE_URL=/api (относительный, не абсолютный) — в native-режиме
+# фронт и backend это один и тот же процесс/origin, но открыть его можно
+# по-разному: 127.0.0.1 (окно приложения), localhost, реальный IP машины
+# (доступ по LAN, см. native_app.py: run_backend слушает 0.0.0.0). Абсолютный
+# http://localhost:PORT/api работал бы только для первого случая — с любого
+# другого хоста/IP запросы ушли бы не туда. Относительный путь резолвится
+# браузером/webview против текущего origin сам, независимо от того, как
+# именно открыли страницу.
+(cd "$REPO_ROOT/frontend" && npm install --silent && VITE_API_BASE_URL=/api npm run build --silent)
 
 echo "==> Готовлю Python-окружение для сборки (backend/.venv-native)"
 VENV_DIR="$REPO_ROOT/backend/.venv-native"
 if [ ! -d "$VENV_DIR" ]; then
-  python3 -m venv "$VENV_DIR"
+  # --system-site-packages: окно приложения (pywebview) на Linux использует
+  # WebKitGTK через PyGObject (модуль gi) — тот ставится системным пакетным
+  # менеджером (python3-gi), а не pip, и его нужно унаследовать из системного
+  # Python. Без system-python3-gi/gir1.2-webkit2-4.1 (или 4.0) установленных
+  # через apt сборка всё равно пройдёт, но окно на этой машине не откроется.
+  python3 -m venv --system-site-packages "$VENV_DIR"
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
@@ -56,10 +69,24 @@ pyinstaller \
   --hidden-import=logging.config \
   --collect-all numpy \
   --collect-all pandas \
+  --collect-all gi \
+  --exclude-module PyQt5 \
+  --exclude-module PySide2 \
+  --exclude-module PySide6 \
+  --exclude-module django \
+  --exclude-module scipy \
+  --exclude-module matplotlib \
   native_app.py
+# ^ Явные исключения нужны из-за --system-site-packages (см. выше): venv
+# видит ВСЁ, что стоит в системном Python на машине сборки, а на некоторых
+# машинах (замечено на Kali) там оказываются Django/PyQt5/scipy/matplotlib
+# от совершенно других инструментов — PyInstaller их честно подхватывает по
+# графу импортов (в основном через необязательные хуки pandas/SQLAlchemy) и
+# раздувает бинарник на сотни мегабайт, хотя AutoSync их не использует.
 
 deactivate
 
 echo ""
 echo "==> Готово: $OUT_DIR/autosync"
-echo "    Запуск: $OUT_DIR/autosync  (откроет браузер на http://127.0.0.1:5000/)"
+echo "    Запуск: $OUT_DIR/autosync  (откроет своё окно, backend на http://0.0.0.0:5000/)"
+echo "    Нужны системные пакеты: python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 (или -4.0)"

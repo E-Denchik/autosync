@@ -11,7 +11,13 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+# disable_existing_loggers=False — иначе fileConfig() молча отключает все
+# уже созданные к этому моменту логгеры (в т.ч. autosync.native в
+# native_app.py), не входящие в alembic.ini: [loggers]. В native-режиме
+# upgrade() вызывается на старте приложения, поэтому без этого флага любое
+# логирование после первого запуска миграций тихо пропадает — а это
+# единственный способ диагностики у frozen-бинарника без консоли.
+fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger('alembic.env')
 
 

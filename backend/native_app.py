@@ -4,9 +4,13 @@
 вместо Celery beat, ThreadPoolExecutor вместо Celery worker (см.
 app/config.py: NativeConfig, app/services/job_queue.py).
 
-Открывает браузер на локальный адрес и (если доступна пиктограмма в
-трее — pystray) сидит в трее с пунктом «Выход». Логи пишутся в файл
-рядом с базой данных, т.к. у frozen-бинарника обычно нет консоли.
+Открывается в собственном окне (pywebview — системный webview: WebView2 на
+Windows, WebKitGTK на Linux, без Chromium внутри), а не в браузере — единая
+точка входа, закрытие окна полностью завершает приложение (включая фоновые
+задачи вроде планового синка цен по Ozon). Backend слушает 0.0.0.0, поэтому
+остаётся доступен из браузера с других устройств в той же сети, пока это
+окно открыто. Логи пишутся в файл рядом с базой данных, т.к. у
+frozen-бинарника обычно нет консоли.
 """
 
 from __future__ import annotations
@@ -20,6 +24,13 @@ import time
 import webbrowser
 
 logger = logging.getLogger("autosync.native")
+
+if sys.platform.startswith("linux"):
+    # WebKitGTK's DMA-BUF renderer сегфолтит на части систем без полноценного
+    # GPU-доступа (виртуалки, некоторые песочницы/контейнеры, старые драйверы
+    # Mesa) — без этого флага окно может не открыться вовсе. Программный
+    # рендеринг чуть медленнее, но для админ-панели это не критично.
+    os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 
 
 def is_frozen() -> bool:
@@ -50,6 +61,13 @@ def get_data_dir() -> str:
 
 
 def setup_logging(data_dir: str) -> None:
+    # force=True — alembic.ini содержит [logger_root] (level=WARN,
+    # handlers=console), которую migrations/env.py применяет через
+    # logging.config.fileConfig() при каждом flask db upgrade(). Без force
+    # это молча выкидывает наш FileHandler и поднимает уровень root-логгера
+    # до WARN — все info-логи после первой миграции идут в никуда. Поэтому
+    # main() зовёт setup_logging() второй раз сразу после upgrade(), чтобы
+    # отбить её обратно.
     log_path = os.path.join(data_dir, "autosync.log")
     handlers = [logging.FileHandler(log_path, encoding="utf-8")]
     if not is_frozen():
@@ -58,6 +76,7 @@ def setup_logging(data_dir: str) -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
+        force=True,
     )
 
 
@@ -95,8 +114,11 @@ def run_llm_service(port: int) -> None:
 def run_backend(app, port: int) -> None:
     from waitress import serve
 
-    logger.info("backend слушает на 127.0.0.1:%s", port)
-    serve(app, host="127.0.0.1", port=port, _quiet=True)
+    # 0.0.0.0, а не 127.0.0.1 — чтобы AutoSync был доступен по адресу этой
+    # машины из браузера с телефона/другого ПК в той же сети, даже когда
+    # основной способ работы — окно приложения на этой машине.
+    logger.info("backend слушает на 0.0.0.0:%s (доступен и по локальной сети)", port)
+    serve(app, host="0.0.0.0", port=port, _quiet=True)
 
 
 def start_scheduler(app):
@@ -122,56 +144,44 @@ def start_scheduler(app):
     return scheduler
 
 
-def _run_headless_loop(on_quit) -> None:
-    logger.info("Работаю без иконки в трее (Ctrl+C для выхода)")
+def _run_headless_loop() -> None:
+    """Резервный режим, когда системное окно поднять не удалось (нет
+    WebView2/WebKitGTK, headless-сервер и т.п.) — уже открыт браузер,
+    просто не даём процессу завершиться до Ctrl+C."""
+    logger.info("Нет доступного системного окна — работаю в фоне (Ctrl+C для выхода)")
     try:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        on_quit()
+        pass
 
 
-def run_tray(url: str, on_quit) -> None:
-    """Иконка в системном трее с пунктами «Открыть» / «Выход». Если pystray
-    недоступен (или нет графического окружения — например, установка на
-    сервер без GUI) — просто блокируем главный поток, чтобы процесс не
-    завершился."""
+def run_window(url: str) -> None:
+    """Открывает AutoSync в собственном окне через pywebview (системный
+    webview — WebView2 на Windows, WebKitGTK на Linux, без Chromium внутри
+    приложения). Закрытие окна — единственная точка выхода, полностью
+    завершает процесс (см. main()): фоновые задачи (плановый синк цен)
+    не переживают закрытие окна, это осознанный выбор ради простоты — одно
+    окно, один процесс, без иконки в трее и скрытого фонового режима.
+
+    Если системный webview недоступен (сломанная установка WebView2,
+    отсутствующий webkit2gtk на Linux без десктопного окружения) — не
+    роняем приложение, откатываемся на браузер по умолчанию."""
     try:
-        import pystray
-        from PIL import Image, ImageDraw
-    except ImportError:
-        _run_headless_loop(on_quit)
+        import webview
+    except Exception:
+        logger.warning("pywebview недоступен — открываю в браузере по умолчанию", exc_info=True)
+        webbrowser.open(url)
+        _run_headless_loop()
         return
 
-    def make_icon_image():
-        img = Image.new("RGB", (64, 64), "#4f56e6")
-        draw = ImageDraw.Draw(img)
-        draw.text((14, 20), "AS", fill="white")
-        return img
-
-    def _open(_icon, _item):
-        webbrowser.open(url)
-
-    def _quit(icon, _item):
-        icon.stop()
-        on_quit()
-
-    icon = pystray.Icon(
-        "autosync",
-        make_icon_image(),
-        "AutoSync",
-        menu=pystray.Menu(
-            pystray.MenuItem("Открыть AutoSync", _open, default=True),
-            pystray.MenuItem("Выход", _quit),
-        ),
-    )
+    webview.create_window("AutoSync", url, width=1360, height=860, min_size=(1024, 700))
     try:
-        icon.run()
+        webview.start()
     except Exception:
-        # Нет трея (сервер без GUI, минимальный WM и т.п.) — не роняем
-        # приложение, продолжаем работать в фоне.
-        logger.warning("Не удалось запустить иконку в трее — работаю в фоне", exc_info=True)
-        _run_headless_loop(on_quit)
+        logger.warning("Не удалось открыть системное окно — открываю в браузере по умолчанию", exc_info=True)
+        webbrowser.open(url)
+        _run_headless_loop()
 
 
 def main() -> None:
@@ -198,13 +208,15 @@ def main() -> None:
 
         upgrade()
 
+    setup_logging(data_dir)  # см. комментарий в setup_logging — upgrade() выше сбивает root-логгер
+
     threading.Thread(target=run_llm_service, args=(llm_port,), daemon=True, name="llm-service").start()
     start_scheduler(app)
     threading.Thread(target=run_backend, args=(app, backend_port), daemon=True, name="backend").start()
 
     url = f"http://127.0.0.1:{backend_port}/"
 
-    # Ждём, пока backend реально начнёт отвечать, прежде чем открывать браузер.
+    # Ждём, пока backend реально начнёт отвечать, прежде чем открывать окно.
     import urllib.request
 
     for _ in range(30):
@@ -214,14 +226,11 @@ def main() -> None:
         except Exception:
             time.sleep(0.5)
 
-    webbrowser.open(url)
-    logger.info("Открываю браузер: %s", url)
+    logger.info("Открываю окно AutoSync: %s", url)
+    run_window(url)
 
-    def _on_quit():
-        logger.info("Завершение работы AutoSync")
-        os._exit(0)
-
-    run_tray(url, _on_quit)
+    logger.info("Окно закрыто — завершение работы AutoSync")
+    os._exit(0)
 
 
 if __name__ == "__main__":
