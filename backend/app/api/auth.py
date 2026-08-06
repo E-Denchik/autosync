@@ -70,6 +70,27 @@ def me():
     return jsonify(_serialize_user(get_current_user()))
 
 
+@bp.patch("/me/password")
+@login_required
+def change_own_password():
+    """Пользователь меняет свой пароль сам — нужно знать текущий. До этого
+    эндпоинта сменить пароль после первоначальной выдачи было вообще
+    невозможно (только полное удаление и создание учётки заново)."""
+    user = get_current_user()
+    body = request.get_json(force=True) or {}
+    current_password = body.get("current_password") or ""
+    new_password = body.get("new_password") or ""
+
+    if not user.check_password(current_password):
+        return jsonify(error="Текущий пароль неверен"), 401
+    if len(new_password) < 8:
+        return jsonify(error="Новый пароль должен быть не короче 8 символов"), 400
+
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify(_serialize_user(user))
+
+
 @bp.get("/users")
 @admin_required
 def list_users():
@@ -101,6 +122,24 @@ def create_user():
     db.session.add(user)
     db.session.commit()
     return jsonify(_serialize_user(user)), 201
+
+
+@bp.patch("/users/<int:user_id>/password")
+@admin_required
+def admin_reset_password(user_id: int):
+    """Администратор задаёт новый пароль другому пользователю напрямую, без
+    знания старого — единственный способ восстановить доступ, если человек
+    свой пароль забыл (публичного flow сброса по email в системе нет)."""
+    user = db.get_or_404(User, user_id)
+    body = request.get_json(force=True) or {}
+    new_password = body.get("new_password") or ""
+
+    if len(new_password) < 8:
+        return jsonify(error="Пароль должен быть не короче 8 символов"), 400
+
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify(_serialize_user(user))
 
 
 @bp.delete("/users/<int:user_id>")

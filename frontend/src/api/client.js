@@ -46,6 +46,16 @@ export const api = {
   listUsers: () => request("/auth/users"),
   createUser: (data) => request("/auth/users", { method: "POST", body: JSON.stringify(data) }),
   deleteUser: (id) => request(`/auth/users/${id}`, { method: "DELETE" }),
+  changeOwnPassword: (currentPassword, newPassword) =>
+    request("/auth/me/password", {
+      method: "PATCH",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+  resetUserPassword: (id, newPassword) =>
+    request(`/auth/users/${id}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ new_password: newPassword }),
+    }),
 
   // Настройки LLM
   listLlmModels: () => request("/llm/models"),
