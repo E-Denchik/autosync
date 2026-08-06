@@ -19,7 +19,7 @@ from app.services.job_queue import enqueue_process_upload
 bp = Blueprint("repair_orders_upload", __name__)
 bp.before_request(login_required(lambda: None))
 
-ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".pdf"}
+ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"}
 
 
 def _save_upload(file_storage) -> str:
