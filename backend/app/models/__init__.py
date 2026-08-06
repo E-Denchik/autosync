@@ -5,6 +5,7 @@ from app.models.repair_order import RepairOrder, RepairOrderStatus
 from app.models.part_match import PartMatch, ConfidenceLevel, ReviewStatus
 from app.models.user import User, UserRole
 from app.models.llm_setting import LLMModelSelection
+from app.models.history import RecordHistory
 
 __all__ = [
     "Product",
@@ -20,4 +21,5 @@ __all__ = [
     "User",
     "UserRole",
     "LLMModelSelection",
+    "RecordHistory",
 ]

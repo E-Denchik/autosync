@@ -1,16 +1,16 @@
 """Точка входа для 'обычного приложения' — запуск AutoSync на Windows/Linux
 без Docker: backend + llm-service (тонкая обёртка над Ollama) в одном
-процессе на двух локальных портах, SQLite вместо Postgres, APScheduler
-вместо Celery beat, ThreadPoolExecutor вместо Celery worker (см.
-app/config.py: NativeConfig, app/services/job_queue.py).
+процессе на двух локальных портах, SQLite, APScheduler и ThreadPoolExecutor
+вместо внешней очереди задач (см. app/config.py, app/services/job_queue.py).
 
 Открывается в собственном окне (pywebview — системный webview: WebView2 на
 Windows, WebKitGTK на Linux, без Chromium внутри), а не в браузере — единая
 точка входа, закрытие окна полностью завершает приложение (включая фоновые
-задачи вроде планового синка цен по Ozon). Backend слушает 0.0.0.0, поэтому
-остаётся доступен из браузера с других устройств в той же сети, пока это
-окно открыто. Логи пишутся в файл рядом с базой данных, т.к. у
-frozen-бинарника обычно нет консоли.
+задачи вроде планового синка цен по Ozon). Backend слушает только
+127.0.0.1 — AutoSync недоступен ни из браузера на этой машине, ни тем более
+из браузера с других устройств в сети: единственный способ работать с
+приложением — это окно, которое открывает сам процесс. Логи пишутся в файл
+рядом с базой данных, т.к. у frozen-бинарника обычно нет консоли.
 """
 
 from __future__ import annotations
@@ -125,11 +125,11 @@ def run_llm_service(port: int) -> None:
 def run_backend(app, port: int) -> None:
     from waitress import serve
 
-    # 0.0.0.0, а не 127.0.0.1 — чтобы AutoSync был доступен по адресу этой
-    # машины из браузера с телефона/другого ПК в той же сети, даже когда
-    # основной способ работы — окно приложения на этой машине.
-    logger.info("backend слушает на 0.0.0.0:%s (доступен и по локальной сети)", port)
-    serve(app, host="0.0.0.0", port=port, _quiet=True)
+    # Только 127.0.0.1 — AutoSync должен работать исключительно через своё
+    # окно (см. run_window), не через браузер ни с этой машины, ни тем более
+    # с других устройств в сети.
+    logger.info("backend слушает на 127.0.0.1:%s", port)
+    serve(app, host="127.0.0.1", port=port, _quiet=True)
 
 
 def start_scheduler(app):
@@ -236,9 +236,8 @@ def main() -> None:
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from app import create_app
-    from app.config import NativeConfig
 
-    app = create_app(NativeConfig)
+    app = create_app()
 
     with app.app_context():
         from flask_migrate import upgrade

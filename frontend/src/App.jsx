@@ -10,9 +10,21 @@ import Login from "./pages/Login.jsx";
 import Setup from "./pages/Setup.jsx";
 import Users from "./pages/admin/Users.jsx";
 import LlmSettings from "./pages/admin/LlmSettings.jsx";
+import History from "./pages/admin/History.jsx";
+import Integrations from "./pages/admin/Integrations.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Spinner from "./components/Spinner.jsx";
-import { HomeIcon, TagIcon, SparklesIcon, ListIcon, UploadIcon, UsersIcon, CpuIcon } from "./components/icons.jsx";
+import {
+  HomeIcon,
+  TagIcon,
+  SparklesIcon,
+  ListIcon,
+  UploadIcon,
+  UsersIcon,
+  CpuIcon,
+  HistoryIcon,
+  PlugIcon,
+} from "./components/icons.jsx";
 
 function ProtectedShell() {
   const { user, loading, setupRequired, logout } = useAuth();
@@ -78,6 +90,12 @@ function ProtectedShell() {
               <NavLink to="/admin/llm">
                 <CpuIcon /> LLM-модель
               </NavLink>
+              <NavLink to="/admin/integrations">
+                <PlugIcon /> Интеграции
+              </NavLink>
+              <NavLink to="/admin/history">
+                <HistoryIcon /> История
+              </NavLink>
             </nav>
           </>
         )}
@@ -120,6 +138,8 @@ function ProtectedShell() {
             <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
             {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
             {user.role === "admin" && <Route path="/admin/llm" element={<LlmSettings />} />}
+            {user.role === "admin" && <Route path="/admin/integrations" element={<Integrations />} />}
+            {user.role === "admin" && <Route path="/admin/history" element={<History />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

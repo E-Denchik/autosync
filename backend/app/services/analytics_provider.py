@@ -56,3 +56,13 @@ class AnalyticsProvider:
             "sample_size": data.get("sample_size"),
             "raw": data,
         }
+
+    def test_connection(self) -> str:
+        """Лёгкая проверка доступности провайдера тестовым запросом.
+
+        Ожидаемо падает с AnalyticsProviderError, пока реальный провайдер
+        не выбран/не настроен заказчиком — это нормальный результат теста,
+        а не баг.
+        """
+        result = self.get_competitor_prices("тест")
+        return f"Подключение работает, образец ответа: min={result.get('min_price')}, avg={result.get('avg_price')}"

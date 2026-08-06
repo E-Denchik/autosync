@@ -35,10 +35,9 @@ if (-not (Test-Path "$RepoRoot\backend")) {
 Write-Host "==> Собираю frontend" -ForegroundColor Cyan
 Push-Location "$RepoRoot\frontend"
 npm install --silent
-# VITE_API_BASE_URL=/api (относительный) — см. комментарий в
-# build-native-linux.sh: native-режим открывают по-разному (окно на
-# 127.0.0.1, LAN-доступ по IP машины), абсолютный localhost:PORT сломал бы
-# все варианты, кроме первого.
+# VITE_API_BASE_URL=/api (относительный) — фронт и backend это один и тот
+# же процесс/origin (окно pywebview на 127.0.0.1), относительный путь
+# резолвится webview против текущего origin сам.
 $env:VITE_API_BASE_URL = "/api"
 npm run build --silent
 Remove-Item Env:\VITE_API_BASE_URL
@@ -51,7 +50,7 @@ if (-not (Test-Path $VenvDir)) {
 }
 & "$VenvDir\Scripts\Activate.ps1"
 pip install -q --upgrade pip
-pip install -q -r "$RepoRoot\backend\requirements-native.txt"
+pip install -q -r "$RepoRoot\backend\requirements.txt"
 
 Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 $BuildWork = "$RepoRoot\build\native-windows"

@@ -65,6 +65,21 @@ export const api = {
   // Дашборд
   dashboardSummary: () => request("/dashboard/summary"),
 
+  // История / журнал действий
+  listHistoryEntityTypes: () => request("/history/entity-types"),
+  listHistory: (params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") query.set(key, value);
+    });
+    const qs = query.toString();
+    return request(`/history${qs ? `?${qs}` : ""}`);
+  },
+
+  // Интеграции с внешними API
+  listIntegrations: () => request("/integrations/status"),
+  testIntegration: (id) => request(`/integrations/test/${id}`, { method: "POST" }),
+
   // Ozon: цены
   listPriceSnapshots: (status = "pending") => request(`/ozon/pricing?status=${status}`),
   approvePriceSnapshot: (id) => request(`/ozon/pricing/${id}/approve`, { method: "POST" }),

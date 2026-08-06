@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.auth import admin_required, get_current_user, issue_token, login_required
 from app.extensions import db
 from app.models import User, UserRole
+from app.services.history import log_change
 
 bp = Blueprint("auth", __name__)
 
@@ -46,6 +47,8 @@ def setup():
     user = User(email=email, role=UserRole.ADMIN)
     user.set_password(password)
     db.session.add(user)
+    db.session.flush()
+    log_change("user", user.id, "created", actor=user, details={"email": email, "role": "admin", "via": "setup"})
     db.session.commit()
 
     return jsonify(token=issue_token(user), user=_serialize_user(user)), 201
@@ -87,6 +90,7 @@ def change_own_password():
         return jsonify(error="Новый пароль должен быть не короче 8 символов"), 400
 
     user.set_password(new_password)
+    log_change("user", user.id, "password_changed", actor=user)
     db.session.commit()
     return jsonify(_serialize_user(user))
 
@@ -120,6 +124,10 @@ def create_user():
     user = User(email=email, role=UserRole(role))
     user.set_password(password)
     db.session.add(user)
+    db.session.flush()
+    log_change(
+        "user", user.id, "created", actor=get_current_user(), details={"email": email, "role": role}
+    )
     db.session.commit()
     return jsonify(_serialize_user(user)), 201
 
@@ -138,6 +146,9 @@ def admin_reset_password(user_id: int):
         return jsonify(error="Пароль должен быть не короче 8 символов"), 400
 
     user.set_password(new_password)
+    log_change(
+        "user", user.id, "password_reset_by_admin", actor=get_current_user(), details={"target_email": user.email}
+    )
     db.session.commit()
     return jsonify(_serialize_user(user))
 
@@ -159,6 +170,9 @@ def delete_user(user_id: int):
         if other_admins == 0:
             return jsonify(error="Нельзя удалить последнего администратора"), 400
 
+    log_change(
+        "user", user.id, "deleted", actor=current, details={"email": user.email, "role": user.role.value}
+    )
     db.session.delete(user)
     db.session.commit()
     return "", 204

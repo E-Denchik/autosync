@@ -13,18 +13,6 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db, directory=app.config.get("MIGRATIONS_DIR") or "migrations")
 
-    if app.config.get("USE_CELERY", True):
-        configure_celery(app)
-
-    if not app.config.get("SERVE_FRONTEND"):
-        # В docker-compose режиме фронт и backend — разные origin
-        # (nginx-контейнер на 5173, backend на 5000), поэтому CORS обязателен.
-        # В native-режиме фронт отдаёт этот же процесс — кросс-доменных
-        # запросов нет, CORS не нужен.
-        from flask_cors import CORS
-
-        CORS(app)
-
     from app.api.auth import bp as auth_bp
     from app.api.ozon.pricing import bp as ozon_pricing_bp
     from app.api.ozon.cards import bp as ozon_cards_bp
@@ -32,6 +20,8 @@ def create_app(config_class=Config):
     from app.api.repair_orders.matching import bp as repair_matching_bp
     from app.api.dashboard import bp as dashboard_bp
     from app.api.llm import bp as llm_bp
+    from app.api.history import bp as history_bp
+    from app.api.integrations import bp as integrations_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
@@ -40,6 +30,8 @@ def create_app(config_class=Config):
     app.register_blueprint(repair_matching_bp, url_prefix="/api/repair-orders/matching")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(llm_bp, url_prefix="/api/llm")
+    app.register_blueprint(history_bp, url_prefix="/api/history")
+    app.register_blueprint(integrations_bp, url_prefix="/api/integrations")
 
     @app.get("/api/health")
     def health():
@@ -59,11 +51,10 @@ def create_app(config_class=Config):
             response.headers["Cache-Control"] = "no-store"
         return response
 
-    if app.config.get("SERVE_FRONTEND"):
-        _register_frontend_static_routes(app)
+    _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, user, llm_setting  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, user, llm_setting, history  # noqa: F401
 
     register_cli(app)
 
@@ -71,8 +62,9 @@ def create_app(config_class=Config):
 
 
 def _register_frontend_static_routes(app):
-    """Native-режим: этот же Flask-процесс отдаёт собранный frontend/dist —
-    отдельного nginx-контейнера нет (см. NativeConfig.SERVE_FRONTEND)."""
+    """Этот же Flask-процесс отдаёт собранный frontend/dist как статику —
+    отдельного nginx/дев-сервера нет, единственная точка входа — окно
+    pywebview (см. native_app.py)."""
     frontend_dist = app.config["FRONTEND_DIST_DIR"]
 
     @app.route("/", defaults={"path": ""})
@@ -110,20 +102,3 @@ def register_cli(app):
         db.session.add(user)
         db.session.commit()
         click.echo(f"Администратор {email} создан.")
-
-
-def configure_celery(app):
-    from app.extensions import celery
-
-    celery.conf.update(
-        broker_url=app.config["CELERY_BROKER_URL"],
-        result_backend=app.config["CELERY_RESULT_BACKEND"],
-    )
-
-    class ContextTask(celery.Task):
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery.Task = ContextTask
-    return celery

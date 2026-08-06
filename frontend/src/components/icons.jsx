@@ -142,3 +142,19 @@ export const CpuIcon = (props) => (
     <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
   </svg>
 );
+
+export const HistoryIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <path d="M3 4v4h4" />
+    <path d="M12 7v5l4 2" />
+  </svg>
+);
+
+export const PlugIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M9 2v6M15 2v6" />
+    <path d="M6 8h12v4a6 6 0 0 1-12 0Z" />
+    <path d="M12 18v4" />
+  </svg>
+);

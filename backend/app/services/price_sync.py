@@ -4,9 +4,8 @@
 Ничего не применяется автоматически — снимок уходит в PricingDashboard
 на approve/reject человеком (см. ARCHITECTURE.md, поток «Модуль 1»).
 
-Вынесена из app/tasks/sync_ozon_prices.py в обычную функцию — вызывается
-и из Celery beat (docker-compose режим), и из APScheduler в native_app.py
-(однопроцессный режим без Docker). Требование: выполнять внутри app_context().
+Вызывается из APScheduler в native_app.py по расписанию. Требование:
+выполнять внутри app_context().
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from flask import current_app
 from app.extensions import db
 from app.models import PriceSnapshot, Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
+from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 from app.services.ozon_client import OzonClient, OzonClientError
 
@@ -83,6 +83,13 @@ def sync_ozon_prices_job() -> dict:
             current_app.logger.warning("LLM suggestion failed for %s: %s", product.sku, exc)
 
         db.session.add(snapshot)
+        db.session.flush()
+        log_change(
+            "price_snapshot",
+            snapshot.id,
+            "created",
+            details={"product_id": product.id, "suggested_price": snapshot.suggested_price, "source": "scheduled_sync"},
+        )
         created += 1
 
     db.session.commit()

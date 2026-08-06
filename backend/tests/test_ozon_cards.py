@@ -37,6 +37,23 @@ def test_create_product(client, admin_headers):
     assert body["current_price"] == 250.0
 
 
+def test_create_product_logs_history(client, admin_headers):
+    resp = client.post(
+        "/api/ozon/cards",
+        headers=admin_headers,
+        json={"sku": "SKU-4", "name": "Ремень ГРМ"},
+    )
+    product_id = resp.get_json()["id"]
+
+    history_resp = client.get(
+        f"/api/history?entity_type=product&entity_id={product_id}", headers=admin_headers
+    )
+    entries = history_resp.get_json()
+    assert len(entries) == 1
+    assert entries[0]["action"] == "created"
+    assert entries[0]["actor_email"] == "admin@test.local"
+
+
 def test_generate_card_success(client, admin_headers, product, monkeypatch):
     monkeypatch.setattr(
         LLMClient,

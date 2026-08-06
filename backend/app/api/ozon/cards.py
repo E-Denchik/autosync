@@ -2,10 +2,11 @@ import uuid
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import login_required
+from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
+from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("ozon_cards", __name__)
@@ -79,5 +80,13 @@ def create_product():
         current_price=body.get("current_price"),
     )
     db.session.add(product)
+    db.session.flush()
+    log_change(
+        "product",
+        product.id,
+        "created",
+        actor=get_current_user(),
+        details={"sku": sku, "name": name},
+    )
     db.session.commit()
     return jsonify(_serialize_product(product)), 201

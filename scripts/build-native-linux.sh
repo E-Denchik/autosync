@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Собирает AutoSync в один исполняемый файл для Linux (PyInstaller) —
 # "обычное приложение", без Docker: SQLite + встроенный планировщик,
-# см. backend/native_app.py и backend/app/config.py (NativeConfig).
+# см. backend/native_app.py и backend/app/config.py.
 #
 # ВАЖНО: PyInstaller не кросс-компилирует — бинарник, собранный этим
 # скриптом, работает только на Linux. Для Windows нужен отдельный запуск
@@ -21,14 +21,10 @@ if [ ! -d "$REPO_ROOT/backend" ]; then
 fi
 
 echo "==> Собираю frontend"
-# VITE_API_BASE_URL=/api (относительный, не абсолютный) — в native-режиме
-# фронт и backend это один и тот же процесс/origin, но открыть его можно
-# по-разному: 127.0.0.1 (окно приложения), localhost, реальный IP машины
-# (доступ по LAN, см. native_app.py: run_backend слушает 0.0.0.0). Абсолютный
-# http://localhost:PORT/api работал бы только для первого случая — с любого
-# другого хоста/IP запросы ушли бы не туда. Относительный путь резолвится
-# браузером/webview против текущего origin сам, независимо от того, как
-# именно открыли страницу.
+# VITE_API_BASE_URL=/api (относительный, не абсолютный) — фронт и backend
+# это один и тот же процесс/origin (окно pywebview на 127.0.0.1), поэтому
+# относительный путь резолвится webview против текущего origin сам, без
+# нужды знать порт заранее.
 (cd "$REPO_ROOT/frontend" && npm install --silent && VITE_API_BASE_URL=/api npm run build --silent)
 
 echo "==> Готовлю Python-окружение для сборки (backend/.venv-native)"
@@ -44,7 +40,7 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 pip install -q --upgrade pip
-pip install -q -r "$REPO_ROOT/backend/requirements-native.txt"
+pip install -q -r "$REPO_ROOT/backend/requirements.txt"
 
 echo "==> Запускаю PyInstaller"
 BUILD_WORK="$REPO_ROOT/build/native-linux"
@@ -88,5 +84,5 @@ deactivate
 
 echo ""
 echo "==> Готово: $OUT_DIR/autosync"
-echo "    Запуск: $OUT_DIR/autosync  (откроет своё окно, backend на http://0.0.0.0:5000/)"
+echo "    Запуск: $OUT_DIR/autosync  (откроет своё окно, backend на http://127.0.0.1:5000/)"
 echo "    Нужны системные пакеты: python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 (или -4.0)"
