@@ -47,6 +47,11 @@ export const api = {
   createUser: (data) => request("/auth/users", { method: "POST", body: JSON.stringify(data) }),
   deleteUser: (id) => request(`/auth/users/${id}`, { method: "DELETE" }),
 
+  // Настройки LLM
+  listLlmModels: () => request("/llm/models"),
+  selectLlmModel: (provider, model) =>
+    request("/llm/select", { method: "POST", body: JSON.stringify({ provider, model }) }),
+
   // Дашборд
   dashboardSummary: () => request("/dashboard/summary"),
 

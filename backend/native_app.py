@@ -86,6 +86,7 @@ def run_llm_service(port: int) -> None:
     from waitress import serve
 
     os.environ.setdefault("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    os.environ.setdefault("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1")
     app = load_llm_service_app()
     logger.info("llm-service слушает на 127.0.0.1:%s", port)
     serve(app, host="127.0.0.1", port=port, _quiet=True)

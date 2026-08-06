@@ -134,3 +134,11 @@ export const DownloadIcon = (props) => (
     <path d="M4 19h16" />
   </svg>
 );
+
+export const CpuIcon = (props) => (
+  <svg {...base} {...props}>
+    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    <rect x="9.5" y="9.5" width="5" height="5" />
+    <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+  </svg>
+);
