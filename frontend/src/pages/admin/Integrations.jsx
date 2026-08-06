@@ -2,13 +2,31 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { RefreshIcon } from "../../components/icons.jsx";
+import { RefreshIcon, AlertCircleIcon } from "../../components/icons.jsx";
+
+const KEY_FIELDS = {
+  ozon_seller: [
+    { key: "OZON_CLIENT_ID", label: "Client-Id", type: "text", placeholder: "12345" },
+    { key: "OZON_API_KEY", label: "Api-Key", type: "password", placeholder: "" },
+  ],
+  ozon_performance: [
+    { key: "OZON_PERFORMANCE_CLIENT_ID", label: "Client-Id (Performance)", type: "text", placeholder: "" },
+    { key: "OZON_PERFORMANCE_CLIENT_SECRET", label: "Client Secret", type: "password", placeholder: "" },
+  ],
+  analytics: [
+    { key: "ANALYTICS_PROVIDER_BASE_URL", label: "Base URL", type: "text", placeholder: "https://api.provider.ru" },
+    { key: "ANALYTICS_PROVIDER_API_KEY", label: "API Key", type: "password", placeholder: "" },
+  ],
+};
 
 export default function Integrations() {
   const [integrations, setIntegrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(null); // id интеграции в процессе проверки
   const [results, setResults] = useState({}); // id -> {ok, message}
+  const [editingId, setEditingId] = useState(null); // какая карточка сейчас с открытой формой ключей
+  const [formValues, setFormValues] = useState({}); // key -> значение поля формы
+  const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   const load = () => {
@@ -37,6 +55,35 @@ export default function Integrations() {
     }
   };
 
+  const openEdit = (id) => {
+    setEditingId(id);
+    setFormValues({});
+  };
+
+  const handleSaveKeys = async (id) => {
+    const fields = KEY_FIELDS[id];
+    const payload = {};
+    fields.forEach(({ key }) => {
+      if (formValues[key]) payload[key] = formValues[key];
+    });
+    if (Object.keys(payload).length === 0) {
+      toast.error("Заполните хотя бы одно поле");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.saveIntegrationKeys(payload);
+      toast.success("Ключи сохранены — применены сразу, перезапуск не нужен");
+      setEditingId(null);
+      setFormValues({});
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <Spinner label="Загрузка интеграций…" />;
 
   return (
@@ -46,8 +93,8 @@ export default function Integrations() {
           <h2>Интеграции</h2>
           <p>
             Внешние API, которые использует AutoSync: Ozon Seller/Performance и сторонний сервис
-            аналитики цен конкурентов. Ключи задаются переменными окружения на сервере — здесь
-            видно только статус подключения, сами значения не отображаются.
+            аналитики цен конкурентов. Ключи вводятся здесь и сохраняются в базе данных —
+            переживают перезапуск, значения обратно не показываются.
           </p>
         </div>
         <button className="btn btn-secondary" onClick={load}>
@@ -57,6 +104,7 @@ export default function Integrations() {
 
       {integrations.map((it) => {
         const result = results[it.id];
+        const isEditing = editingId === it.id;
         return (
           <div className="panel" key={it.id} style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -73,14 +121,72 @@ export default function Integrations() {
                   {it.description}
                 </p>
               </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={testing === it.id}
-                onClick={() => handleTest(it.id)}
-              >
-                {testing === it.id ? "Проверяем…" : "Проверить подключение"}
-              </button>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => (isEditing ? setEditingId(null) : openEdit(it.id))}
+                >
+                  {isEditing ? "Отмена" : it.configured ? "Изменить ключи" : "Задать ключи"}
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={testing === it.id}
+                  onClick={() => handleTest(it.id)}
+                >
+                  {testing === it.id ? "Проверяем…" : "Проверить подключение"}
+                </button>
+              </div>
             </div>
+
+            {it.api_base_override && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  marginTop: 12,
+                  padding: "8px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--warning-soft)",
+                  color: "var(--warning)",
+                  fontSize: 12.5,
+                }}
+              >
+                <AlertCircleIcon style={{ width: 15, height: 15, flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  Адрес API переопределён на <code>{it.api_base_override}</code> (переменная окружения на
+                  сервере) — реальные ключи работать не будут, пока она задана. Уберите её (unset) и
+                  перезапустите приложение, чтобы использовать настоящий Ozon.
+                </span>
+              </div>
+            )}
+
+            {isEditing && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                <div className="field-row">
+                  {KEY_FIELDS[it.id].map((f) => (
+                    <div className="field" key={f.key}>
+                      <label htmlFor={f.key}>{f.label}</label>
+                      <input
+                        id={f.key}
+                        type={f.type}
+                        autoComplete="off"
+                        value={formValues[f.key] || ""}
+                        onChange={(e) => setFormValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={saving}
+                  onClick={() => handleSaveKeys(it.id)}
+                >
+                  {saving ? "Сохранение…" : "Сохранить"}
+                </button>
+              </div>
+            )}
 
             {result && (
               <div
@@ -92,13 +198,6 @@ export default function Integrations() {
               >
                 {result.message}
               </div>
-            )}
-
-            {!it.configured && (
-              <p className="text-muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
-                Задайте соответствующие переменные окружения на сервере (см. .env.example) и
-                перезапустите приложение.
-              </p>
             )}
           </div>
         );

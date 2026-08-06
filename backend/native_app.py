@@ -140,10 +140,18 @@ def start_scheduler(app):
     # только через 6 часов из потока APScheduler, а первый импорт модуля не
     # из главного потока в PyInstaller-сборке проходит тихо и без эффекта
     # (см. аналогичный фикс в services/job_queue.py).
+    from app.services.catalog_sync import sync_ozon_catalog_job
     from app.services.price_sync import sync_ozon_prices_job
 
     def _sync_job():
         with app.app_context():
+            # Сначала каталог (создаёт/обновляет товары из Ozon), потом цены —
+            # иначе price_sync не найдёт только что появившиеся товары до
+            # следующего цикла.
+            try:
+                sync_ozon_catalog_job()
+            except Exception:
+                logger.exception("sync_ozon_catalog_job упал")
             try:
                 sync_ozon_prices_job()
             except Exception:
@@ -243,6 +251,18 @@ def main() -> None:
         from flask_migrate import upgrade
 
         upgrade()
+
+        # Ключи внешних API (Ozon/аналитика), сохранённые через UI
+        # (Администрирование → Интеграции, см. app/services/settings_store.py) —
+        # переживают перезапуск без необходимости каждый раз задавать
+        # переменные окружения вручную. setdefault: реальная переменная
+        # окружения (если её всё-таки задали в терминале — например, для
+        # локального мока Ozon API) остаётся приоритетнее сохранённого в БД.
+        from app.services import settings_store
+
+        for key, value in settings_store.load_all().items():
+            os.environ.setdefault(key, value)
+            app.config[key] = os.environ[key]
 
     setup_logging(data_dir)  # см. комментарий в setup_logging — upgrade() выше сбивает root-логгер
 

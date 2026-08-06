@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from app.services.ozon_client import OzonClient, OzonClientError
 
@@ -72,6 +73,36 @@ def test_performance_connection_success(monkeypatch):
 
     message = client.test_performance_connection()
     assert "2" in message
+
+
+def test_seller_connection_refused_raises_ozon_client_error_not_raw_exception(monkeypatch):
+    """Регрессия: раньше requests.exceptions.ConnectionError (сервер
+    недоступен/не поднят) не оборачивался в OzonClientError и падал в API
+    слое как необработанный 500 — см. POST /api/ozon/cards/sync."""
+    client = OzonClient(client_id="cid", api_key="key")
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        raise requests.exceptions.ConnectionError("Connection refused")
+
+    monkeypatch.setattr("app.services.ozon_client.requests.post", fake_post)
+    with pytest.raises(OzonClientError, match="недоступен"):
+        client.test_seller_connection()
+
+
+def test_performance_token_request_connection_error_raises_ozon_client_error(monkeypatch):
+    client = OzonClient(
+        client_id="cid",
+        api_key="key",
+        performance_client_id="pcid",
+        performance_client_secret="psecret",
+    )
+
+    def fake_post(url, json=None, timeout=None):
+        raise requests.exceptions.ConnectionError("Connection refused")
+
+    monkeypatch.setattr("app.services.ozon_client.requests.post", fake_post)
+    with pytest.raises(OzonClientError, match="недоступен"):
+        client.list_campaigns()
 
 
 def test_performance_token_is_cached(monkeypatch):

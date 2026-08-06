@@ -8,6 +8,7 @@ from app.models import PriceSnapshot, PriceSuggestionStatus, Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
+from app.services.ozon_client import OzonClient, OzonClientError
 
 bp = Blueprint("ozon_pricing", __name__)
 bp.before_request(login_required(lambda: None))
@@ -45,24 +46,39 @@ def list_snapshots():
 
 @bp.post("/<int:snapshot_id>/approve")
 def approve_snapshot(snapshot_id: int):
+    """Approve — это и есть точка "человек в контуре" (см. ARCHITECTURE.md):
+    сразу после одобрения цена реально отправляется в Ozon
+    (ozon_client.update_prices), а не только меняется локально. Если
+    отправка не удалась (нет ключей, сеть и т.п.) — снимок остаётся
+    pending и локальная цена не трогается, чтобы не расходиться с тем,
+    что реально стоит на Ozon."""
     snapshot = db.get_or_404(PriceSnapshot, snapshot_id)
+    if snapshot.suggested_price is None:
+        return jsonify(error="У этого предложения нет предложенной цены"), 400
+
+    product = db.session.get(Product, snapshot.product_id)
+    if not product:
+        return jsonify(error="Товар не найден"), 404
+
+    ozon = OzonClient(current_app.config["OZON_CLIENT_ID"], current_app.config["OZON_API_KEY"])
+    try:
+        # Поля запроса — по документации Ozon Seller API, не проверено
+        # вживую без реальных ключей (см. ARCHITECTURE.md, "Открытые вопросы").
+        ozon.update_prices([{"offer_id": product.sku, "price": str(snapshot.suggested_price), "currency_code": "RUB"}])
+    except OzonClientError as exc:
+        current_app.logger.error("Не удалось применить цену в Ozon для %s: %s", product.sku, exc)
+        return jsonify(error=f"Не удалось применить цену в Ozon: {exc}"), 502
+
     snapshot.status = PriceSuggestionStatus.APPROVED
     snapshot.reviewed_at = datetime.utcnow()
-
-    if snapshot.suggested_price is not None:
-        product = db.session.get(Product, snapshot.product_id)
-        if product:
-            product.current_price = snapshot.suggested_price
-        # Применение цены в Ozon — отдельный шаг через ozon_client.update_prices,
-        # намеренно НЕ вызывается автоматически здесь. См. ARCHITECTURE.md:
-        # "Человек в контуре на изменении цен".
+    product.current_price = snapshot.suggested_price
 
     log_change(
         "price_snapshot",
         snapshot.id,
         "approved",
         actor=get_current_user(),
-        details={"suggested_price": float(snapshot.suggested_price) if snapshot.suggested_price else None},
+        details={"suggested_price": float(snapshot.suggested_price), "pushed_to_ozon": True},
     )
     db.session.commit()
     return jsonify(_serialize(snapshot))

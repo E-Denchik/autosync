@@ -8,14 +8,25 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+import os
 
-from app.auth import admin_required
+from flask import Blueprint, current_app, jsonify, request
+
+from app.auth import admin_required, get_current_user
+from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
-from app.services.ozon_client import OzonClient, OzonClientError
+from app.services.history import log_change
+from app.services.ozon_client import (
+    DEFAULT_PERFORMANCE_API_BASE,
+    DEFAULT_SELLER_API_BASE,
+    OzonClient,
+    OzonClientError,
+)
 
 bp = Blueprint("integrations", __name__)
 bp.before_request(admin_required(lambda: None))
+
+SETTINGS_ENTITY_ID = 1  # синглтон — одна запись настроек на всё приложение
 
 
 def _ozon_client() -> OzonClient:
@@ -33,6 +44,15 @@ def _analytics_provider() -> AnalyticsProvider:
     return AnalyticsProvider(cfg["ANALYTICS_PROVIDER_BASE_URL"], cfg["ANALYTICS_PROVIDER_API_KEY"])
 
 
+def _api_base_override(env_var: str, default: str) -> str | None:
+    """Не None, если адрес API переопределён переменной окружения (обычно —
+    забытая настройка на мок-сервер для тестирования, см.
+    scripts/mock_ozon_api.py). Пока она задана, реальные ключи из UI не
+    заработают — запросы всё равно идут по этому адресу."""
+    value = os.environ.get(env_var)
+    return value if value and value != default else None
+
+
 @bp.get("/status")
 def status():
     cfg = current_app.config
@@ -42,18 +62,21 @@ def status():
             "name": "Ozon Seller API",
             "description": "Свои товары, цены и продажи (каталог, цены, аналитика продаж)",
             "configured": bool(cfg["OZON_CLIENT_ID"] and cfg["OZON_API_KEY"]),
+            "api_base_override": _api_base_override("OZON_SELLER_API_BASE", DEFAULT_SELLER_API_BASE),
         },
         {
             "id": "ozon_performance",
             "name": "Ozon Performance API",
             "description": "Рекламный кабинет Ozon (OAuth2)",
             "configured": bool(cfg["OZON_PERFORMANCE_CLIENT_ID"] and cfg["OZON_PERFORMANCE_CLIENT_SECRET"]),
+            "api_base_override": _api_base_override("OZON_PERFORMANCE_API_BASE", DEFAULT_PERFORMANCE_API_BASE),
         },
         {
             "id": "analytics",
             "name": "Аналитика конкурентов",
             "description": "Сторонний сервис цен конкурентов (провайдер уточняется с заказчиком)",
             "configured": bool(cfg["ANALYTICS_PROVIDER_BASE_URL"]),
+            "api_base_override": None,
         },
     ]
     return jsonify(integrations)
@@ -77,3 +100,38 @@ def test_connection(integration_id: str):
         return jsonify(ok=False, message=f"Не удалось подключиться: {exc}")
 
     return jsonify(ok=True, message=message)
+
+
+@bp.post("/keys")
+def save_keys():
+    """Сохраняет ключи в базе данных (IntegrationSetting, переживает
+    перезапуск, см. native_app.py) и сразу применяет их к текущему
+    процессу — перезапускать приложение не нужно.
+
+    Секреты никогда не возвращаются обратно клиенту — только записываются;
+    сверить текущее значение нельзя, только заменить новым (см. GET /status
+    для просто факта "настроено/нет").
+    """
+    body = request.get_json(force=True) or {}
+    updates = {
+        key: (body.get(key) or "").strip()
+        for key in settings_store.ALLOWED_KEYS
+        if (body.get(key) or "").strip()
+    }
+    if not updates:
+        return jsonify(error="Нет данных для сохранения"), 400
+
+    settings_store.save_keys(updates)
+
+    for key, value in updates.items():
+        os.environ[key] = value
+        current_app.config[key] = value
+
+    log_change(
+        "integration_keys",
+        SETTINGS_ENTITY_ID,
+        "updated",
+        actor=get_current_user(),
+        details={"keys": sorted(updates.keys())},
+    )
+    return jsonify(ok=True, updated=sorted(updates.keys()))

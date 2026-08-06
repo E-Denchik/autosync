@@ -40,12 +40,15 @@ class AnalyticsProvider:
         нормализованный контракт, которого должен придерживаться остальной
         backend (используется в tasks/sync_ozon_prices.py).
         """
-        resp = requests.get(
-            f"{self.base_url}/v1/competitors",
-            params={"query": sku_or_query, "category": category},
-            headers=self._headers(),
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.get(
+                f"{self.base_url}/v1/competitors",
+                params={"query": sku_or_query, "category": category},
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise AnalyticsProviderError(f"analytics provider недоступен: {exc}") from exc
         if not resp.ok:
             raise AnalyticsProviderError(f"analytics provider -> {resp.status_code}: {resp.text}")
         data = resp.json()

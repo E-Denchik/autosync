@@ -28,7 +28,7 @@ export default function PricingDashboard() {
     try {
       if (decision === "approve") {
         await api.approvePriceSnapshot(id);
-        toast.success("Цена принята и обновлена у товара");
+        toast.success("Цена принята и отправлена в Ozon");
       } else {
         await api.rejectPriceSnapshot(id);
         toast.info("Предложение отклонено");

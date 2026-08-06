@@ -1,34 +1,86 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { TagIcon, PlusIcon, SparklesIcon, TrendingUpIcon } from "../../components/icons.jsx";
+import {
+  TagIcon,
+  SparklesIcon,
+  TrendingUpIcon,
+  SearchIcon,
+  RefreshIcon,
+  EditIcon,
+} from "../../components/icons.jsx";
 
-const EMPTY_FORM = { sku: "", name: "", category: "", cost_price: "", current_price: "" };
+const UNCATEGORIZED = "__uncategorized__";
 
 export default function CardGenerator() {
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [activeCategory, setActiveCategory] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [generatingId, setGeneratingId] = useState(null);
   const [analyzingId, setAnalyzingId] = useState(null);
   const [results, setResults] = useState({});
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [creating, setCreating] = useState(false);
+  const [editingCostId, setEditingCostId] = useState(null);
+  const [costInput, setCostInput] = useState("");
+  const [savingCost, setSavingCost] = useState(false);
   const toast = useToast();
+  const isFirstRender = useRef(true);
 
-  const load = () => {
+  const loadCategories = () => {
+    api.listProductCategories().then(setCategories).catch((e) => toast.error(e.message));
+  };
+
+  const loadProducts = (category, q) => {
     setLoading(true);
     api
-      .listProducts()
+      .listProducts({ category, q })
       .then(setProducts)
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   };
 
+  const load = () => {
+    loadCategories();
+    loadProducts(activeCategory, search);
+  };
+
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Категория/поиск меняются — перезагружаем список с небольшой задержкой,
+  // чтобы не дёргать backend на каждое нажатие клавиши. Пропускаем первый
+  // рендер — начальная загрузка уже сделана выше, без задержки.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => loadProducts(activeCategory, search), 300);
+    return () => clearTimeout(timer);
+  }, [activeCategory, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalCount = categories.reduce((sum, c) => sum + c.count, 0);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.syncOzonCatalog();
+      if (res.ok) {
+        toast.success(`Синхронизировано: добавлено ${res.created}, обновлено ${res.updated}`);
+        load();
+      } else {
+        toast.error(res.message);
+      }
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleGenerate = async (productId) => {
     setGeneratingId(productId);
@@ -55,29 +107,26 @@ export default function CardGenerator() {
     }
   };
 
-  const handleCreateProduct = async (e) => {
-    e.preventDefault();
-    if (!form.sku.trim() || !form.name.trim()) {
-      toast.error("SKU и название обязательны");
-      return;
-    }
-    setCreating(true);
+  const startEditCost = (p) => {
+    setEditingCostId(p.id);
+    setCostInput(p.cost_price ?? "");
+  };
+
+  const cancelEditCost = () => {
+    setEditingCostId(null);
+    setCostInput("");
+  };
+
+  const saveCost = async (productId) => {
+    setSavingCost(true);
     try {
-      await api.createProduct({
-        sku: form.sku.trim(),
-        name: form.name.trim(),
-        category: form.category.trim() || null,
-        cost_price: form.cost_price ? Number(form.cost_price) : null,
-        current_price: form.current_price ? Number(form.current_price) : null,
-      });
-      toast.success("Товар добавлен");
-      setForm(EMPTY_FORM);
-      setShowForm(false);
-      load();
-    } catch (e2) {
-      toast.error(e2.message);
+      const updated = await api.updateCostPrice(productId, costInput === "" ? null : Number(costInput));
+      setProducts((prev) => prev.map((p) => (p.id === productId ? updated : p)));
+      setEditingCostId(null);
+    } catch (e) {
+      toast.error(e.message);
     } finally {
-      setCreating(false);
+      setSavingCost(false);
     }
   };
 
@@ -87,72 +136,51 @@ export default function CardGenerator() {
         <div>
           <h2>Карточки и цены</h2>
           <p>
+            Каталог подтягивается только из Ozon Seller API — ручного добавления товаров нет.
             LLM генерирует SEO-текст и характеристики на основе анализа конкурентов, а также может
             предложить цену. Ничего не публикуется в Ozon автоматически — проверьте результат перед
             использованием.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-          <PlusIcon /> Добавить товар
+        <button className="btn btn-primary" disabled={syncing} onClick={handleSync}>
+          <RefreshIcon /> {syncing ? "Синхронизация…" : "Синхронизировать с Ozon"}
         </button>
       </div>
 
-      {showForm && (
-        <form className="panel" style={{ marginBottom: 20 }} onSubmit={handleCreateProduct}>
-          <div className="section-title">Новый товар</div>
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="sku">SKU / артикул</label>
-              <input
-                id="sku"
-                value={form.sku}
-                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                placeholder="AB-1234"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="name">Название</label>
-              <input
-                id="name"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Тормозной диск передний"
-              />
-            </div>
-          </div>
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="category">Категория</label>
-              <input
-                id="category"
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                placeholder="Тормозная система"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="current_price">Текущая цена, ₽</label>
-              <input
-                id="current_price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.current_price}
-                onChange={(e) => setForm((f) => ({ ...f, current_price: e.target.value }))}
-                placeholder="1500"
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" disabled={creating} type="submit">
-              {creating ? "Сохранение…" : "Сохранить товар"}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
-              Отмена
-            </button>
-          </div>
-        </form>
+      {categories.length > 0 && (
+        <div className="category-chips">
+          <button
+            className={`category-chip${activeCategory === "" ? " active" : ""}`}
+            onClick={() => setActiveCategory("")}
+          >
+            Все <span className="category-chip-count">{totalCount}</span>
+          </button>
+          {categories.map(({ category, count }) => {
+            const value = category ?? UNCATEGORIZED;
+            return (
+              <button
+                key={value}
+                className={`category-chip${activeCategory === value ? " active" : ""}`}
+                onClick={() => setActiveCategory(value)}
+              >
+                {category ?? "Без категории"} <span className="category-chip-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
+
+      <div className="field" style={{ maxWidth: 360, marginBottom: 16 }}>
+        <label htmlFor="product-search" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <SearchIcon style={{ width: 13, height: 13 }} /> Поиск по названию или SKU
+        </label>
+        <input
+          id="product-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="например, тормозной диск или AB-1234"
+        />
+      </div>
 
       {loading ? (
         <Spinner label="Загрузка товаров…" />
@@ -160,12 +188,18 @@ export default function CardGenerator() {
         <div className="table-wrap">
           <EmptyState
             icon={TagIcon}
-            title="Пока нет товаров"
-            hint="Товары подтягиваются из Ozon Seller API по расписанию, либо их можно добавить вручную для теста."
+            title={activeCategory || search ? "Ничего не найдено" : "Пока нет товаров"}
+            hint={
+              activeCategory || search
+                ? "Попробуйте выбрать другую категорию или изменить поисковый запрос."
+                : "Задайте OZON_CLIENT_ID и OZON_API_KEY (Администрирование → Интеграции) и нажмите «Синхронизировать с Ozon»."
+            }
             action={
-              <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-                <PlusIcon /> Добавить первый товар
-              </button>
+              !(activeCategory || search) && (
+                <button className="btn btn-primary" disabled={syncing} onClick={handleSync}>
+                  <RefreshIcon /> {syncing ? "Синхронизация…" : "Синхронизировать с Ozon"}
+                </button>
+              )
             }
           />
         </div>
@@ -177,7 +211,8 @@ export default function CardGenerator() {
                 <th>SKU</th>
                 <th>Название</th>
                 <th>Категория</th>
-                <th>Цена</th>
+                <th>Цена на Ozon</th>
+                <th>Закупочная цена</th>
                 <th></th>
               </tr>
             </thead>
@@ -188,6 +223,48 @@ export default function CardGenerator() {
                   <td>{p.name}</td>
                   <td className="text-muted">{p.category || "—"}</td>
                   <td>{p.current_price != null ? `${p.current_price} ₽` : "—"}</td>
+                  <td>
+                    {editingCostId === p.id ? (
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          autoFocus
+                          disabled={savingCost}
+                          value={costInput}
+                          onChange={(e) => setCostInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveCost(p.id);
+                            if (e.key === "Escape") cancelEditCost();
+                          }}
+                          style={{ width: 88, padding: "4px 6px", fontSize: 13 }}
+                        />
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={savingCost}
+                          onClick={() => saveCost(p.id)}
+                        >
+                          OK
+                        </button>
+                      </div>
+                    ) : (
+                      <span
+                        onClick={() => startEditCost(p)}
+                        title="Изменить закупочную цену"
+                        style={{
+                          cursor: "pointer",
+                          borderBottom: "1px dashed var(--border-strong)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {p.cost_price != null ? `${p.cost_price} ₽` : "—"}
+                        <EditIcon style={{ width: 11, height: 11, opacity: 0.6 }} />
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                       <button
