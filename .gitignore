@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Docker volumes / data
+pgdata/
+redis-data/
+ollama-data/
+
+# Uploads
+backend/uploads/
+/tmp/autosync-uploads/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
