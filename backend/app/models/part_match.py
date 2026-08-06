@@ -40,6 +40,10 @@ class PartMatch(db.Model):
 
     review_status = db.Column(db.Enum(ReviewStatus), default=ReviewStatus.PENDING, nullable=False)
     reviewed_at = db.Column(db.DateTime)
+    # Оператор вручную выбрал другую позицию вместо предложенной системой —
+    # confidence_level при этом не меняется (описывает, как нашла система),
+    # а этот флаг отражает, что решение принял человек.
+    manually_edited = db.Column(db.Boolean, default=False, nullable=False)
 
     raw_match_data = db.Column(db.JSON)  # сырой ответ parts_supplier_client / llm_client
 

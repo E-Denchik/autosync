@@ -1,0 +1,18 @@
+#!/bin/sh
+# Никаких debconf-диалогов и Docker — установка сводится к правам на
+# бинарник и регистрации в меню приложений. Первый запуск настраивается
+# прямо в браузере (см. /setup во фронтенде).
+set -e
+
+chmod 0755 /opt/autosync/autosync
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
+
+echo ""
+echo "AutoSync установлен. Запустите его из меню приложений, либо командой:"
+echo "  /opt/autosync/autosync"
+echo "Откроется браузер — при первом запуске нужно будет создать администратора."
+
+exit 0

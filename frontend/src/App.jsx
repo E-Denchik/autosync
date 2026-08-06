@@ -1,13 +1,37 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard.jsx";
 import PricingDashboard from "./pages/ozon/PricingDashboard.jsx";
 import CardGenerator from "./pages/ozon/CardGenerator.jsx";
 import UploadPage from "./pages/repair-orders/UploadPage.jsx";
 import ReviewMatches from "./pages/repair-orders/ReviewMatches.jsx";
 import RepairOrdersList from "./pages/repair-orders/RepairOrdersList.jsx";
-import { HomeIcon, TagIcon, SparklesIcon, ListIcon, UploadIcon } from "./components/icons.jsx";
+import Login from "./pages/Login.jsx";
+import Setup from "./pages/Setup.jsx";
+import Users from "./pages/admin/Users.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
+import Spinner from "./components/Spinner.jsx";
+import { HomeIcon, TagIcon, SparklesIcon, ListIcon, UploadIcon, UsersIcon } from "./components/icons.jsx";
 
-export default function App() {
+function ProtectedShell() {
+  const { user, loading, setupRequired, logout } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Spinner label="Загрузка…" />
+      </div>
+    );
+  }
+
+  if (setupRequired) {
+    return <Navigate to="/setup" replace />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -42,10 +66,35 @@ export default function App() {
           </NavLink>
         </nav>
 
+        {user.role === "admin" && (
+          <>
+            <div className="module-label">Администрирование</div>
+            <nav>
+              <NavLink to="/admin/users">
+                <UsersIcon /> Пользователи
+              </NavLink>
+            </nav>
+          </>
+        )}
+
         <div className="sidebar-footer">
-          Внутренняя платформа автосервиса.
-          <br />
-          Человек в контуре на ценах и сопоставлениях.
+          <div style={{ color: "#fff", fontWeight: 600, marginBottom: 2 }}>{user.email}</div>
+          <div style={{ marginBottom: 10 }}>{user.role === "admin" ? "Администратор" : "Оператор"}</div>
+          <button
+            onClick={logout}
+            style={{
+              background: "none",
+              border: "1px solid var(--sidebar-border)",
+              color: "inherit",
+              borderRadius: 6,
+              padding: "5px 10px",
+              fontSize: 12,
+              cursor: "pointer",
+              width: "100%",
+            }}
+          >
+            Выйти
+          </button>
         </div>
       </aside>
 
@@ -58,9 +107,21 @@ export default function App() {
             <Route path="/repair-orders" element={<RepairOrdersList />} />
             <Route path="/repair-orders/upload" element={<UploadPage />} />
             <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
+            {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/setup" element={<Setup />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/*" element={<ProtectedShell />} />
+    </Routes>
   );
 }

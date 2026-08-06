@@ -1,0 +1,12 @@
+#!/bin/sh
+# Данные пользователя (~/.autosync — база SQLite, загруженные файлы) —
+# per-user и пакетом не владеет, поэтому dpkg их не трогает ни при remove,
+# ни при purge. Если пользователь захочет стереть всё окончательно —
+# делает это сам: rm -rf ~/.autosync
+set -e
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
+
+exit 0

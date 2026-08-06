@@ -5,6 +5,12 @@ COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
+
+# Vite инлайнит env-переменные в бандл на этапе сборки, поэтому адрес backend
+# должен быть известен уже здесь, а не только в рантайме контейнера.
+ARG VITE_API_BASE_URL=http://localhost:5000/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 RUN npm run build
 
 FROM nginx:alpine

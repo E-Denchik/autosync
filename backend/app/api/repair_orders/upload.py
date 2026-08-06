@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
 
+from app.auth import login_required
 from app.extensions import db
 from app.models import (
     Contract,
@@ -13,8 +14,10 @@ from app.models import (
     RepairOrderStatus,
     ReviewStatus,
 )
+from app.services.job_queue import enqueue_process_upload
 
 bp = Blueprint("repair_orders_upload", __name__)
+bp.before_request(login_required(lambda: None))
 
 ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".pdf"}
 
@@ -65,9 +68,7 @@ def upload_documents():
     db.session.add(repair_order)
     db.session.commit()
 
-    from app.tasks.process_upload import process_upload
-
-    process_upload.delay(contract.id, repair_order.id)
+    enqueue_process_upload(contract.id, repair_order.id)
 
     return jsonify(contract_id=contract.id, repair_order_id=repair_order.id), 202
 

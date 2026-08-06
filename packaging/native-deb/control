@@ -1,0 +1,20 @@
+Package: autosync-desktop
+Version: __VERSION__
+Section: misc
+Priority: optional
+Architecture: amd64
+Installed-Size: __INSTALLED_SIZE__
+Maintainer: AutoSync Internal <noreply@autosync.local>
+Description: AutoSync — internal auto-service platform (desktop app, no Docker)
+ Single self-contained binary bundling backend, frontend and the LLM
+ wrapper service — SQLite instead of PostgreSQL, in-process task queue
+ instead of Celery/Redis. Installs and runs like a regular desktop
+ application: launch from the applications menu, it opens in your
+ browser, sits in the system tray while running.
+ .
+ First launch walks you through creating an administrator account
+ directly in the browser — no command line needed.
+ .
+ Requires a local Ollama installation (https://ollama.com) for
+ LLM-powered features (price suggestions, catalog matching fallback,
+ SEO card generation); everything else works without it.

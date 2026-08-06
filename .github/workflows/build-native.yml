@@ -1,0 +1,99 @@
+name: Build native packages
+
+# Собирает "обычные приложения" AutoSync без Docker — по одному нативному
+# пакету на платформу (см. PROJECT.md/README.md, раздел про native-режим):
+#   - Linux: PyInstaller-бинарник + .deb (packaging/native-deb/)
+#   - Windows: PyInstaller .exe + инсталлятор через Inno Setup
+#     (packaging/native-windows/) — обязательно нужен настоящий Windows-
+#     раннер, PyInstaller не кросс-компилирует.
+#
+# На тег vX.Y.Z публикует оба артефакта в GitHub Release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build native Linux binary
+        run: ./scripts/build-native-linux.sh
+
+      - name: Build native .deb
+        run: ./scripts/build-native-deb.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autosync-linux
+          path: |
+            dist/native-linux/autosync
+            dist/autosync-desktop_*_amd64.deb
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build native Windows exe
+        run: pwsh -File scripts\build-native-windows.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Determine version and repo root for Inno Setup
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          echo "AUTOSYNC_VERSION=$version" >> $env:GITHUB_ENV
+          echo "AUTOSYNC_REPO_ROOT=$(Get-Location)" >> $env:GITHUB_ENV
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\native-windows\autosync.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autosync-windows
+          path: |
+            dist/native-windows/autosync.exe
+            dist/native-windows-installer/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            autosync-linux/native-linux/autosync
+            autosync-linux/autosync-desktop_*_amd64.deb
+            autosync-windows/native-windows/autosync.exe
+            autosync-windows/native-windows-installer/*.exe

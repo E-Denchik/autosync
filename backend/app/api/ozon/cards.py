@@ -2,12 +2,14 @@ import uuid
 
 from flask import Blueprint, current_app, jsonify, request
 
+from app.auth import login_required
 from app.extensions import db
 from app.models import Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.llm_client import LLMClient
 
 bp = Blueprint("ozon_cards", __name__)
+bp.before_request(login_required(lambda: None))
 
 
 def _serialize_product(p: Product) -> dict:
