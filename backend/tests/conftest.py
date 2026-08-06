@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 
@@ -11,15 +12,17 @@ from app.extensions import db
 class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
-    # Явно НЕ используем Config.UPLOAD_DIR (~/.autosync/uploads по умолчанию) —
-    # тесты не должны трогать реальный каталог данных пользователя.
-    UPLOAD_DIR = tempfile.mkdtemp(prefix="autosync-test-uploads-")
+    # Явно НЕ используем Config.DATA_DIR/UPLOAD_DIR (~/.autosync по умолчанию) —
+    # тесты не должны трогать реальный каталог данных пользователя (в т.ч.
+    # POST /api/integrations/keys пишет файл прямо в DATA_DIR).
+    DATA_DIR = tempfile.mkdtemp(prefix="autosync-test-data-")
+    UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _cleanup_test_upload_dir():
+def _cleanup_test_data_dir():
     yield
-    shutil.rmtree(TestConfig.UPLOAD_DIR, ignore_errors=True)
+    shutil.rmtree(TestConfig.DATA_DIR, ignore_errors=True)
 
 
 @pytest.fixture

@@ -26,7 +26,15 @@ async function request(path, options = {}) {
 
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.error === "string") message = parsed.error;
+      else if (typeof parsed?.message === "string") message = parsed.message;
+    } catch {
+      // не JSON — показываем как есть
+    }
+    throw new Error(message);
   }
   const contentType = resp.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -79,6 +87,8 @@ export const api = {
   // Интеграции с внешними API
   listIntegrations: () => request("/integrations/status"),
   testIntegration: (id) => request(`/integrations/test/${id}`, { method: "POST" }),
+  saveIntegrationKeys: (values) =>
+    request("/integrations/keys", { method: "POST", body: JSON.stringify(values) }),
 
   // Ozon: цены
   listPriceSnapshots: (status = "pending") => request(`/ozon/pricing?status=${status}`),
@@ -87,8 +97,18 @@ export const api = {
   analyzePrice: (productId) => request(`/ozon/pricing/analyze/${productId}`, { method: "POST" }),
 
   // Ozon: товары и карточки
-  listProducts: () => request("/ozon/cards"),
-  createProduct: (data) => request("/ozon/cards", { method: "POST", body: JSON.stringify(data) }),
+  listProductCategories: () => request("/ozon/cards/categories"),
+  listProducts: (params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") query.set(key, value);
+    });
+    const qs = query.toString();
+    return request(`/ozon/cards${qs ? `?${qs}` : ""}`);
+  },
+  syncOzonCatalog: () => request("/ozon/cards/sync", { method: "POST" }),
+  updateCostPrice: (productId, costPrice) =>
+    request(`/ozon/cards/${productId}`, { method: "PATCH", body: JSON.stringify({ cost_price: costPrice }) }),
   generateCard: (productId) => request(`/ozon/cards/${productId}/generate`, { method: "POST" }),
 
   // Заказ-наряды: загрузка

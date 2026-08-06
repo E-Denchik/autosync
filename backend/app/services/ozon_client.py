@@ -14,10 +14,22 @@ Seller и Performance — два разных API с разной авториз
 
 from __future__ import annotations
 
+import os
+
 import requests
 
-SELLER_API_BASE = "https://api-seller.ozon.ru"
-PERFORMANCE_API_BASE = "https://performance.ozon.ru"
+DEFAULT_SELLER_API_BASE = "https://api-seller.ozon.ru"
+DEFAULT_PERFORMANCE_API_BASE = "https://performance.ozon.ru"
+
+# Переопределяемо через env — нужно, чтобы направить клиент на локальный
+# мок-сервер для тестирования без реального кабинета Ozon (см.
+# scripts/mock_ozon_api.py). В проде/по умолчанию — настоящие адреса Ozon.
+# ВАЖНО: если эта переменная задана в терминале (например, осталась от
+# тестирования с моком) — реальные ключи, введённые в UI, работать не
+# будут, пока её не убрать (unset). См. app/api/integrations.py:
+# api_base_override — предупреждение об этом в UI.
+SELLER_API_BASE = os.environ.get("OZON_SELLER_API_BASE", DEFAULT_SELLER_API_BASE)
+PERFORMANCE_API_BASE = os.environ.get("OZON_PERFORMANCE_API_BASE", DEFAULT_PERFORMANCE_API_BASE)
 
 
 class OzonClientError(RuntimeError):
@@ -54,12 +66,16 @@ class OzonClient:
         }
 
     def _post(self, path: str, payload: dict | None = None) -> dict:
-        resp = requests.post(
-            f"{SELLER_API_BASE}{path}",
-            json=payload or {},
-            headers=self._seller_headers(),
-            timeout=self.timeout,
-        )
+        headers = self._seller_headers()
+        try:
+            resp = requests.post(
+                f"{SELLER_API_BASE}{path}",
+                json=payload or {},
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise OzonClientError(f"Ozon Seller API {path} недоступен: {exc}") from exc
         if not resp.ok:
             raise OzonClientError(f"Ozon Seller API {path} -> {resp.status_code}: {resp.text}")
         return resp.json()
@@ -75,6 +91,16 @@ class OzonClient:
         """/v4/product/info/prices — текущие цены своих товаров."""
         filt = {"offer_id": offer_ids} if offer_ids else {}
         return self._post("/v4/product/info/prices", {"filter": filt, "limit": 1000})
+
+    def get_product_info(self, product_ids: list[str]) -> dict:
+        """/v3/product/info/list — название и категория товаров по product_id
+        (list_products отдаёт только id/offer_id, без названия).
+
+        НЕ проверено вживую без реальных ключей — сопоставление полей ответа
+        (name/category) сделано по документации Ozon Seller API и может
+        потребовать корректировки, см. ARCHITECTURE.md, "Открытые вопросы".
+        """
+        return self._post("/v3/product/info/list", {"product_id": product_ids})
 
     def update_prices(self, price_updates: list[dict]) -> dict:
         """/v1/product/import/prices — применение новой цены.
@@ -112,15 +138,18 @@ class OzonClient:
                 " — Performance API не подключён"
             )
         if not self._performance_token:
-            resp = requests.post(
-                f"{PERFORMANCE_API_BASE}/api/client/token",
-                json={
-                    "client_id": self.performance_client_id,
-                    "client_secret": self.performance_client_secret,
-                    "grant_type": "client_credentials",
-                },
-                timeout=self.timeout,
-            )
+            try:
+                resp = requests.post(
+                    f"{PERFORMANCE_API_BASE}/api/client/token",
+                    json={
+                        "client_id": self.performance_client_id,
+                        "client_secret": self.performance_client_secret,
+                        "grant_type": "client_credentials",
+                    },
+                    timeout=self.timeout,
+                )
+            except requests.exceptions.RequestException as exc:
+                raise OzonClientError(f"Ozon Performance API токен недоступен: {exc}") from exc
             if not resp.ok:
                 raise OzonClientError(f"Ozon Performance API токен -> {resp.status_code}: {resp.text}")
             self._performance_token = resp.json()["access_token"]
@@ -131,11 +160,15 @@ class OzonClient:
         сейчас бизнес-логикой модулей (см. PROJECT.md) — просто самый
         лёгкий read-only вызов, чтобы подтвердить, что OAuth2-токен реально
         выдаётся и работает."""
-        resp = requests.get(
-            f"{PERFORMANCE_API_BASE}/api/client/campaign",
-            headers=self._performance_headers(),
-            timeout=self.timeout,
-        )
+        headers = self._performance_headers()
+        try:
+            resp = requests.get(
+                f"{PERFORMANCE_API_BASE}/api/client/campaign",
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise OzonClientError(f"Ozon Performance API /campaign недоступен: {exc}") from exc
         if not resp.ok:
             raise OzonClientError(f"Ozon Performance API /campaign -> {resp.status_code}: {resp.text}")
         return resp.json()

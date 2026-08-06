@@ -32,13 +32,17 @@ autosync/
 │   │   │   ├── ozon/                   # роуты модуля 1
 │   │   │   │   ├── pricing.py
 │   │   │   │   └── cards.py
-│   │   │   └── repair_orders/          # роуты модуля 2
-│   │   │       ├── upload.py
-│   │   │       └── matching.py
+│   │   │   ├── repair_orders/          # роуты модуля 2
+│   │   │   │   ├── upload.py
+│   │   │   │   └── matching.py
+│   │   │   ├── integrations.py         # статус/проверка/ключи внешних API
+│   │   │   └── history.py              # аудит-лог (SCD2), параметризованный поиск
 │   │   ├── services/
 │   │   │   ├── ozon_client.py          # обёртка Ozon Seller/Performance API
 │   │   │   ├── analytics_provider.py   # обёртка стороннего аналитического сервиса
 │   │   │   ├── parts_supplier_client.py# обёртка API поставщика запчастей
+│   │   │   ├── catalog_sync.py         # синхронизация каталога товаров из Ozon
+│   │   │   ├── settings_store.py       # ключи внешних API — в БД (IntegrationSetting)
 │   │   │   ├── document_parser.py      # парсинг xlsx/pdf договоров и нарядов
 │   │   │   ├── llm_client.py           # единая точка вызова LLM-сервиса
 │   │   │   ├── matcher.py              # логика сопоставления запчастей
@@ -56,10 +60,13 @@ autosync/
 │   │   ├── pages/
 │   │   │   ├── ozon/
 │   │   │   │   ├── PricingDashboard.jsx
-│   │   │   │   └── CardGenerator.jsx
-│   │   │   └── repair-orders/
-│   │   │       ├── UploadPage.jsx
-│   │   │       └── ReviewMatches.jsx   # approve/reject сопоставлений
+│   │   │   │   └── CardGenerator.jsx   # категории, поиск, синк с Ozon, закупочная цена
+│   │   │   ├── repair-orders/
+│   │   │   │   ├── UploadPage.jsx
+│   │   │   │   └── ReviewMatches.jsx   # approve/reject сопоставлений
+│   │   │   └── admin/
+│   │   │       ├── Integrations.jsx    # статус/ключи/проверка внешних API
+│   │   │       └── History.jsx         # аудит-лог, параметризованный поиск
 │   │   ├── components/
 │   │   ├── api/                        # клиенты к backend
 │   │   └── App.jsx
@@ -71,7 +78,8 @@ autosync/
 │       ├── card_generation.md
 │       └── parts_matching.md
 │
-├── scripts/                            # build-native-*.sh/ps1, run-native.sh
+├── scripts/                            # build-native-*.sh/ps1, run-native.sh,
+│   │                                    #   mock_ozon_api.py (тестовый Seller API)
 ├── packaging/native-deb/, native-windows/
 ├── PROJECT.md
 └── ARCHITECTURE.md

@@ -41,3 +41,16 @@ def test_connection_failure_raises(monkeypatch):
     monkeypatch.setattr("app.services.analytics_provider.requests.get", fake_get)
     with pytest.raises(AnalyticsProviderError, match="404"):
         provider.test_connection()
+
+
+def test_connection_refused_raises_analytics_provider_error_not_raw_exception(monkeypatch):
+    import requests
+
+    provider = AnalyticsProvider("https://example.com", "key")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        raise requests.exceptions.ConnectionError("Connection refused")
+
+    monkeypatch.setattr("app.services.analytics_provider.requests.get", fake_get)
+    with pytest.raises(AnalyticsProviderError, match="недоступен"):
+        provider.test_connection()

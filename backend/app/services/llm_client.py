@@ -63,10 +63,14 @@ class LLMClient:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
 
     def suggest_price(self, product: dict, snapshot: dict) -> dict:
-        """Предложение по цене с обоснованием. Не применяется автоматически."""
+        """Предложение по цене с обоснованием. Не применяется автоматически.
+
+        product должен содержать 'cost_price' — промпт явно требует не
+        предлагать цену ниже себестоимости (см. prompts/price_suggestion.md).
+        """
         from app.services.prompt_loader import render_prompt
 
-        prompt = render_prompt("card_generation.md", product=product, competitor_cards=[snapshot])
+        prompt = render_prompt("price_suggestion.md", product=product, market=snapshot)
         text = self._generate(prompt, json_response=True)
         try:
             return json.loads(text)

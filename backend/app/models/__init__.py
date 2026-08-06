@@ -6,6 +6,7 @@ from app.models.part_match import PartMatch, ConfidenceLevel, ReviewStatus
 from app.models.user import User, UserRole
 from app.models.llm_setting import LLMModelSelection
 from app.models.history import RecordHistory
+from app.models.integration_setting import IntegrationSetting
 
 __all__ = [
     "Product",
@@ -22,4 +23,5 @@ __all__ = [
     "UserRole",
     "LLMModelSelection",
     "RecordHistory",
+    "IntegrationSetting",
 ]
