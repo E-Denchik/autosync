@@ -4,9 +4,10 @@ from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, request, send_file
 
-from app.auth import login_required
+from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import PartMatch, RepairOrder, ReviewStatus
+from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
 bp.before_request(login_required(lambda: None))
@@ -70,6 +71,17 @@ def edit_match(match_id: int):
     match.review_status = ReviewStatus.APPROVED
     match.reviewed_at = datetime.utcnow()
 
+    log_change(
+        "part_match",
+        match.id,
+        "edited",
+        actor=get_current_user(),
+        details={
+            "matched_article": match.matched_article,
+            "matched_name": match.matched_name,
+            "matched_price": float(match.matched_price) if match.matched_price is not None else None,
+        },
+    )
     db.session.commit()
     return jsonify(_serialize(match))
 
@@ -79,6 +91,7 @@ def approve_match(match_id: int):
     match = db.get_or_404(PartMatch, match_id)
     match.review_status = ReviewStatus.APPROVED
     match.reviewed_at = datetime.utcnow()
+    log_change("part_match", match.id, "approved", actor=get_current_user())
     db.session.commit()
     return jsonify(_serialize(match))
 
@@ -88,6 +101,7 @@ def reject_match(match_id: int):
     match = db.get_or_404(PartMatch, match_id)
     match.review_status = ReviewStatus.REJECTED
     match.reviewed_at = datetime.utcnow()
+    log_change("part_match", match.id, "rejected", actor=get_current_user())
     db.session.commit()
     return jsonify(_serialize(match))
 
@@ -105,10 +119,12 @@ def bulk_review():
         return jsonify(error="'ids' не может быть пустым"), 400
 
     status = ReviewStatus.APPROVED if action == "approve" else ReviewStatus.REJECTED
+    actor = get_current_user()
     matches = PartMatch.query.filter(PartMatch.id.in_(ids)).all()
     for match in matches:
         match.review_status = status
         match.reviewed_at = datetime.utcnow()
+        log_change("part_match", match.id, status.value, actor=actor)
     db.session.commit()
 
     return jsonify([_serialize(m) for m in matches])

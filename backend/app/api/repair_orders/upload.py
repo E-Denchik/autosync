@@ -4,7 +4,7 @@ import uuid
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
 
-from app.auth import login_required
+from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import (
     Contract,
@@ -14,6 +14,7 @@ from app.models import (
     RepairOrderStatus,
     ReviewStatus,
 )
+from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
 
 bp = Blueprint("repair_orders_upload", __name__)
@@ -66,6 +67,18 @@ def upload_documents():
         status=RepairOrderStatus.UPLOADED,
     )
     db.session.add(repair_order)
+    db.session.flush()
+
+    log_change(
+        "repair_order",
+        repair_order.id,
+        "created",
+        actor=get_current_user(),
+        details={
+            "original_filename": repair_order.original_filename,
+            "contract_filename": contract.original_filename,
+        },
+    )
     db.session.commit()
 
     enqueue_process_upload(contract.id, repair_order.id)

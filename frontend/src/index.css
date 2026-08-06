@@ -481,6 +481,12 @@ tbody tr:hover {
   gap: 12px;
 }
 
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
 /* ---------- dropzone ---------- */
 
 .dropzone {

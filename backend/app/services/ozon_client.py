@@ -5,6 +5,11 @@
 (см. ARCHITECTURE.md, PROJECT.md): ToS нарушается, аккаунт можно забанить.
 Если нужны данные, которых нет в Seller/Performance API — это разговор
 с продактом, а не инженерное решение в этом файле.
+
+Seller и Performance — два разных API с разной авторизацией (статичные
+заголовки Client-Id/Api-Key против OAuth2 client_credentials), у Ozon это
+исторически разные продукты. Держим оба в одном классе, т.к. с точки
+зрения бизнеса это один и тот же кабинет продавца.
 """
 
 from __future__ import annotations
@@ -20,12 +25,28 @@ class OzonClientError(RuntimeError):
 
 
 class OzonClient:
-    def __init__(self, client_id: str, api_key: str, timeout: int = 30):
+    def __init__(
+        self,
+        client_id: str = "",
+        api_key: str = "",
+        performance_client_id: str | None = None,
+        performance_client_secret: str | None = None,
+        timeout: int = 30,
+    ):
         self.client_id = client_id
         self.api_key = api_key
+        self.performance_client_id = performance_client_id
+        self.performance_client_secret = performance_client_secret
         self.timeout = timeout
+        self._performance_token: str | None = None
+
+    # ---------- Seller API (Client-Id/Api-Key в заголовках) ----------
 
     def _seller_headers(self) -> dict:
+        if not self.client_id or not self.api_key:
+            raise OzonClientError(
+                "OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён"
+            )
         return {
             "Client-Id": self.client_id,
             "Api-Key": self.api_key,
@@ -74,3 +95,52 @@ class OzonClient:
                 "dimension": ["sku"],
             },
         )
+
+    def test_seller_connection(self) -> str:
+        """Самый лёгкий реальный вызов Seller API — не тратит квоту на
+        запись, только подтверждает, что Client-Id/Api-Key рабочие."""
+        result = self.list_products(limit=1)
+        total = result.get("result", {}).get("total", 0)
+        return f"Подключение работает, товаров в кабинете: {total}"
+
+    # ---------- Performance API (OAuth2 client_credentials) ----------
+
+    def _performance_headers(self) -> dict:
+        if not self.performance_client_id or not self.performance_client_secret:
+            raise OzonClientError(
+                "OZON_PERFORMANCE_CLIENT_ID и OZON_PERFORMANCE_CLIENT_SECRET не заданы"
+                " — Performance API не подключён"
+            )
+        if not self._performance_token:
+            resp = requests.post(
+                f"{PERFORMANCE_API_BASE}/api/client/token",
+                json={
+                    "client_id": self.performance_client_id,
+                    "client_secret": self.performance_client_secret,
+                    "grant_type": "client_credentials",
+                },
+                timeout=self.timeout,
+            )
+            if not resp.ok:
+                raise OzonClientError(f"Ozon Performance API токен -> {resp.status_code}: {resp.text}")
+            self._performance_token = resp.json()["access_token"]
+        return {"Authorization": f"Bearer {self._performance_token}", "Content-Type": "application/json"}
+
+    def list_campaigns(self) -> dict:
+        """GET /api/client/campaign — рекламные кампании. Не используется
+        сейчас бизнес-логикой модулей (см. PROJECT.md) — просто самый
+        лёгкий read-only вызов, чтобы подтвердить, что OAuth2-токен реально
+        выдаётся и работает."""
+        resp = requests.get(
+            f"{PERFORMANCE_API_BASE}/api/client/campaign",
+            headers=self._performance_headers(),
+            timeout=self.timeout,
+        )
+        if not resp.ok:
+            raise OzonClientError(f"Ozon Performance API /campaign -> {resp.status_code}: {resp.text}")
+        return resp.json()
+
+    def test_performance_connection(self) -> str:
+        result = self.list_campaigns()
+        campaigns = result.get("list", [])
+        return f"Подключение работает, кампаний: {len(campaigns)}"

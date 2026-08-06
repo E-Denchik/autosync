@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import admin_required
+from app.auth import admin_required, get_current_user
 from app.services import llm_settings
+from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("llm", __name__)
@@ -62,5 +63,12 @@ def select_model():
     if not llm_settings.is_known_model(discovery, provider, model_name):
         return jsonify(error="Эта модель не найдена среди скачанных — обновите список и попробуйте снова"), 404
 
+    log_change(
+        "llm_model_selection",
+        llm_settings.SELECTION_ID,
+        "selected",
+        actor=get_current_user(),
+        details={"provider": provider, "model": model_name},
+    )
     llm_settings.set_selection(provider, model_name)
     return jsonify(provider=provider, model=model_name)

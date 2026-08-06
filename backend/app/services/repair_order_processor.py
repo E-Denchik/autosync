@@ -1,10 +1,8 @@
 """Бизнес-логика обработки загруженного договора + заказ-наряда: парсинг
 обоих файлов, сопоставление позиций (см. services/matcher.py).
 
-Вынесена из app/tasks/process_upload.py в обычную функцию, чтобы её можно
-было вызывать и из Celery-задачи (docker-compose режим), и напрямую из
-ThreadPoolExecutor в однопроцессном native-режиме (см. services/job_queue.py) —
-единственное требование вызывающей стороны: выполнять внутри app_context().
+Вызывается из ThreadPoolExecutor (см. services/job_queue.py) — единственное
+требование вызывающей стороны: выполнять внутри app_context().
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from app.models import (
     RepairOrderStatus,
 )
 from app.services.document_parser import DocumentParseError, parse_document
+from app.services.history import log_change
 from app.services.llm_client import LLMClient
 from app.services.matcher import match_all
 from app.services.parts_supplier_client import PartsSupplierClient
@@ -46,6 +45,7 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         contract.status = DocumentProcessingStatus.FAILED
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = str(exc)
+        log_change("repair_order", repair_order.id, "failed", details={"error": str(exc), "stage": "parsing"})
         db.session.commit()
         return {"status": "failed", "error": str(exc)}
 
@@ -69,6 +69,7 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         logger.exception("match_all упал для repair_order_id=%s", repair_order_id)
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = f"Ошибка сопоставления: {exc}"
+        log_change("repair_order", repair_order.id, "failed", details={"error": str(exc), "stage": "matching"})
         db.session.commit()
         return {"status": "failed", "error": str(exc)}
 
@@ -76,9 +77,18 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     # ReviewMatches сортирует/подсвечивает low-confidence позиции на фронте,
     # но ни одна не применяется без явного approve человеком.
     for result in results:
-        db.session.add(PartMatch(repair_order_id=repair_order.id, **result))
+        match = PartMatch(repair_order_id=repair_order.id, **result)
+        db.session.add(match)
+        db.session.flush()
+        log_change(
+            "part_match",
+            match.id,
+            "created",
+            details={"confidence_level": match.confidence_level.value, "source": "auto-match"},
+        )
 
     repair_order.status = RepairOrderStatus.NEEDS_REVIEW
+    log_change("repair_order", repair_order.id, "needs_review", details={"matches_created": len(results)})
     db.session.commit()
 
     return {"status": "ok", "matches_created": len(results)}

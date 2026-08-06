@@ -1,14 +1,8 @@
-"""Единая точка постановки асинхронных задач в очередь — прячет разницу
-между двумя режимами запуска:
+"""Постановка асинхронной обработки загруженного файла в фон —
+ThreadPoolExecutor внутри того же процесса, отдельного воркера/брокера нет
+и не нужно, всё приложение — один процесс (см. native_app.py).
 
-- docker-compose (Config.USE_CELERY=True): реальная очередь на Celery/Redis,
-  задачу подхватывает отдельный celery-worker процесс;
-- native (NativeConfig.USE_CELERY=False): задача выполняется в
-  ThreadPoolExecutor внутри того же процесса — отдельного воркера/брокера
-  нет и не нужно, всё приложение — один процесс.
-
-API-роуты вызывают только функции из этого модуля и не знают, какой режим
-активен — см. api/repair_orders/upload.py.
+API-роуты вызывают только эту функцию — см. api/repair_orders/upload.py.
 """
 
 from __future__ import annotations
@@ -24,7 +18,7 @@ from flask import current_app
 # PyInstaller для importlib рассчитаны на импорт из главного потока при
 # старте. К моменту, когда этот файл вообще импортируют (первый апload),
 # приложение уже полностью инициализировано, так что импортировать здесь
-# безопасно и в docker/dev-режиме тоже.
+# безопасно.
 from app.services.repair_order_processor import process_upload_job
 
 logger = logging.getLogger(__name__)
@@ -33,12 +27,6 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="autosync-job")
 
 
 def enqueue_process_upload(contract_id: int, repair_order_id: int) -> None:
-    if current_app.config["USE_CELERY"]:
-        from app.tasks.process_upload import process_upload
-
-        process_upload.delay(contract_id, repair_order_id)
-        return
-
     app = current_app._get_current_object()
 
     def _run():

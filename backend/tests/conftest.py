@@ -1,3 +1,6 @@
+import shutil
+import tempfile
+
 import pytest
 
 from app import create_app
@@ -8,6 +11,15 @@ from app.extensions import db
 class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    # Явно НЕ используем Config.UPLOAD_DIR (~/.autosync/uploads по умолчанию) —
+    # тесты не должны трогать реальный каталог данных пользователя.
+    UPLOAD_DIR = tempfile.mkdtemp(prefix="autosync-test-uploads-")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_test_upload_dir():
+    yield
+    shutil.rmtree(TestConfig.UPLOAD_DIR, ignore_errors=True)
 
 
 @pytest.fixture

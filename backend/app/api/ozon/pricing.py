@@ -2,10 +2,11 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import login_required
+from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import PriceSnapshot, PriceSuggestionStatus, Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
+from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("ozon_pricing", __name__)
@@ -56,6 +57,13 @@ def approve_snapshot(snapshot_id: int):
         # намеренно НЕ вызывается автоматически здесь. См. ARCHITECTURE.md:
         # "Человек в контуре на изменении цен".
 
+    log_change(
+        "price_snapshot",
+        snapshot.id,
+        "approved",
+        actor=get_current_user(),
+        details={"suggested_price": float(snapshot.suggested_price) if snapshot.suggested_price else None},
+    )
     db.session.commit()
     return jsonify(_serialize(snapshot))
 
@@ -65,6 +73,7 @@ def reject_snapshot(snapshot_id: int):
     snapshot = db.get_or_404(PriceSnapshot, snapshot_id)
     snapshot.status = PriceSuggestionStatus.REJECTED
     snapshot.reviewed_at = datetime.utcnow()
+    log_change("price_snapshot", snapshot.id, "rejected", actor=get_current_user())
     db.session.commit()
     return jsonify(_serialize(snapshot))
 
@@ -113,5 +122,13 @@ def analyze_product(product_id: int):
         return jsonify(error=f"LLM-сервис недоступен: {exc}"), 502
 
     db.session.add(snapshot)
+    db.session.flush()
+    log_change(
+        "price_snapshot",
+        snapshot.id,
+        "created",
+        actor=get_current_user(),
+        details={"product_id": product.id, "suggested_price": snapshot.suggested_price},
+    )
     db.session.commit()
     return jsonify(_serialize(snapshot)), 201
