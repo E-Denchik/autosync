@@ -35,7 +35,13 @@ if (-not (Test-Path "$RepoRoot\backend")) {
 Write-Host "==> Собираю frontend" -ForegroundColor Cyan
 Push-Location "$RepoRoot\frontend"
 npm install --silent
+# VITE_API_BASE_URL=/api (относительный) — см. комментарий в
+# build-native-linux.sh: native-режим открывают по-разному (окно на
+# 127.0.0.1, LAN-доступ по IP машины), абсолютный localhost:PORT сломал бы
+# все варианты, кроме первого.
+$env:VITE_API_BASE_URL = "/api"
 npm run build --silent
+Remove-Item Env:\VITE_API_BASE_URL
 Pop-Location
 
 Write-Host "==> Готовлю Python-окружение для сборки (backend\.venv-native)" -ForegroundColor Cyan
@@ -72,7 +78,19 @@ pyinstaller `
   --hidden-import=logging.config `
   --collect-all numpy `
   --collect-all pandas `
+  --exclude-module PyQt5 `
+  --exclude-module PySide2 `
+  --exclude-module PySide6 `
+  --exclude-module django `
+  --exclude-module scipy `
+  --exclude-module matplotlib `
   native_app.py
+# ^ exclude-module — на некоторых машинах сборки в системном/user Python
+# случайно оказываются Django/PyQt5/scipy/matplotlib от других проектов;
+# PyInstaller подхватывает их по графу импортов (необязательные хуки
+# pandas/SQLAlchemy) и раздувает .exe на сотни лишних мегабайт, хотя
+# AutoSync их не использует (см. build-native-linux.sh, где это реально
+# наблюдалось).
 
 deactivate
 

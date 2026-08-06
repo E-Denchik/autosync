@@ -17,6 +17,10 @@ python-dotenv==1.0.1
 PyJWT==2.9.0
 waitress==3.0.0
 APScheduler==3.10.4
-pystray==0.19.5
-Pillow==10.4.0
+# Собственное окно приложения вместо браузера (см. native_app.py: run_window).
+# На Linux использует системный webkit2gtk через PyGObject (gi) — тот НЕ
+# ставится через pip, нужен системный пакет и venv с --system-site-packages
+# (см. scripts/build-native-linux.sh). На Windows использует WebView2 через
+# pythonnet, который pip поставит сам как зависимость pywebview.
+pywebview==6.2.1
 pyinstaller==6.10.0
