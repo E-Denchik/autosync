@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
 from app.config import Config
 from app.extensions import db, migrate
@@ -44,6 +44,20 @@ def create_app(config_class=Config):
     @app.get("/api/health")
     def health():
         return jsonify(status="ok")
+
+    @app.after_request
+    def _no_store_api_responses(response):
+        # Ответы Flask по умолчанию не несут Cache-Control — WebKitGTK (окно
+        # native-режима) в таком случае агрессивно кэширует GET-запросы даже
+        # через полный reload страницы. На практике это било по
+        # /api/auth/setup-required: администратор проходил мастер /setup,
+        # но при повторной загрузке окно показывало устаревший ответ
+        # "setup_required: true" и снова предлагало создать администратора.
+        # API-ответы не должны кэшироваться браузером/webview вообще —
+        # актуальность данных важнее лишнего запроса.
+        if request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     if app.config.get("SERVE_FRONTEND"):
         _register_frontend_static_routes(app)

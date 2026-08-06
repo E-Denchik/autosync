@@ -4,13 +4,28 @@ import { api, setAuthToken, setUnauthorizedHandler } from "../api/client.js";
 const AuthContext = createContext(null);
 const STORAGE_KEY = "autosync_token";
 
+// localStorage недоступен в приватном/инкогнито-режиме части webview-движков
+// (задевало собственное окно AutoSync — см. native_app.py: run_window) —
+// там это исправлено, но и здесь не полагаемся на голую доступность API:
+// без этой защиты чтение падало необработанным исключением ДО setLoading(false),
+// и приложение зависало на "Загрузка…" навсегда, без единой подсказки на экране.
+function safeStorage() {
+  try {
+    localStorage.setItem("__autosync_probe__", "1");
+    localStorage.removeItem("__autosync_probe__");
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    safeStorage()?.removeItem(STORAGE_KEY);
     setAuthToken(null);
     setUser(null);
   }, []);
@@ -34,7 +49,7 @@ export function AuthProvider({ children }) {
         // молча идём дальше — покажем обычный логин
       }
 
-      const token = localStorage.getItem(STORAGE_KEY);
+      const token = safeStorage()?.getItem(STORAGE_KEY);
       if (!token) {
         setLoading(false);
         return;
@@ -52,7 +67,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { token, user: loggedInUser } = await api.login(email, password);
-    localStorage.setItem(STORAGE_KEY, token);
+    safeStorage()?.setItem(STORAGE_KEY, token);
     setAuthToken(token);
     setUser(loggedInUser);
     return loggedInUser;
@@ -60,7 +75,7 @@ export function AuthProvider({ children }) {
 
   const completeSetup = async (email, password) => {
     const { token, user: createdUser } = await api.setup(email, password);
-    localStorage.setItem(STORAGE_KEY, token);
+    safeStorage()?.setItem(STORAGE_KEY, token);
     setAuthToken(token);
     setUser(createdUser);
     setSetupRequired(false);

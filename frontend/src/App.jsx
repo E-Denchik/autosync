@@ -1,5 +1,6 @@
-import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard.jsx";
+import Profile from "./pages/Profile.jsx";
 import PricingDashboard from "./pages/ozon/PricingDashboard.jsx";
 import CardGenerator from "./pages/ozon/CardGenerator.jsx";
 import UploadPage from "./pages/repair-orders/UploadPage.jsx";
@@ -82,7 +83,12 @@ function ProtectedShell() {
         )}
 
         <div className="sidebar-footer">
-          <div style={{ color: "#fff", fontWeight: 600, marginBottom: 2 }}>{user.email}</div>
+          <Link
+            to="/profile"
+            style={{ color: "#fff", fontWeight: 600, marginBottom: 2, textDecoration: "none", display: "block" }}
+          >
+            {user.email}
+          </Link>
           <div style={{ marginBottom: 10 }}>{user.role === "admin" ? "Администратор" : "Оператор"}</div>
           <button
             onClick={logout}
@@ -106,6 +112,7 @@ function ProtectedShell() {
         <div className="content-inner">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="/ozon/pricing" element={<PricingDashboard />} />
             <Route path="/ozon/cards" element={<CardGenerator />} />
             <Route path="/repair-orders" element={<RepairOrdersList />} />

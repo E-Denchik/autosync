@@ -32,6 +32,17 @@ if sys.platform.startswith("linux"):
     # рендеринг чуть медленнее, но для админ-панели это не критично.
     os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 
+    # GTK_MODULES/GTK3_MODULES прописаны в самой X-сессии рабочего стола
+    # (на Kali/XFCE это /etc/X11/Xsession.d/*: appmenu-gtk-module — из
+    # GTK_MODULES, xapp-gtk3-module — из отдельной, GTK3-специфичной
+    # GTK3_MODULES) — это никак не связано с AutoSync и так же ломается для
+    # ЛЮБОГО GTK3-приложения в этой сессии, если сам .so модуля не
+    # зарегистрирован: GTK просто печатает "Failed to load module" в stderr
+    # и продолжает работать как обычно. Выглядит как ошибка при запуске из
+    # терминала, поэтому просто не наследуем эти списки для своего процесса.
+    os.environ.pop("GTK_MODULES", None)
+    os.environ.pop("GTK3_MODULES", None)
+
 
 def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
@@ -175,9 +186,35 @@ def run_window(url: str) -> None:
         _run_headless_loop()
         return
 
-    webview.create_window("AutoSync", url, width=1360, height=860, min_size=(1024, 700))
+    # Размер окна по умолчанию (1360x860) не помещался бы на небольших
+    # экранах — считаем от реального разрешения текущего монитора. Плюс
+    # maximized=True: окно сразу разворачивается на весь экран, на котором
+    # открылось, а при переносе на другой монитор большинство оконных
+    # менеджеров (X11/Wayland/Windows/macOS) сами переразворачивают
+    # maximized-окно под новый экран — отдельно перехватывать смену
+    # монитора pywebview не даёт (нет такого события в его API).
     try:
-        webview.start()
+        screen = webview.screens[0]
+        width = max(1024, min(1360, int(screen.width * 0.85)))
+        height = max(700, min(860, int(screen.height * 0.85)))
+    except Exception:
+        width, height = 1360, 860
+
+    webview.create_window(
+        "AutoSync", url, width=width, height=height, min_size=(1024, 700), maximized=True
+    )
+    try:
+        # private_mode=False — по умолчанию pywebview открывает окно как
+        # приватную/инкогнито-сессию: WebKitGTK создаёт эфемерный контекст
+        # и явно выключает HTML5 localStorage (см. platforms/gtk.py). Наш
+        # AuthContext хранит JWT в localStorage и трогает его на каждом
+        # старте, если пользователь уже создан — с private_mode по
+        # умолчанию это падает необработанным исключением ДО того, как
+        # выставляется loading=false, и окно виснет на "Загрузка..."
+        # навсегда при каждом запуске после первого /setup. Обнаружено
+        # только сквозным ручным тестированием окна — с пустой БД (мастер
+        # /setup, localStorage ещё не трогали) баг незаметен.
+        webview.start(private_mode=False)
     except Exception:
         logger.warning("Не удалось открыть системное окно — открываю в браузере по умолчанию", exc_info=True)
         webbrowser.open(url)

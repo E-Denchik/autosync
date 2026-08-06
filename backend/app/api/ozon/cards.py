@@ -6,7 +6,7 @@ from app.auth import login_required
 from app.extensions import db
 from app.models import Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
-from app.services.llm_client import LLMClient
+from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("ozon_cards", __name__)
 bp.before_request(login_required(lambda: None))
@@ -42,10 +42,13 @@ def generate_card(product_id: int):
         current_app.logger.warning("analytics provider unavailable: %s", exc)
 
     llm = LLMClient(current_app.config["LLM_SERVICE_URL"])
-    content = llm.generate_card_content(
-        {"name": product.name, "sku": product.sku, "category": product.category},
-        competitor_cards,
-    )
+    try:
+        content = llm.generate_card_content(
+            {"name": product.name, "sku": product.sku, "category": product.category},
+            competitor_cards,
+        )
+    except LLMClientError as exc:
+        return jsonify(error=f"LLM-сервис недоступен: {exc}"), 502
     return jsonify(content)
 
 

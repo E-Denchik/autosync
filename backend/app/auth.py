@@ -34,21 +34,33 @@ def _decode_token(token: str) -> dict | None:
 
 
 def get_current_user() -> User | None:
-    if "current_user" in g:
-        return g.current_user
-
+    # Кэш ключуем самим токеном, а не голым флагом "уже посчитано" — g
+    # привязан к app context, а не к запросу: если app context вручную
+    # держат открытым дольше одного запроса (стандартный pytest-фикстура
+    # паттерн с `with app.app_context(): yield app`, см. tests/conftest.py),
+    # Flask переиспользует уже активный app context вместо нового при каждом
+    # client.get()/post(), и голое "current_user in g" вернуло бы личность
+    # из СОВСЕМ ДРУГОГО запроса. Ключ по токену делает кэш корректным
+    # независимо от того, как долго живёт app context.
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         g.current_user = None
+        g.current_user_token = None
         return None
 
-    payload = _decode_token(auth_header[len("Bearer ") :])
+    token = auth_header[len("Bearer ") :]
+    if g.get("current_user_token") == token:
+        return g.get("current_user")
+
+    payload = _decode_token(token)
     if not payload:
         g.current_user = None
+        g.current_user_token = token
         return None
 
     user = User.query.get(payload.get("sub"))
     g.current_user = user if user and user.is_active else None
+    g.current_user_token = token
     return g.current_user
 
 
