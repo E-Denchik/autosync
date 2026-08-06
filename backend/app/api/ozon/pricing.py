@@ -2,12 +2,14 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 
+from app.auth import login_required
 from app.extensions import db
 from app.models import PriceSnapshot, PriceSuggestionStatus, Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("ozon_pricing", __name__)
+bp.before_request(login_required(lambda: None))
 
 
 def _serialize(snapshot: PriceSnapshot) -> dict:

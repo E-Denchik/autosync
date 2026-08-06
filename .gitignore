@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-native/
 *.egg-info/
 
 # Node
@@ -22,6 +23,7 @@ ollama-data/
 # Uploads
 backend/uploads/
 /tmp/autosync-uploads/
+/frontend/npm-cache/
 
 # IDE
 .vscode/

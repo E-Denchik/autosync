@@ -5,8 +5,9 @@ import ConfidenceBadge from "../../components/ConfidenceBadge.jsx";
 import StatusStepper from "../../components/StatusStepper.jsx";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import MatchEditModal from "../../components/MatchEditModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { CheckCircleIcon } from "../../components/icons.jsx";
+import { CheckCircleIcon, DownloadIcon, EditIcon } from "../../components/icons.jsx";
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
 
@@ -14,9 +15,14 @@ export default function ReviewMatches() {
   const { repairOrderId } = useParams();
   const [status, setStatus] = useState(null);
   const [matches, setMatches] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [editingMatch, setEditingMatch] = useState(null);
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -25,6 +31,10 @@ export default function ReviewMatches() {
       .listMatches(repairOrderId)
       .then(setMatches)
       .catch((e) => toast.error(e.message));
+    api
+      .listCandidates(repairOrderId)
+      .then(setCandidates)
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -61,6 +71,19 @@ export default function ReviewMatches() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repairOrderId]);
 
+  const toggleSelected = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllPending = () => {
+    const pendingIds = matches.filter((m) => m.review_status === "pending").map((m) => m.id);
+    setSelected((prev) => (prev.size === pendingIds.length ? new Set() : new Set(pendingIds)));
+  };
+
   const handleDecision = async (id, decision) => {
     setBusyId(id);
     try {
@@ -70,6 +93,53 @@ export default function ReviewMatches() {
       toast.error(e.message);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleBulk = async (action) => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const updated = await api.bulkReview(Array.from(selected), action);
+      const updatedById = new Map(updated.map((m) => [m.id, m]));
+      setMatches((prev) => prev.map((m) => updatedById.get(m.id) || m));
+      setSelected(new Set());
+      toast.success(action === "approve" ? "Позиции приняты" : "Позиции отклонены");
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleSaveEdit = async (patch) => {
+    setBusyId(editingMatch.id);
+    try {
+      const updated = await api.editMatch(editingMatch.id, patch);
+      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      toast.success("Сопоставление обновлено вручную");
+      setEditingMatch(null);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.exportMatchesCsv(repairOrderId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `repair_order_${repairOrderId}_matches.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -94,6 +164,7 @@ export default function ReviewMatches() {
   if (loading) return <Spinner label="Проверяем статус обработки…" />;
 
   const pendingCount = matches.filter((m) => m.review_status === "pending").length;
+  const pendingIds = matches.filter((m) => m.review_status === "pending").map((m) => m.id);
   const isProcessing = PROCESSING_STATUSES.has(status);
 
   return (
@@ -103,9 +174,15 @@ export default function ReviewMatches() {
           <h2>Проверка сопоставлений</h2>
           <p>
             Позиции с меткой «догадка LLM» — это предположение модели по названию, а не подтверждённое
-            совпадение. Их обязательно нужно проверить вручную перед генерацией документа.
+            совпадение. Проверьте их вручную: примите, отклоните или подберите правильную позицию через
+            поиск.
           </p>
         </div>
+        {!isProcessing && matches.length > 0 && (
+          <button className="btn btn-secondary" disabled={exporting} onClick={handleExportCsv}>
+            <DownloadIcon /> {exporting ? "Экспорт…" : "Экспорт CSV"}
+          </button>
+        )}
       </div>
 
       <StatusStepper status={status} />
@@ -120,10 +197,46 @@ export default function ReviewMatches() {
         </div>
       ) : (
         <>
+          {selected.size > 0 && (
+            <div
+              className="panel"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 12,
+                padding: "10px 16px",
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Выбрано: {selected.size}</span>
+              <button className="btn btn-approve btn-sm" disabled={bulkBusy} onClick={() => handleBulk("approve")}>
+                Принять выбранные
+              </button>
+              <button className="btn btn-reject btn-sm" disabled={bulkBusy} onClick={() => handleBulk("reject")}>
+                Отклонить выбранные
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ marginLeft: "auto" }}
+                onClick={() => setSelected(new Set())}
+              >
+                Снять выделение
+              </button>
+            </div>
+          )}
+
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={pendingIds.length > 0 && selected.size === pendingIds.length}
+                      onChange={toggleSelectAllPending}
+                      disabled={pendingIds.length === 0}
+                    />
+                  </th>
                   <th>Договор: артикул / название</th>
                   <th>Сопоставлено с</th>
                   <th>Цена</th>
@@ -136,9 +249,25 @@ export default function ReviewMatches() {
                 {matches.map((m) => (
                   <tr key={m.id}>
                     <td>
+                      {m.review_status === "pending" && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(m.id)}
+                          onChange={() => toggleSelected(m.id)}
+                        />
+                      )}
+                    </td>
+                    <td>
                       {m.contract_article || "—"} / {m.contract_name}
                     </td>
-                    <td>{m.matched_name || "не найдено"}</td>
+                    <td>
+                      {m.matched_name || "не найдено"}
+                      {m.manually_edited && (
+                        <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
+                          (ручная правка)
+                        </span>
+                      )}
+                    </td>
                     <td>{m.matched_price ?? "—"}</td>
                     <td>
                       <ConfidenceBadge level={m.confidence_level} score={m.confidence_score} />
@@ -153,24 +282,34 @@ export default function ReviewMatches() {
                       </span>
                     </td>
                     <td>
-                      {m.review_status === "pending" && (
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button
-                            className="btn btn-approve btn-sm"
-                            disabled={busyId === m.id}
-                            onClick={() => handleDecision(m.id, "approve")}
-                          >
-                            Принять
-                          </button>
-                          <button
-                            className="btn btn-reject btn-sm"
-                            disabled={busyId === m.id}
-                            onClick={() => handleDecision(m.id, "reject")}
-                          >
-                            Отклонить
-                          </button>
-                        </div>
-                      )}
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          disabled={busyId === m.id}
+                          onClick={() => setEditingMatch(m)}
+                          title="Подобрать другую позицию вручную"
+                        >
+                          <EditIcon /> Изменить
+                        </button>
+                        {m.review_status === "pending" && (
+                          <>
+                            <button
+                              className="btn btn-approve btn-sm"
+                              disabled={busyId === m.id}
+                              onClick={() => handleDecision(m.id, "approve")}
+                            >
+                              Принять
+                            </button>
+                            <button
+                              className="btn btn-reject btn-sm"
+                              disabled={busyId === m.id}
+                              onClick={() => handleDecision(m.id, "reject")}
+                            >
+                              Отклонить
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -194,6 +333,16 @@ export default function ReviewMatches() {
             )}
           </div>
         </>
+      )}
+
+      {editingMatch && (
+        <MatchEditModal
+          match={editingMatch}
+          candidates={candidates}
+          saving={busyId === editingMatch.id}
+          onClose={() => setEditingMatch(null)}
+          onSave={handleSaveEdit}
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 
 from flask import Blueprint, jsonify
 
+from app.auth import login_required
 from app.models import (
     PartMatch,
     PriceSnapshot,
@@ -14,6 +15,7 @@ from app.models import (
 )
 
 bp = Blueprint("dashboard", __name__)
+bp.before_request(login_required(lambda: None))
 
 
 @bp.get("/summary")

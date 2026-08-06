@@ -12,9 +12,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.models import ConfidenceLevel
-from app.services.llm_client import LLMClient
+from app.services.llm_client import LLMClient, LLMClientError
 from app.services.parts_supplier_client import PartsSupplierClient
+
+logger = logging.getLogger(__name__)
 
 
 def match_line(
@@ -66,24 +70,37 @@ def match_line(
                 "raw_match_data": {"source": "parts_supplier_cross_reference", "candidates": cross_refs},
             }
 
-    # 3. Fallback: LLM сопоставляет по названию среди позиций заказ-наряда
+    # 3. Fallback: LLM сопоставляет по названию среди позиций заказ-наряда.
+    # Если LLM недоступна/вернула ошибку — это НЕ должно ронять всю обработку
+    # заказ-наряда (иначе он зависает в статусе "matching" навсегда без
+    # единого сообщения об ошибке, см. историю багов). Просто считаем
+    # позицию несопоставленной и отправляем на ручную проверку.
+    llm_error = None
     if order_lines:
-        llm_result = llm_client.match_part_by_name(contract_line, order_lines)
-        idx = llm_result.get("matched_index")
-        if idx is not None and 0 <= idx < len(order_lines):
-            candidate = order_lines[idx]
-            return {
-                "contract_article": article,
-                "contract_name": contract_line.get("name"),
-                "matched_article": candidate.get("article"),
-                "matched_name": candidate.get("name"),
-                "matched_price": candidate.get("price"),
-                "confidence_level": ConfidenceLevel.LLM_GUESS,
-                "confidence_score": llm_result.get("confidence", 0.0),
-                "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
-            }
+        try:
+            llm_result = llm_client.match_part_by_name(contract_line, order_lines)
+        except LLMClientError as exc:
+            llm_result = None
+            llm_error = str(exc)
+            logger.warning("LLM-сопоставление недоступно для %r: %s", contract_line.get("name"), exc)
 
-    # Ничего не найдено — всё равно возвращаем запись для ручной проверки
+        if llm_result is not None:
+            idx = llm_result.get("matched_index")
+            if idx is not None and 0 <= idx < len(order_lines):
+                candidate = order_lines[idx]
+                return {
+                    "contract_article": article,
+                    "contract_name": contract_line.get("name"),
+                    "matched_article": candidate.get("article"),
+                    "matched_name": candidate.get("name"),
+                    "matched_price": candidate.get("price"),
+                    "confidence_level": ConfidenceLevel.LLM_GUESS,
+                    "confidence_score": llm_result.get("confidence", 0.0),
+                    "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
+                }
+
+    # Ничего не найдено (или LLM недоступна) — всё равно возвращаем запись
+    # для ручной проверки, вместо того чтобы прервать обработку остальных позиций.
     return {
         "contract_article": article,
         "contract_name": contract_line.get("name"),
@@ -92,7 +109,7 @@ def match_line(
         "matched_price": None,
         "confidence_level": ConfidenceLevel.LLM_GUESS,
         "confidence_score": 0.0,
-        "raw_match_data": {"source": "no_match_found"},
+        "raw_match_data": {"source": "llm_error", "error": llm_error} if llm_error else {"source": "no_match_found"},
     }
 
 

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AutoSync
+Comment=Внутренняя платформа автосервиса (Ozon + заказ-наряды)
+Exec=/opt/autosync/autosync
+Icon=/opt/autosync/icon.png
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true

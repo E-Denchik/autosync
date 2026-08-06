@@ -31,6 +31,10 @@ export default function Dashboard() {
 
       {loading ? (
         <Spinner label="Загрузка сводки…" />
+      ) : !summary ? (
+        <p className="text-muted" style={{ fontSize: 13.5 }}>
+          Не удалось загрузить сводку. Попробуйте обновить страницу.
+        </p>
       ) : (
         <div className="stat-grid">
           <StatCard

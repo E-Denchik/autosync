@@ -1,0 +1,20 @@
+Package: autosync
+Version: __VERSION__
+Section: web
+Priority: optional
+Architecture: all
+Depends: debconf (>= 0.5) | debconf-2.0, coreutils, rsync
+Recommends: docker.io, docker-compose-v2
+Installed-Size: __INSTALLED_SIZE__
+Maintainer: AutoSync Internal <noreply@autosync.local>
+Description: AutoSync — internal auto-service platform (Ozon pricing + repair orders)
+ AutoSync bundles two modules behind one web UI: Ozon competitor-price
+ monitoring / card generation, and repair-order part matching against
+ supplier cross-references with an LLM fallback. The stack (Flask API,
+ Celery, React frontend, local LLM via Ollama, PostgreSQL, Redis) runs
+ under Docker Compose.
+ .
+ Installing this package deploys the application into a directory you
+ choose during setup, builds and starts the Docker Compose stack as a
+ systemd service, creates an initial administrator account, and prints
+ the URL to access the web UI.
