@@ -6,6 +6,7 @@ from app.models.repair_order import RepairOrder, RepairOrderStatus
 from app.models.part_match import PartMatch, ConfidenceLevel, ReviewStatus
 from app.models.labor_catalog import LaborCatalogEntry
 from app.models.labor_line import LaborLine
+from app.models.nomenclature import NomenclatureEntry
 from app.models.user import User, UserRole
 from app.models.llm_setting import LLMModelSelection
 from app.models.history import RecordHistory
@@ -25,6 +26,7 @@ __all__ = [
     "ReviewStatus",
     "LaborCatalogEntry",
     "LaborLine",
+    "NomenclatureEntry",
     "User",
     "UserRole",
     "LLMModelSelection",

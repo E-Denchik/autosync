@@ -17,6 +17,15 @@ const KEY_FIELDS = {
     { key: "ANALYTICS_PROVIDER_BASE_URL", label: "Base URL", type: "text", placeholder: "https://api.provider.ru" },
     { key: "ANALYTICS_PROVIDER_API_KEY", label: "API Key", type: "password", placeholder: "" },
   ],
+  nomenclature: [
+    {
+      key: "NOMENCLATURE_PROVIDER_BASE_URL",
+      label: "Base URL",
+      type: "text",
+      placeholder: "https://... (например, 1С OData)",
+    },
+    { key: "NOMENCLATURE_PROVIDER_API_KEY", label: "API Key", type: "password", placeholder: "" },
+  ],
 };
 
 export default function Integrations() {
@@ -92,9 +101,10 @@ export default function Integrations() {
         <div>
           <h2>Интеграции</h2>
           <p>
-            Внешние API, которые использует AutoSync: Ozon Seller/Performance и сторонний сервис
-            аналитики цен конкурентов. Ключи вводятся здесь и сохраняются в базе данных —
-            переживают перезапуск, значения обратно не показываются.
+            Внешние API, которые использует AutoSync: Ozon Seller/Performance, сторонний сервис
+            аналитики цен конкурентов и (когда подтверждён у заказчика) API номенклатуры/остатков.
+            Ключи вводятся здесь и сохраняются в базе данных — переживают перезапуск, значения
+            обратно не показываются.
           </p>
         </div>
         <button className="btn btn-secondary" onClick={load}>

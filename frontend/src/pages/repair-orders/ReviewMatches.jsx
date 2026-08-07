@@ -308,6 +308,17 @@ export default function ReviewMatches() {
                           (ручная правка)
                         </span>
                       )}
+                      {m.nomenclature_source && (
+                        <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                          код: {m.nomenclature_code || "—"}
+                          {m.nomenclature_cat_number && ` · № кат.: ${m.nomenclature_cat_number}`}
+                          {m.nomenclature_manufacturer && ` · ${m.nomenclature_manufacturer}`}
+                          {" · остаток: "}
+                          {m.nomenclature_stock_qty ?? "—"}
+                          {m.nomenclature_reserved_qty ? ` (резерв: ${m.nomenclature_reserved_qty})` : ""}
+                          {m.nomenclature_warehouse && ` · ${m.nomenclature_warehouse}`}
+                        </div>
+                      )}
                     </td>
                     <td>{m.matched_price ?? "—"}</td>
                     <td>

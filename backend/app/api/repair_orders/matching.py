@@ -28,6 +28,28 @@ def _serialize(match: PartMatch) -> dict:
         "confidence_score": match.confidence_score,
         "review_status": match.review_status.value,
         "manually_edited": match.manually_edited,
+        # Обогащение из внутренней номенклатуры заказчика (см. NomenclatureEntry) —
+        # nomenclature_source пуст, если в номенклатуре ничего не нашлось.
+        "nomenclature_code": match.nomenclature_code,
+        "nomenclature_cat_number": match.nomenclature_cat_number,
+        "nomenclature_manufacturer": match.nomenclature_manufacturer,
+        "nomenclature_unit": match.nomenclature_unit,
+        "nomenclature_stock_qty": (
+            float(match.nomenclature_stock_qty) if match.nomenclature_stock_qty is not None else None
+        ),
+        "nomenclature_reserved_qty": (
+            float(match.nomenclature_reserved_qty) if match.nomenclature_reserved_qty is not None else None
+        ),
+        "nomenclature_in_production_qty": (
+            float(match.nomenclature_in_production_qty)
+            if match.nomenclature_in_production_qty is not None
+            else None
+        ),
+        "nomenclature_ordered_qty": (
+            float(match.nomenclature_ordered_qty) if match.nomenclature_ordered_qty is not None else None
+        ),
+        "nomenclature_warehouse": match.nomenclature_warehouse,
+        "nomenclature_source": match.nomenclature_source,
     }
 
 
@@ -152,6 +174,15 @@ def export_matches_csv(repair_order_id: int):
             "Уверенность",
             "Статус проверки",
             "Ручная правка",
+            "Код (номенклатура)",
+            "№ кат.",
+            "Производитель",
+            "Ед.",
+            "Остаток",
+            "В резерве",
+            "В производстве",
+            "Заказано",
+            "Склад",
         ]
     )
     for m in matches:
@@ -165,6 +196,15 @@ def export_matches_csv(repair_order_id: int):
                 m.confidence_level.value,
                 m.review_status.value,
                 "да" if m.manually_edited else "нет",
+                m.nomenclature_code or "",
+                m.nomenclature_cat_number or "",
+                m.nomenclature_manufacturer or "",
+                m.nomenclature_unit or "",
+                m.nomenclature_stock_qty if m.nomenclature_stock_qty is not None else "",
+                m.nomenclature_reserved_qty if m.nomenclature_reserved_qty is not None else "",
+                m.nomenclature_in_production_qty if m.nomenclature_in_production_qty is not None else "",
+                m.nomenclature_ordered_qty if m.nomenclature_ordered_qty is not None else "",
+                m.nomenclature_warehouse or "",
             ]
         )
 
