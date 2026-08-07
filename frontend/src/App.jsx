@@ -3,6 +3,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Profile from "./pages/Profile.jsx";
 import PricingDashboard from "./pages/ozon/PricingDashboard.jsx";
 import CardGenerator from "./pages/ozon/CardGenerator.jsx";
+import Stats from "./pages/ozon/Stats.jsx";
 import UploadPage from "./pages/repair-orders/UploadPage.jsx";
 import ReviewMatches from "./pages/repair-orders/ReviewMatches.jsx";
 import RepairOrdersList from "./pages/repair-orders/RepairOrdersList.jsx";
@@ -12,6 +13,8 @@ import Users from "./pages/admin/Users.jsx";
 import LlmSettings from "./pages/admin/LlmSettings.jsx";
 import History from "./pages/admin/History.jsx";
 import Integrations from "./pages/admin/Integrations.jsx";
+import Contragents from "./pages/admin/Contragents.jsx";
+import LaborCatalog from "./pages/admin/LaborCatalog.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Spinner from "./components/Spinner.jsx";
 import {
@@ -24,6 +27,8 @@ import {
   CpuIcon,
   HistoryIcon,
   PlugIcon,
+  TrendingUpIcon,
+  ClockIcon,
 } from "./components/icons.jsx";
 
 function ProtectedShell() {
@@ -68,6 +73,9 @@ function ProtectedShell() {
           <NavLink to="/ozon/cards">
             <SparklesIcon /> Карточки
           </NavLink>
+          <NavLink to="/ozon/stats">
+            <TrendingUpIcon /> Статистика
+          </NavLink>
         </nav>
 
         <div className="module-label">Заказ-наряды</div>
@@ -86,6 +94,12 @@ function ProtectedShell() {
             <nav>
               <NavLink to="/admin/users">
                 <UsersIcon /> Пользователи
+              </NavLink>
+              <NavLink to="/admin/contragents">
+                <UsersIcon /> Контрагенты
+              </NavLink>
+              <NavLink to="/admin/labor-catalog">
+                <ClockIcon /> Нормо-часы
               </NavLink>
               <NavLink to="/admin/llm">
                 <CpuIcon /> LLM-модель
@@ -133,10 +147,13 @@ function ProtectedShell() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/ozon/pricing" element={<PricingDashboard />} />
             <Route path="/ozon/cards" element={<CardGenerator />} />
+            <Route path="/ozon/stats" element={<Stats />} />
             <Route path="/repair-orders" element={<RepairOrdersList />} />
             <Route path="/repair-orders/upload" element={<UploadPage />} />
             <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
             {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
+            {user.role === "admin" && <Route path="/admin/contragents" element={<Contragents />} />}
+            {user.role === "admin" && <Route path="/admin/labor-catalog" element={<LaborCatalog />} />}
             {user.role === "admin" && <Route path="/admin/llm" element={<LlmSettings />} />}
             {user.role === "admin" && <Route path="/admin/integrations" element={<Integrations />} />}
             {user.role === "admin" && <Route path="/admin/history" element={<History />} />}

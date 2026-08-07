@@ -55,6 +55,8 @@ export default function RepairOrdersList() {
               <tr>
                 <th>Заказ-наряд</th>
                 <th>Договор</th>
+                <th>Автомобиль</th>
+                <th>Контрагент</th>
                 <th>Статус</th>
                 <th>Сопоставлено позиций</th>
                 <th>Загружено</th>
@@ -66,6 +68,10 @@ export default function RepairOrdersList() {
                 <tr key={o.id}>
                   <td>{o.original_filename}</td>
                   <td>{o.contract_filename || "—"}</td>
+                  <td className="text-muted">
+                    {[o.vehicle_make, o.vehicle_model].filter(Boolean).join(" ") || "—"}
+                  </td>
+                  <td className="text-muted">{o.contragent_name || "—"}</td>
                   <td>
                     <StatusPill status={o.status} />
                   </td>

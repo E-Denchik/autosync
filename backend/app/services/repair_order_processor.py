@@ -15,12 +15,15 @@ from app.extensions import db
 from app.models import (
     Contract,
     DocumentProcessingStatus,
+    LaborLine,
     PartMatch,
     RepairOrder,
     RepairOrderStatus,
 )
+from app.services.autodata_client import AutoDataClient
 from app.services.document_parser import DocumentParseError, parse_document
 from app.services.history import log_change
+from app.services.labor_matcher import match_all_labor
 from app.services.llm_client import LLMClient
 from app.services.matcher import match_all
 from app.services.parts_supplier_client import PartsSupplierClient
@@ -59,8 +62,12 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     )
     llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
 
+    order_lines = repair_order.parsed_lines or []
+    part_lines = [line for line in order_lines if line.get("article")]
+    labor_lines_raw = [line for line in order_lines if not line.get("article") and line.get("name")]
+
     try:
-        results = match_all(contract.parsed_lines, repair_order.parsed_lines, supplier_client, llm_client)
+        results = match_all(contract.parsed_lines, part_lines, supplier_client, llm_client)
     except Exception as exc:
         # Подстраховка на случай непредвиденной ошибки сопоставления —
         # без этого заказ-наряд зависает в статусе "matching" навсегда,
@@ -87,8 +94,50 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             details={"confidence_level": match.confidence_level.value, "source": "auto-match"},
         )
 
+    autodata_client = AutoDataClient(
+        current_app.config["AUTODATA_BASE_URL"],
+        current_app.config["AUTODATA_API_KEY"],
+    )
+    hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
+
+    try:
+        labor_results = match_all_labor(
+            [line["name"] for line in labor_lines_raw],
+            repair_order.vehicle_make,
+            repair_order.vehicle_model,
+            autodata_client,
+            llm_client,
+        )
+    except Exception as exc:
+        logger.exception("match_all_labor упал для repair_order_id=%s", repair_order_id)
+        labor_results = []
+        log_change("repair_order", repair_order.id, "labor_matching_failed", details={"error": str(exc)})
+
+    for result in labor_results:
+        norm_hours = result.get("norm_hours")
+        total_cost = norm_hours * hourly_rate if norm_hours is not None and hourly_rate is not None else None
+        labor_line = LaborLine(
+            repair_order_id=repair_order.id,
+            hourly_rate=hourly_rate,
+            total_cost=total_cost,
+            **result,
+        )
+        db.session.add(labor_line)
+        db.session.flush()
+        log_change(
+            "labor_line",
+            labor_line.id,
+            "created",
+            details={"confidence_level": labor_line.confidence_level.value, "source": "auto-match"},
+        )
+
     repair_order.status = RepairOrderStatus.NEEDS_REVIEW
-    log_change("repair_order", repair_order.id, "needs_review", details={"matches_created": len(results)})
+    log_change(
+        "repair_order",
+        repair_order.id,
+        "needs_review",
+        details={"matches_created": len(results), "labor_lines_created": len(labor_results)},
+    )
     db.session.commit()
 
-    return {"status": "ok", "matches_created": len(results)}
+    return {"status": "ok", "matches_created": len(results), "labor_lines_created": len(labor_results)}

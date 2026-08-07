@@ -77,6 +77,20 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
 
+    def match_labor_by_name(self, description: str, candidates: list[dict]) -> dict:
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt(
+            "labor_matching.md",
+            description=description,
+            candidates=candidates,
+        )
+        text = self._generate(prompt, json_response=True)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
     def match_part_by_name(self, contract_line: dict, candidates: list[dict]) -> dict:
         """Fallback-сопоставление позиции по названию, когда нет совпадения
         по артикулу ни напрямую, ни через кросс-номера поставщика.

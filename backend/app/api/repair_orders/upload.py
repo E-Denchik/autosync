@@ -60,8 +60,14 @@ def upload_documents():
     db.session.add(contract)
     db.session.flush()
 
+    contragent_id = request.form.get("contragent_id")
     repair_order = RepairOrder(
         contract_id=contract.id,
+        contragent_id=int(contragent_id) if contragent_id else None,
+        vehicle_make=(request.form.get("vehicle_make") or "").strip() or None,
+        vehicle_model=(request.form.get("vehicle_model") or "").strip() or None,
+        vehicle_year=int(request.form["vehicle_year"]) if request.form.get("vehicle_year") else None,
+        vehicle_vin=(request.form.get("vehicle_vin") or "").strip() or None,
         original_filename=secure_filename(order_file.filename),
         storage_path=order_path,
         status=RepairOrderStatus.UPLOADED,
@@ -104,6 +110,9 @@ def list_repair_orders():
                 "status": order.status.value,
                 "matches_total": total,
                 "matches_pending": pending,
+                "vehicle_make": order.vehicle_make,
+                "vehicle_model": order.vehicle_model,
+                "contragent_name": order.contragent.name if order.contragent else None,
                 "created_at": order.created_at.isoformat(),
             }
         )

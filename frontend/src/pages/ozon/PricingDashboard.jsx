@@ -47,8 +47,10 @@ export default function PricingDashboard() {
         <div>
           <h2>Предложения по цене</h2>
           <p>
-            Автоприменение цен отключено — каждое предложение требует ручного подтверждения, пока не
-            накоплена статистика точности модели.
+            Автоприменение цен отключено: LLM только предлагает цену на основе своей цены, себестоимости
+            и (если подключён сторонний сервис аналитики в Администрирование → Интеграции) минимальной
+            цены конкурентов. Нажимая «Принять», вы сразу отправляете эту цену в Ozon — «Отклонить»
+            ничего не меняет ни здесь, ни на Ozon.
           </p>
         </div>
       </div>
@@ -85,14 +87,22 @@ export default function PricingDashboard() {
             <tbody>
               {snapshots.map((s) => (
                 <tr key={s.id}>
-                  <td>{s.product_name}</td>
+                  <td style={{ maxWidth: 220 }}>{s.product_name}</td>
                   <td className="text-muted">{s.product_category || "—"}</td>
-                  <td>{s.own_price ?? "—"}</td>
-                  <td>{s.competitor_min_price ?? "—"}</td>
+                  <td>{s.own_price != null ? `${s.own_price} ₽` : "—"}</td>
                   <td>
-                    <strong>{s.suggested_price ?? "—"}</strong>
+                    {s.competitor_min_price != null ? (
+                      `${s.competitor_min_price} ₽`
+                    ) : (
+                      <span className="text-muted" title="Сервис аналитики конкурентов не подключён — см. Администрирование → Интеграции">
+                        нет данных
+                      </span>
+                    )}
                   </td>
-                  <td style={{ maxWidth: 320, color: "var(--text-muted)" }}>
+                  <td>
+                    <strong>{s.suggested_price != null ? `${s.suggested_price} ₽` : "—"}</strong>
+                  </td>
+                  <td className="reasoning-cell" title={s.suggestion_reasoning || ""}>
                     {s.suggestion_reasoning || "—"}
                   </td>
                   <td>

@@ -74,6 +74,11 @@ class Config:
     PARTS_SUPPLIER_BASE_URL = os.environ.get("PARTS_SUPPLIER_BASE_URL", "")
     PARTS_SUPPLIER_API_KEY = os.environ.get("PARTS_SUPPLIER_API_KEY", "")
 
+    # Пусто по умолчанию — AutoDataClient резолвит нормо-часы через локальный
+    # справочник LaborCatalogEntry, пока нет реального доступа к AutoData API.
+    AUTODATA_BASE_URL = os.environ.get("AUTODATA_BASE_URL", "")
+    AUTODATA_API_KEY = os.environ.get("AUTODATA_API_KEY", "")
+
     # Ниже порога сопоставление обязательно уходит на ручную проверку.
     # TODO: уточнить с заказчиком точное значение.
     MATCH_CONFIDENCE_THRESHOLD = float(os.environ.get("MATCH_CONFIDENCE_THRESHOLD", "0.75"))

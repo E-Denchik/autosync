@@ -6,7 +6,7 @@ from flask import Blueprint, Response, jsonify, request, send_file
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
-from app.models import PartMatch, RepairOrder, ReviewStatus
+from app.models import LaborLine, PartMatch, RepairOrder, ReviewStatus
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
@@ -184,6 +184,9 @@ def generate_document(repair_order_id: int):
     """
     repair_order = db.get_or_404(RepairOrder, repair_order_id)
     pending = PartMatch.query.filter_by(
+        repair_order_id=repair_order_id, review_status=ReviewStatus.PENDING
+    ).count()
+    pending += LaborLine.query.filter_by(
         repair_order_id=repair_order_id, review_status=ReviewStatus.PENDING
     ).count()
     if pending:
