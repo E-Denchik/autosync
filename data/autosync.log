@@ -1,0 +1,697 @@
+2026-08-06 19:08:52,699 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 19:08:53,075 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 19:08:53,433 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 19:08:53,800 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 19:08:53,828 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 19:08:53,829 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 19:08:53,829 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 19:08:53,830 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 19:08:53,842 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 19:10:25,809 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 19:11:09,618 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 19:11:09,985 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 19:11:09,985 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 19:11:09,985 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 19:11:09,986 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 19:11:09,986 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 19:11:09,986 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 19:11:10,345 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 19:11:10,595 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 19:11:10,616 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 19:11:10,616 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 19:11:10,616 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 19:11:10,617 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 19:11:10,629 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 19:29:52,705 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 19:56:54,241 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 19:56:54,960 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 19:56:55,568 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 19:56:55,838 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 19:56:56,000 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 19:56:56,000 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 19:56:56,000 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 19:56:56,001 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 19:56:56,012 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 21:24:02,417 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 21:24:02,973 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 21:24:03,542 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 21:24:03,913 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 21:24:03,941 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 21:24:03,941 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 21:24:03,941 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 21:24:03,942 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 21:24:03,957 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 21:24:24,794 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 21:45:16,667 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 21:45:17,239 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 21:45:17,704 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 21:45:17,997 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 21:45:18,033 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 21:45:18,033 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 21:45:18,033 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 21:45:18,034 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 21:45:18,045 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 21:45:50,307 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 22:11:27,450 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:11:27,874 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:11:27,875 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:11:27,875 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:11:27,875 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:11:27,875 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:11:27,875 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:11:28,296 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:11:28,565 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:11:28,589 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:11:28,589 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:11:28,589 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:11:28,590 INFO autosync.native: backend слушает на 0.0.0.0:5000 (доступен и по локальной сети)
+2026-08-06 22:11:28,602 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:19:10,725 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:19:11,094 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:19:11,439 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:19:11,634 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:19:11,712 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:19:11,712 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:19:11,712 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:19:11,713 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 22:19:11,731 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:28:06,275 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 22:40:36,539 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:40:36,914 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:40:37,229 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:40:37,424 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:40:37,502 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:40:37,502 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:40:37,502 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:40:37,502 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 22:40:37,515 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:40:41,969 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:41:21,937 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:21,071 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 22:51:24,546 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:51:24,911 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:51:25,242 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:51:25,446 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:51:25,524 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:51:25,524 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:51:25,524 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:51:25,525 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 22:51:25,538 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:51:30,248 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:45,156 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:45,501 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:45,672 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:45,866 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:46,065 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:48,030 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:48,512 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:51:55,244 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 22:54:31,887 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:54:32,274 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:54:32,274 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:54:32,274 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:54:32,274 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:54:32,274 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:54:32,275 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:54:32,554 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:54:32,740 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:54:32,817 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:54:32,817 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:54:32,817 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:54:32,817 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 22:54:32,830 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:54:37,560 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:54:40,478 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:54:59,032 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:54:59,991 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-06 22:55:32,729 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-06 22:56:36,493 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 22:56:36,953 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 22:56:37,260 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 22:56:37,494 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 22:56:37,576 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 22:56:37,576 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 22:56:37,576 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 22:56:37,577 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 22:56:37,594 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 22:56:43,128 ERROR app: Exception on /api/ozon/cards/sync [POST]
+Traceback (most recent call last):
+  File "urllib3/connection.py", line 204, in _new_conn
+  File "urllib3/util/connection.py", line 85, in create_connection
+  File "urllib3/util/connection.py", line 73, in create_connection
+ConnectionRefusedError: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "urllib3/connectionpool.py", line 788, in urlopen
+  File "urllib3/connectionpool.py", line 493, in _make_request
+  File "urllib3/connection.py", line 500, in request
+  File "http/client.py", line 1362, in endheaders
+  File "http/client.py", line 1122, in _send_output
+  File "http/client.py", line 1066, in send
+  File "urllib3/connection.py", line 331, in connect
+  File "urllib3/connection.py", line 219, in _new_conn
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "requests/adapters.py", line 667, in send
+  File "urllib3/connectionpool.py", line 842, in urlopen
+  File "urllib3/util/retry.py", line 543, in increment
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/cards.py", line 94, in sync_catalog
+  File "app/services/catalog_sync.py", line 48, in sync_ozon_catalog_job
+  File "app/services/ozon_client.py", line 74, in list_products
+  File "app/services/ozon_client.py", line 62, in _post
+  File "requests/api.py", line 115, in post
+  File "requests/api.py", line 59, in request
+  File "requests/sessions.py", line 589, in request
+  File "requests/sessions.py", line 703, in send
+  File "requests/adapters.py", line 700, in send
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 22:56:43,746 ERROR app: Exception on /api/ozon/cards/sync [POST]
+Traceback (most recent call last):
+  File "urllib3/connection.py", line 204, in _new_conn
+  File "urllib3/util/connection.py", line 85, in create_connection
+  File "urllib3/util/connection.py", line 73, in create_connection
+ConnectionRefusedError: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "urllib3/connectionpool.py", line 788, in urlopen
+  File "urllib3/connectionpool.py", line 493, in _make_request
+  File "urllib3/connection.py", line 500, in request
+  File "http/client.py", line 1362, in endheaders
+  File "http/client.py", line 1122, in _send_output
+  File "http/client.py", line 1066, in send
+  File "urllib3/connection.py", line 331, in connect
+  File "urllib3/connection.py", line 219, in _new_conn
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "requests/adapters.py", line 667, in send
+  File "urllib3/connectionpool.py", line 842, in urlopen
+  File "urllib3/util/retry.py", line 543, in increment
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/cards.py", line 94, in sync_catalog
+  File "app/services/catalog_sync.py", line 48, in sync_ozon_catalog_job
+  File "app/services/ozon_client.py", line 74, in list_products
+  File "app/services/ozon_client.py", line 62, in _post
+  File "requests/api.py", line 115, in post
+  File "requests/api.py", line 59, in request
+  File "requests/sessions.py", line 589, in request
+  File "requests/sessions.py", line 703, in send
+  File "requests/adapters.py", line 700, in send
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:14:05,243 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 23:14:05,616 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 23:14:05,892 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 23:14:06,086 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 23:14:06,163 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 23:14:06,163 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 23:14:06,163 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 23:14:06,164 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 23:14:06,178 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 23:14:11,430 ERROR app: Exception on /api/ozon/cards/sync [POST]
+Traceback (most recent call last):
+  File "urllib3/connection.py", line 204, in _new_conn
+  File "urllib3/util/connection.py", line 85, in create_connection
+  File "urllib3/util/connection.py", line 73, in create_connection
+ConnectionRefusedError: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "urllib3/connectionpool.py", line 788, in urlopen
+  File "urllib3/connectionpool.py", line 493, in _make_request
+  File "urllib3/connection.py", line 500, in request
+  File "http/client.py", line 1362, in endheaders
+  File "http/client.py", line 1122, in _send_output
+  File "http/client.py", line 1066, in send
+  File "urllib3/connection.py", line 331, in connect
+  File "urllib3/connection.py", line 219, in _new_conn
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "requests/adapters.py", line 667, in send
+  File "urllib3/connectionpool.py", line 842, in urlopen
+  File "urllib3/util/retry.py", line 543, in increment
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/cards.py", line 94, in sync_catalog
+  File "app/services/catalog_sync.py", line 48, in sync_ozon_catalog_job
+  File "app/services/ozon_client.py", line 74, in list_products
+  File "app/services/ozon_client.py", line 62, in _post
+  File "requests/api.py", line 115, in post
+  File "requests/api.py", line 59, in request
+  File "requests/sessions.py", line 589, in request
+  File "requests/sessions.py", line 703, in send
+  File "requests/adapters.py", line 700, in send
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:14:30,181 ERROR app: Exception on /api/ozon/cards/sync [POST]
+Traceback (most recent call last):
+  File "urllib3/connection.py", line 204, in _new_conn
+  File "urllib3/util/connection.py", line 85, in create_connection
+  File "urllib3/util/connection.py", line 73, in create_connection
+ConnectionRefusedError: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "urllib3/connectionpool.py", line 788, in urlopen
+  File "urllib3/connectionpool.py", line 493, in _make_request
+  File "urllib3/connection.py", line 500, in request
+  File "http/client.py", line 1362, in endheaders
+  File "http/client.py", line 1122, in _send_output
+  File "http/client.py", line 1066, in send
+  File "urllib3/connection.py", line 331, in connect
+  File "urllib3/connection.py", line 219, in _new_conn
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "requests/adapters.py", line 667, in send
+  File "urllib3/connectionpool.py", line 842, in urlopen
+  File "urllib3/util/retry.py", line 543, in increment
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/cards.py", line 94, in sync_catalog
+  File "app/services/catalog_sync.py", line 48, in sync_ozon_catalog_job
+  File "app/services/ozon_client.py", line 74, in list_products
+  File "app/services/ozon_client.py", line 62, in _post
+  File "requests/api.py", line 115, in post
+  File "requests/api.py", line 59, in request
+  File "requests/sessions.py", line 589, in request
+  File "requests/sessions.py", line 703, in send
+  File "requests/adapters.py", line 700, in send
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:14:39,421 ERROR app: Exception on /api/ozon/cards/sync [POST]
+Traceback (most recent call last):
+  File "urllib3/connection.py", line 204, in _new_conn
+  File "urllib3/util/connection.py", line 85, in create_connection
+  File "urllib3/util/connection.py", line 73, in create_connection
+ConnectionRefusedError: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "urllib3/connectionpool.py", line 788, in urlopen
+  File "urllib3/connectionpool.py", line 493, in _make_request
+  File "urllib3/connection.py", line 500, in request
+  File "http/client.py", line 1362, in endheaders
+  File "http/client.py", line 1122, in _send_output
+  File "http/client.py", line 1066, in send
+  File "urllib3/connection.py", line 331, in connect
+  File "urllib3/connection.py", line 219, in _new_conn
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "requests/adapters.py", line 667, in send
+  File "urllib3/connectionpool.py", line 842, in urlopen
+  File "urllib3/util/retry.py", line 543, in increment
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/cards.py", line 94, in sync_catalog
+  File "app/services/catalog_sync.py", line 48, in sync_ozon_catalog_job
+  File "app/services/ozon_client.py", line 74, in list_products
+  File "app/services/ozon_client.py", line 62, in _post
+  File "requests/api.py", line 115, in post
+  File "requests/api.py", line 59, in request
+  File "requests/sessions.py", line 589, in request
+  File "requests/sessions.py", line 703, in send
+  File "requests/adapters.py", line 700, in send
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:23:38,612 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 23:23:39,003 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 23:23:39,003 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 23:23:39,003 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 23:23:39,004 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 23:23:39,004 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 23:23:39,004 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 23:23:39,327 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 23:23:39,582 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 23:23:39,607 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 23:23:39,607 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 23:23:39,607 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 23:23:39,607 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 23:23:39,620 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 23:23:43,662 ERROR app: Ozon catalog sync: Ozon Seller API /v3/product/list недоступен: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:24:00,379 ERROR app: Ozon catalog sync: Ozon Seller API /v3/product/list недоступен: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:24:04,738 ERROR app: Ozon catalog sync: Ozon Seller API /v3/product/list недоступен: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:34:27,275 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-06 23:34:27,758 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-06 23:34:28,151 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-06 23:34:28,457 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-06 23:34:28,495 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-06 23:34:28,496 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-06 23:34:28,496 INFO apscheduler.scheduler: Scheduler started
+2026-08-06 23:34:28,496 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-06 23:34:28,514 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-06 23:34:34,119 ERROR app: Ozon catalog sync: Ozon Seller API /v3/product/list недоступен: HTTPConnectionPool(host='127.0.0.1', port=5900): Max retries exceeded with url: /v3/product/list (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=5900): Failed to establish a new connection: [Errno 111] В соединении отказано"))
+2026-08-06 23:34:57,755 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 00:33:30,154 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/.autosync
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 00:33:30,527 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 00:33:30,837 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 00:33:31,104 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 00:33:31,127 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 00:33:31,127 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 00:33:31,127 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 00:33:31,128 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 00:33:31,139 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 00:33:40,918 ERROR app: Ozon catalog sync: OZON_CLIENT_ID и OZON_API_KEY не заданы — Seller API не подключён
+2026-08-07 00:33:50,906 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 13:18:38,951 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 13:18:39,665 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 13:18:40,262 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 13:18:40,731 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 13:18:40,764 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 13:18:40,764 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 13:18:40,764 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 13:18:40,764 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 13:18:40,780 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 13:33:06,083 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 13:40:06,680 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 13:40:07,139 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 13:40:07,495 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 13:40:07,802 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 13:40:07,828 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 13:40:07,828 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 13:40:07,828 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 13:40:07,828 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 13:40:07,841 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 13:41:50,254 WARNING app: Ozon catalog sync: не удалось получить цены: Ozon Seller API /v4/product/info/prices -> 404: 404 page not found
+
+2026-08-07 13:42:09,365 WARNING app: Ozon catalog sync: не удалось получить цены: Ozon Seller API /v4/product/info/prices -> 404: 404 page not found
+
+2026-08-07 13:42:22,692 WARNING app: analytics provider unavailable: ANALYTICS_PROVIDER_BASE_URL не задан — провайдер ещё не выбран заказчиком
+2026-08-07 13:42:27,243 INFO app: analytics provider unavailable, analyzing on own price only: ANALYTICS_PROVIDER_BASE_URL не задан — провайдер ещё не выбран заказчиком
+2026-08-07 13:43:28,744 ERROR app: Exception on /api/ozon/pricing/analyze/5 [POST]
+Traceback (most recent call last):
+  File "sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+  File "sqlalchemy/engine/default.py", line 952, in do_execute
+sqlite3.ProgrammingError: Error binding parameter 9: type 'list' is not supported
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "flask/app.py", line 1473, in wsgi_app
+  File "flask/app.py", line 882, in full_dispatch_request
+  File "flask/app.py", line 880, in full_dispatch_request
+  File "flask/app.py", line 865, in dispatch_request
+  File "app/api/ozon/pricing.py", line 141, in analyze_product
+  File "sqlalchemy/orm/scoping.py", line 924, in flush
+  File "sqlalchemy/orm/session.py", line 4331, in flush
+  File "sqlalchemy/orm/session.py", line 4466, in _flush
+  File "sqlalchemy/util/langhelpers.py", line 121, in __exit__
+  File "sqlalchemy/orm/session.py", line 4427, in _flush
+  File "sqlalchemy/orm/unitofwork.py", line 466, in execute
+  File "sqlalchemy/orm/unitofwork.py", line 642, in execute
+  File "sqlalchemy/orm/persistence.py", line 93, in save_obj
+  File "sqlalchemy/orm/persistence.py", line 1233, in _emit_insert_statements
+  File "sqlalchemy/engine/base.py", line 1419, in execute
+  File "sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+  File "sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+  File "sqlalchemy/engine/base.py", line 1846, in _execute_context
+  File "sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+  File "sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+  File "sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+  File "sqlalchemy/engine/default.py", line 952, in do_execute
+sqlalchemy.exc.ProgrammingError: (sqlite3.ProgrammingError) Error binding parameter 9: type 'list' is not supported
+[SQL: INSERT INTO price_snapshots (product_id, own_price, own_position, own_sales_last_7d, competitor_min_price, competitor_avg_price, competitor_raw_data, suggested_price, suggestion_reasoning, status, reviewed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: (5, None, None, None, None, None, 'null', None, ['Данные о себестоимости и рыночных ценах отсутствуют, поэтому предлагается не рекомендовать цену.', 'Ориентируясь на текущую цену на Ozon (1200 руб) и данные о себестоимости, предлагается цена в 1150 руб.', 'Учитывая, что данные о себестоимости отсутствуют, предлагается не рекомендовать цену.'], 'PENDING', None, '2026-08-07 11:43:28.743737')]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-08-07 13:43:35,342 WARNING app: Ozon catalog sync: не удалось получить цены: Ozon Seller API /v4/product/info/prices -> 404: 404 page not found
+
+2026-08-07 14:01:59,865 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 20:34:35,917 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 20:34:36,362 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 20:34:36,707 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 20:34:37,009 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 20:34:37,035 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 20:34:37,035 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 20:34:37,035 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 20:34:37,036 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 20:34:37,049 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 20:38:58,323 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 20:38:58,866 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 20:38:59,376 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 20:38:59,689 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 20:38:59,713 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 20:38:59,713 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 20:38:59,713 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 20:38:59,714 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 20:38:59,726 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 20:39:40,279 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 20:39:44,122 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 20:39:44,500 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 20:39:44,776 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 20:39:45,041 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 20:39:45,063 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 20:39:45,063 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 20:39:45,063 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 20:39:45,064 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 20:39:45,075 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:06:03,616 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 21:10:35,668 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:10:36,169 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:10:36,169 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:10:36,169 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:10:36,169 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:10:36,169 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:10:36,170 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:10:36,489 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:10:36,810 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:10:36,835 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:10:36,835 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:10:36,835 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:10:36,836 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:10:36,850 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:21:55,378 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:21:55,917 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:21:55,918 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:21:55,918 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:21:55,918 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:21:55,918 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:21:55,918 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:21:56,293 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:21:56,635 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:21:56,668 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:21:56,668 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:21:56,668 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:21:56,669 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:21:56,685 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:28:57,945 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:28:58,408 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:28:58,702 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:28:58,999 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:28:59,054 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:28:59,055 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:28:59,055 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:28:59,055 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:28:59,075 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:30:42,938 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 21:41:49,187 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:41:49,664 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:41:49,995 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:41:50,347 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:41:50,381 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:41:50,381 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:41:50,381 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:41:50,382 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:41:50,397 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:44:14,257 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 21:44:20,413 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:44:20,938 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:44:20,938 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:44:20,938 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:44:20,938 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:44:20,939 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:44:20,939 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:44:21,310 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:44:21,617 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:44:21,644 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:44:21,644 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:44:21,644 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:44:21,645 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:44:21,658 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:45:20,417 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 21:50:35,105 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:50:35,593 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:50:35,924 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:50:36,229 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:50:36,256 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:50:36,256 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:50:36,257 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:50:36,257 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:50:36,268 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:55:13,838 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:55:14,227 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:55:14,227 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:55:14,227 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:55:14,228 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:55:14,228 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:55:14,228 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:55:14,530 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:55:14,881 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:55:14,909 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:55:14,910 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:55:14,910 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:55:14,910 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:55:14,919 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-07 21:57:35,339 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-07 21:59:34,970 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-07 21:59:35,495 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-07 21:59:35,850 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-07 21:59:36,203 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-07 21:59:36,237 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-07 21:59:36,237 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-07 21:59:36,237 INFO apscheduler.scheduler: Scheduler started
+2026-08-07 21:59:36,238 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-07 21:59:36,248 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/

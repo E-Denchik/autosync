@@ -77,7 +77,7 @@ export FLASK_APP=wsgi.py
 flask db upgrade
 flask users create-admin --email you@company.ru --password ...
 
-python native_app.py   # откроет своё окно само; БД и загрузки — в ~/.autosync/
+python native_app.py   # откроет своё окно само; БД и загрузки — в data/ (в корне проекта)
 ```
 
 Тесты: `pytest tests/` (используют sqlite in-memory).

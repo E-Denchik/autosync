@@ -19,6 +19,7 @@ def _serialize(snapshot: PriceSnapshot) -> dict:
         "id": snapshot.id,
         "product_id": snapshot.product_id,
         "product_name": snapshot.product.name if snapshot.product else None,
+        "product_category": snapshot.product.category if snapshot.product else None,
         "own_price": float(snapshot.own_price) if snapshot.own_price is not None else None,
         "own_position": snapshot.own_position,
         "competitor_min_price": float(snapshot.competitor_min_price)

@@ -36,7 +36,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/DEBIAN" "$STAGE/opt/autosync" "$STAGE/usr/share/applications"
 
 cp "$BINARY" "$STAGE/opt/autosync/autosync"
-cp "$REPO_ROOT/packaging/native-deb/icon.png" "$STAGE/opt/autosync/icon.png"
+cp "$REPO_ROOT/packaging/icon/icon.png" "$STAGE/opt/autosync/icon.png"
 cp "$REPO_ROOT/packaging/native-deb/autosync.desktop" "$STAGE/usr/share/applications/autosync.desktop"
 
 cp "$REPO_ROOT/packaging/native-deb/postinst" "$STAGE/DEBIAN/postinst"

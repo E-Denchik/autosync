@@ -88,19 +88,40 @@ class OzonClient:
         )
 
     def get_product_prices(self, offer_ids: list[str] | None = None) -> dict:
-        """/v4/product/info/prices — текущие цены своих товаров."""
+        """/v5/product/info/prices — текущие цены своих товаров.
+
+        v4 (изначально использовавшийся здесь по документации, без реальных
+        ключей) отдаёт 404 — Ozon его убрал. Проверено вживую 2026-08-07 на
+        реальном кабинете: v5 работает, принимает тот же filter.offer_id, но
+        отдаёт items без обёртки в "result" (см. _extract_items в
+        catalog_sync.py — уже поддерживает оба варианта)."""
         filt = {"offer_id": offer_ids} if offer_ids else {}
-        return self._post("/v4/product/info/prices", {"filter": filt, "limit": 1000})
+        return self._post("/v5/product/info/prices", {"filter": filt, "limit": 1000})
 
     def get_product_info(self, product_ids: list[str]) -> dict:
-        """/v3/product/info/list — название и категория товаров по product_id
-        (list_products отдаёт только id/offer_id, без названия).
+        """/v3/product/info/list — название и description_category_id товаров
+        по product_id (list_products отдаёт только id/offer_id, без названия).
+
+        Категория здесь — числовой id (description_category_id), не
+        человекочитаемое имя: сам Ozon отдаёт название категории только через
+        отдельное дерево категорий, см. get_category_tree().
 
         НЕ проверено вживую без реальных ключей — сопоставление полей ответа
-        (name/category) сделано по документации Ozon Seller API и может
-        потребовать корректировки, см. ARCHITECTURE.md, "Открытые вопросы".
+        сделано по документации Ozon Seller API и может потребовать
+        корректировки, см. ARCHITECTURE.md, "Открытые вопросы".
         """
         return self._post("/v3/product/info/list", {"product_id": product_ids})
+
+    def get_category_tree(self, language: str = "RU") -> dict:
+        """/v1/description-category/tree — полное дерево категорий Ozon
+        (description_category_id -> category_name, с вложенными children).
+        Нужен, чтобы резолвить числовой description_category_id из
+        get_product_info() в читаемое название — сам список/инфо товаров
+        имени категории не отдаёт.
+
+        НЕ проверено вживую без реальных ключей, см. get_product_info().
+        """
+        return self._post("/v1/description-category/tree", {"language": language})
 
     def update_prices(self, price_updates: list[dict]) -> dict:
         """/v1/product/import/prices — применение новой цены.
