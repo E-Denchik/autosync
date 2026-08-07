@@ -20,17 +20,27 @@ def _default_frontend_dist_dir() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
 
 
+def _default_data_dir() -> str:
+    """БД и загрузки: запуск из исходников держит их внутри репозитория
+    (data/, см. .gitignore) — не в домашнем каталоге пользователя, чтобы всё
+    содержимое проекта оставалось в одном месте. Только у frozen-бинарника
+    (см. native_app.py: get_data_dir(), тот же выбор) нет "рядом с исходниками" —
+    установленное приложение использует каталог данных ОС."""
+    if getattr(sys, "frozen", False):
+        return os.path.expanduser("~/.autosync")
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+
+
 class Config:
     """AutoSync — обычное desktop-приложение, без Docker и без серверного
     деплоя: SQLite вместо Postgres, задачи выполняются в самом процессе
     (ThreadPoolExecutor + APScheduler) вместо Celery/Redis, этот же Flask
     отдаёт собранный frontend/dist как статику (нет отдельного nginx).
     Единственная точка входа — окно pywebview (см. native_app.py). Все файлы
-    (БД, загрузки) живут в каталоге данных пользователя — см. native_app.py:
-    get_data_dir().
+    (БД, загрузки) живут в каталоге данных — см. native_app.py: get_data_dir().
     """
 
-    DATA_DIR = os.environ.get("AUTOSYNC_DATA_DIR", os.path.expanduser("~/.autosync"))
+    DATA_DIR = os.environ.get("AUTOSYNC_DATA_DIR", _default_data_dir())
 
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(DATA_DIR, "autosync.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -39,6 +49,14 @@ class Config:
     # Подписывает JWT — обязательно переопределить в проде через .env.
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     JWT_EXPIRES_HOURS = int(os.environ.get("JWT_EXPIRES_HOURS", "168"))  # 7 дней
+
+    # Одноразовый токен на процесс — единственное, что реально не даёт
+    # открыть AutoSync обычным браузером по адресу 127.0.0.1 (см.
+    # app/__init__.py: _require_local_session_token). Генерируется заново в
+    # native_app.py:main() при каждом запуске и передаётся окну через URL —
+    # пусто здесь означает "гейт выключен" (тесты, flask db migrate и
+    # прочий CLI-запуск не через native_app.py).
+    SESSION_TOKEN = os.environ.get("AUTOSYNC_SESSION_TOKEN", "")
 
     FRONTEND_DIST_DIR = os.environ.get("FRONTEND_DIST_DIR") or _default_frontend_dist_dir()
     MIGRATIONS_DIR = os.environ.get("MIGRATIONS_DIR") or _bundled_resource("migrations")

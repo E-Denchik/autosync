@@ -18,10 +18,10 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import secrets
 import sys
 import threading
 import time
-import webbrowser
 
 logger = logging.getLogger("autosync.native")
 
@@ -31,6 +31,15 @@ if sys.platform.startswith("linux"):
     # Mesa) — без этого флага окно может не открыться вовсе. Программный
     # рендеринг чуть медленнее, но для админ-панели это не критично.
     os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+
+    # На части систем (замечено на Kali/lightdm) GTK-сессия почему-то
+    # наследует чужой AT-SPI accessibility bus (адрес рантайма другого UID,
+    # например lightdm вместо текущего пользователя) — подключение к нему
+    # падает, а libatk-bridge2.0 вместо аккуратного фолбэка сегфолтит сразу
+    # при старте окна (баг самой библиотеки, не нашего кода). AutoSync —
+    # админ-панель без запроса на screen-reader поддержку, поэтому просто не
+    # даём GTK пытаться подключаться к accessibility bus вообще.
+    os.environ.setdefault("NO_AT_BRIDGE", "1")
 
     # GTK_MODULES/GTK3_MODULES прописаны в самой X-сессии рабочего стола
     # (на Kali/XFCE это /etc/X11/Xsession.d/*: appmenu-gtk-module — из
@@ -59,16 +68,46 @@ def resource_path(*parts: str) -> str:
     return os.path.join(base, *parts)
 
 
+def get_icon_path() -> str | None:
+    """Иконка окна/панели задач — см. packaging/icon/. На Windows pywebview
+    (winforms-бэкенд) создаёт System.Drawing.Icon() напрямую из файла и
+    падает, если это не .ico — PNG там не подходит, в отличие от GTK/Cocoa
+    (Linux/macOS), которые сами читают PNG. Файл упакован отдельно от
+    llm_service_src/migrations, см. --add-data в build-native-*.
+
+    Отсутствие иконки не должно ронять приложение — просто останется
+    иконка по умолчанию, поэтому возвращаем None вместо исключения."""
+    name = "icon.ico" if sys.platform == "win32" else "icon.png"
+    if is_frozen():
+        path = resource_path("icon", name)
+    else:
+        path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "packaging", "icon", name)
+        )
+    if not os.path.isfile(path):
+        logger.warning("Иконка приложения не найдена: %s", path)
+        return None
+    return path
+
+
 def get_data_dir() -> str:
     override = os.environ.get("AUTOSYNC_DATA_DIR")
     if override:
         return override
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-        return os.path.join(base, "AutoSync")
-    if sys.platform == "darwin":
-        return os.path.expanduser("~/Library/Application Support/AutoSync")
-    return os.path.expanduser("~/.autosync")
+    if is_frozen():
+        # Установленное приложение — не живёт рядом с исходниками, поэтому
+        # использует каталог данных ОС (см. также app/config.py:
+        # _default_data_dir(), тот же выбор).
+        if sys.platform == "win32":
+            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+            return os.path.join(base, "AutoSync")
+        if sys.platform == "darwin":
+            return os.path.expanduser("~/Library/Application Support/AutoSync")
+        return os.path.expanduser("~/.autosync")
+    # Запуск из исходников — БД и загрузки живут внутри репозитория (data/,
+    # см. .gitignore), а не в домашнем каталоге пользователя.
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(project_root, "data")
 
 
 def setup_logging(data_dir: str) -> None:
@@ -163,18 +202,6 @@ def start_scheduler(app):
     return scheduler
 
 
-def _run_headless_loop() -> None:
-    """Резервный режим, когда системное окно поднять не удалось (нет
-    WebView2/WebKitGTK, headless-сервер и т.п.) — уже открыт браузер,
-    просто не даём процессу завершиться до Ctrl+C."""
-    logger.info("Нет доступного системного окна — работаю в фоне (Ctrl+C для выхода)")
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        pass
-
-
 def run_window(url: str) -> None:
     """Открывает AutoSync в собственном окне через pywebview (системный
     webview — WebView2 на Windows, WebKitGTK на Linux, без Chromium внутри
@@ -184,15 +211,21 @@ def run_window(url: str) -> None:
     окно, один процесс, без иконки в трее и скрытого фонового режима.
 
     Если системный webview недоступен (сломанная установка WebView2,
-    отсутствующий webkit2gtk на Linux без десктопного окружения) — не
-    роняем приложение, откатываемся на браузер по умолчанию."""
+    отсутствующий webkit2gtk на Linux без десктопного окружения) —
+    приложение завершается с понятной ошибкой в лог. Никакого отката на
+    браузер по умолчанию: AutoSync — desktop-only, открыть его иначе, чем
+    через это окно, не должно быть возможности в принципе (см. докстринг
+    модуля)."""
     try:
         import webview
     except Exception:
-        logger.warning("pywebview недоступен — открываю в браузере по умолчанию", exc_info=True)
-        webbrowser.open(url)
-        _run_headless_loop()
-        return
+        logger.error(
+            "pywebview недоступен — не могу открыть окно приложения. Установите "
+            "системный webview (WebView2 на Windows, python3-gi + "
+            "gir1.2-webkit2-4.1 или -4.0 на Linux) и запустите AutoSync заново.",
+            exc_info=True,
+        )
+        raise SystemExit(1)
 
     # Размер окна по умолчанию (1360x860) не помещался бы на небольших
     # экранах — считаем от реального разрешения текущего монитора. Плюс
@@ -222,11 +255,10 @@ def run_window(url: str) -> None:
         # навсегда при каждом запуске после первого /setup. Обнаружено
         # только сквозным ручным тестированием окна — с пустой БД (мастер
         # /setup, localStorage ещё не трогали) баг незаметен.
-        webview.start(private_mode=False)
+        webview.start(private_mode=False, icon=get_icon_path())
     except Exception:
-        logger.warning("Не удалось открыть системное окно — открываю в браузере по умолчанию", exc_info=True)
-        webbrowser.open(url)
-        _run_headless_loop()
+        logger.error("Не удалось открыть системное окно webview.", exc_info=True)
+        raise SystemExit(1)
 
 
 def main() -> None:
@@ -241,6 +273,13 @@ def main() -> None:
     backend_port = int(os.environ.get("AUTOSYNC_PORT", "5000"))
     llm_port = int(os.environ.get("AUTOSYNC_LLM_PORT", "8001"))
     os.environ.setdefault("LLM_SERVICE_URL", f"http://127.0.0.1:{llm_port}")
+
+    # Токен на процесс — 127.0.0.1 доступен любому локальному клиенту
+    # (включая обычный браузер, если туда просто вбить адрес), а не только
+    # окну приложения. Без токена backend отвечал бы кому угодно на этой
+    # машине. Ставим ДО create_app() — Config.SESSION_TOKEN читает его при
+    # первом импорте app.config (см. app/config.py).
+    os.environ["AUTOSYNC_SESSION_TOKEN"] = secrets.token_urlsafe(24)
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from app import create_app
@@ -270,19 +309,26 @@ def main() -> None:
     start_scheduler(app)
     threading.Thread(target=run_backend, args=(app, backend_port), daemon=True, name="backend").start()
 
-    url = f"http://127.0.0.1:{backend_port}/"
+    # Токен только в самом первом URL — дальше backend закрепляет его в
+    # cookie (см. app/__init__.py: _persist_local_session_cookie), поэтому
+    # ни один другой адрес/запрос в приложении токен уже не носит.
+    url = f"http://127.0.0.1:{backend_port}/?token={os.environ['AUTOSYNC_SESSION_TOKEN']}"
 
     # Ждём, пока backend реально начнёт отвечать, прежде чем открывать окно.
+    # /api/health — единственный маршрут без проверки токена (см.
+    # _require_local_session_token), иначе этот же readiness-запрос сам
+    # получал бы 403 и ждал все 30 попыток впустую.
     import urllib.request
 
+    health_url = f"http://127.0.0.1:{backend_port}/api/health"
     for _ in range(30):
         try:
-            urllib.request.urlopen(url, timeout=1)
+            urllib.request.urlopen(health_url, timeout=1)
             break
         except Exception:
             time.sleep(0.5)
 
-    logger.info("Открываю окно AutoSync: %s", url)
+    logger.info("Открываю окно AutoSync: http://127.0.0.1:%s/", backend_port)
     run_window(url)
 
     logger.info("Окно закрыто — завершение работы AutoSync")

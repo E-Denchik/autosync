@@ -74,6 +74,7 @@ export default function PricingDashboard() {
             <thead>
               <tr>
                 <th>Товар</th>
+                <th>Категория</th>
                 <th>Своя цена</th>
                 <th>Мин. у конкурентов</th>
                 <th>Предложение</th>
@@ -85,6 +86,7 @@ export default function PricingDashboard() {
               {snapshots.map((s) => (
                 <tr key={s.id}>
                   <td>{s.product_name}</td>
+                  <td className="text-muted">{s.product_category || "—"}</td>
                   <td>{s.own_price ?? "—"}</td>
                   <td>{s.competitor_min_price ?? "—"}</td>
                   <td>

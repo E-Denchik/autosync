@@ -37,6 +37,34 @@ def create_app(config_class=Config):
     def health():
         return jsonify(status="ok")
 
+    @app.before_request
+    def _require_local_session_token():
+        # 127.0.0.1 всё равно доступен любому локальному процессу — это
+        # неизбежное следствие того, как работает pywebview (само окно —
+        # обычный HTTP-клиент этого же Flask). Без этой проверки открыть
+        # AutoSync можно было бы просто вбив адрес в обычный браузер, в
+        # обход "единственная точка входа — окно приложения" (см. докстринг
+        # native_app.py). SESSION_TOKEN пустой вне native-режима (тесты,
+        # flask db migrate) — там проверка отключена целиком.
+        token = app.config.get("SESSION_TOKEN")
+        if not token or request.path == "/api/health":
+            return None
+        supplied = request.args.get("token") or request.cookies.get("autosync_token")
+        if supplied != token:
+            return jsonify(error="AutoSync доступен только через собственное окно приложения"), 403
+        return None
+
+    @app.after_request
+    def _persist_local_session_cookie(response):
+        # Токен приходит в URL только на самой первой навигации (см.
+        # native_app.py: main()) — дальше все запросы фронтенда (fetch к
+        # /api/..., подгрузка статики) идут без query-параметра, поэтому
+        # закрепляем токен в cookie сразу после первого успешного запроса.
+        token = app.config.get("SESSION_TOKEN")
+        if token and request.args.get("token") == token:
+            response.set_cookie("autosync_token", token, httponly=True, samesite="Strict")
+        return response
+
     @app.after_request
     def _no_store_api_responses(response):
         # Ответы Flask по умолчанию не несут Cache-Control — WebKitGTK (окно

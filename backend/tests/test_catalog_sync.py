@@ -11,6 +11,14 @@ def test_sync_fails_cleanly_without_credentials(app):
         assert "OZON_CLIENT_ID" in result["error"]
 
 
+def _patch_category_tree(monkeypatch, tree=None):
+    monkeypatch.setattr(
+        OzonClient,
+        "get_category_tree",
+        lambda self: {"result": tree if tree is not None else []},
+    )
+
+
 def test_sync_creates_new_products(app, monkeypatch):
     with app.app_context():
         app.config["OZON_CLIENT_ID"] = "cid"
@@ -25,14 +33,21 @@ def test_sync_creates_new_products(app, monkeypatch):
             "get_product_info",
             lambda self, product_ids: {
                 "result": {
-                    "items": [{"product_id": 111, "name": "Тормозной диск", "category": "Тормозная система"}]
+                    "items": [{"product_id": 111, "name": "Тормозной диск", "description_category_id": 90011}]
                 }
             },
         )
         monkeypatch.setattr(
             OzonClient,
             "get_product_prices",
-            lambda self, offer_ids=None: {"result": {"items": [{"offer_id": "SKU-1", "price": {"price": "1200"}}]}},
+            # v5 (реальный, актуальный эндпоинт) отдаёт items без обёртки в
+            # "result", в отличие от остальных методов ozon_client — именно
+            # это несоответствие сломало цены в проде, см. _extract_items.
+            lambda self, offer_ids=None: {"items": [{"offer_id": "SKU-1", "price": {"price": "1200"}}]},
+        )
+        _patch_category_tree(
+            monkeypatch,
+            [{"description_category_id": 90011, "category_name": "Тормозная система", "children": []}],
         )
 
         result = sync_ozon_catalog_job()
@@ -50,6 +65,82 @@ def test_sync_creates_new_products(app, monkeypatch):
         assert len(entries) == 1
         assert entries[0].action == "created"
         assert entries[0].details["source"] == "ozon_sync"
+
+
+def test_sync_resolves_category_from_nested_tree(app, monkeypatch):
+    """Дерево категорий Ozon вложенное (родитель -> children) — резолв
+    должен находить id и в дочерних узлах, не только на верхнем уровне."""
+    with app.app_context():
+        app.config["OZON_CLIENT_ID"] = "cid"
+        app.config["OZON_API_KEY"] = "key"
+
+        monkeypatch.setattr(
+            OzonClient,
+            "list_products",
+            lambda self, last_id="", limit=100: {
+                "result": {"items": [{"product_id": 500, "offer_id": "SKU-500"}], "last_id": ""}
+            },
+        )
+        monkeypatch.setattr(
+            OzonClient,
+            "get_product_info",
+            lambda self, product_ids: {
+                "result": {"items": [{"product_id": 500, "name": "Амортизатор", "description_category_id": 90013}]}
+            },
+        )
+        monkeypatch.setattr(
+            OzonClient, "get_product_prices", lambda self, offer_ids=None: {"result": {"items": []}}
+        )
+        _patch_category_tree(
+            monkeypatch,
+            [
+                {
+                    "description_category_id": 90001,
+                    "category_name": "Автозапчасти",
+                    "children": [
+                        {"description_category_id": 90013, "category_name": "Подвеска", "children": []},
+                    ],
+                }
+            ],
+        )
+
+        sync_ozon_catalog_job()
+
+        product = Product.query.filter_by(ozon_product_id="500").one()
+        assert product.category == "Подвеска"
+
+
+def test_sync_leaves_category_empty_when_id_unresolvable(app, monkeypatch):
+    """description_category_id, отсутствующий в дереве (например категория
+    отключена в Ozon) — не должен падать, товар просто остаётся без
+    категории вместо мусорного значения."""
+    with app.app_context():
+        app.config["OZON_CLIENT_ID"] = "cid"
+        app.config["OZON_API_KEY"] = "key"
+
+        monkeypatch.setattr(
+            OzonClient,
+            "list_products",
+            lambda self, last_id="", limit=100: {
+                "result": {"items": [{"product_id": 501, "offer_id": "SKU-501"}], "last_id": ""}
+            },
+        )
+        monkeypatch.setattr(
+            OzonClient,
+            "get_product_info",
+            lambda self, product_ids: {
+                "result": {"items": [{"product_id": 501, "name": "Незамерзайка", "description_category_id": 999999}]}
+            },
+        )
+        monkeypatch.setattr(
+            OzonClient, "get_product_prices", lambda self, offer_ids=None: {"result": {"items": []}}
+        )
+        _patch_category_tree(monkeypatch, [])
+
+        sync_ozon_catalog_job()
+
+        product = Product.query.filter_by(ozon_product_id="501").one()
+        assert product.category is None
 
 
 def test_sync_updates_existing_product_matched_by_ozon_product_id(app, monkeypatch):
@@ -79,6 +170,7 @@ def test_sync_updates_existing_product_matched_by_ozon_product_id(app, monkeypat
             "get_product_prices",
             lambda self, offer_ids=None: {"result": {"items": [{"offer_id": "SKU-NEW", "price": {"price": "150"}}]}},
         )
+        _patch_category_tree(monkeypatch, [])
 
         result = sync_ozon_catalog_job()
         assert result == {"status": "ok", "created": 0, "updated": 1}
@@ -115,6 +207,7 @@ def test_sync_skips_update_when_nothing_changed(app, monkeypatch):
             "get_product_prices",
             lambda self, offer_ids=None: {"result": {"items": [{"offer_id": "SKU-3", "price": {"price": "500"}}]}},
         )
+        _patch_category_tree(monkeypatch, [])
 
         result = sync_ozon_catalog_job()
         assert result == {"status": "ok", "created": 0, "updated": 0}
@@ -141,6 +234,7 @@ def test_sync_paginates_using_last_id(app, monkeypatch):
         monkeypatch.setattr(
             OzonClient, "get_product_prices", lambda self, offer_ids=None: {"result": {"items": []}}
         )
+        _patch_category_tree(monkeypatch, [])
 
         result = sync_ozon_catalog_job()
         assert result == {"status": "ok", "created": 2, "updated": 0}

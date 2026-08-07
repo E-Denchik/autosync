@@ -15,12 +15,8 @@ build/
 .env.*
 !.env.example
 
-# Docker volumes / data
-pgdata/
-redis-data/
-ollama-data/
-
-# Uploads
+# Данные приложения (БД, загрузки, логи) — см. AUTOSYNC_DATA_DIR /
+# backend/app/config.py: _default_data_dir()
 backend/uploads/
 /tmp/autosync-uploads/
 /frontend/npm-cache/

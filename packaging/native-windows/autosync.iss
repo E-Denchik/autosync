@@ -27,6 +27,7 @@ AppId={{B6F1B6C0-6C7A-4E9C-9E37-AUTOSYNCAPP1}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+SetupIconFile={#RepoRoot}\packaging\icon\icon.ico
 DefaultDirName={autopf}\AutoSync
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

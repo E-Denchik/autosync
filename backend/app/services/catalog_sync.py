@@ -33,6 +33,43 @@ def _extract_items(data: dict) -> list[dict]:
     return data.get("items", [])
 
 
+def _extract_category_nodes(tree_resp: dict) -> list[dict]:
+    result = tree_resp.get("result")
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict) and "items" in result:
+        return result["items"]
+    return tree_resp.get("items", [])
+
+
+def _flatten_category_names(nodes: list[dict], out: dict[int, str]) -> None:
+    """Дерево категорий Ozon вложенное (children) — сплющиваем в плоскую
+    карту id -> имя, нам нужны только листовые/промежуточные названия для
+    отображения, не сама иерархия."""
+    for node in nodes:
+        category_id = node.get("description_category_id")
+        name = node.get("category_name")
+        if category_id is not None and name:
+            try:
+                out[int(category_id)] = name
+            except (TypeError, ValueError):
+                pass
+        children = node.get("children") or []
+        if children:
+            _flatten_category_names(children, out)
+
+
+def _fetch_category_names(ozon: OzonClient) -> dict[int, str]:
+    names: dict[int, str] = {}
+    try:
+        tree_resp = ozon.get_category_tree()
+    except OzonClientError as exc:
+        current_app.logger.warning("Ozon catalog sync: не удалось получить дерево категорий: %s", exc)
+        return names
+    _flatten_category_names(_extract_category_nodes(tree_resp), names)
+    return names
+
+
 def sync_ozon_catalog_job() -> dict:
     ozon = OzonClient(
         current_app.config["OZON_CLIENT_ID"],
@@ -42,6 +79,10 @@ def sync_ozon_catalog_job() -> dict:
     created = 0
     updated = 0
     last_id = ""
+
+    # Один раз на весь синк, не на страницу — дерево категорий не зависит
+    # от товаров и не меняется между страницами одного прогона.
+    category_names = _fetch_category_names(ozon)
 
     for _ in range(MAX_PAGES):
         try:
@@ -72,7 +113,9 @@ def sync_ozon_catalog_job() -> dict:
         price_by_offer: dict[str, str] = {}
         try:
             prices_resp = ozon.get_product_prices(offer_ids=offer_ids)
-            for p in prices_resp.get("result", {}).get("items", []):
+            # v5 отдаёт items без обёртки в "result" (в отличие от list_products
+            # /product_info) — _extract_items уже поддерживает оба варианта.
+            for p in _extract_items(prices_resp):
                 price_by_offer[p.get("offer_id")] = p.get("price", {}).get("price")
         except OzonClientError as exc:
             current_app.logger.warning("Ozon catalog sync: не удалось получить цены: %s", exc)
@@ -85,11 +128,19 @@ def sync_ozon_catalog_job() -> dict:
 
             info = info_by_id.get(ozon_product_id, {})
             name = info.get("name") or offer_id
-            # category_id у Ozon числовой и требует отдельного резолва через
-            # дерево категорий (не реализовано, см. ARCHITECTURE.md) — но
-            # если ответ вообще содержит готовое человекочитаемое имя
-            # категории (category/category_name), используем его как есть.
-            category = info.get("category") or info.get("category_name")
+            # description_category_id — числовой, резолвим через дерево
+            # категорий (category_names, см. _fetch_category_names). Фолбэк
+            # на готовое имя (category/category_name) — на случай, если
+            # какая-то версия ответа отдаёт его напрямую, либо id не нашёлся
+            # в дереве (например категория отключена в Ozon).
+            category_id = info.get("description_category_id")
+            category = None
+            if category_id not in (None, ""):
+                try:
+                    category = category_names.get(int(category_id))
+                except (TypeError, ValueError):
+                    category = None
+            category = category or info.get("category") or info.get("category_name")
             price_raw = price_by_offer.get(offer_id)
             try:
                 price_val = float(price_raw) if price_raw not in (None, "") else None

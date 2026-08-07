@@ -71,6 +71,8 @@ pyinstaller `
   --add-data "$RepoRoot\frontend\dist;frontend_dist" `
   --add-data "$RepoRoot\llm-service;llm_service_src" `
   --add-data "$RepoRoot\backend\migrations;migrations" `
+  --add-data "$RepoRoot\packaging\icon;icon" `
+  --icon "$RepoRoot\packaging\icon\icon.ico" `
   --hidden-import=waitress `
   --hidden-import=apscheduler.schedulers.background `
   --collect-submodules apscheduler `
