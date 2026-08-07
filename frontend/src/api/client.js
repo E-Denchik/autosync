@@ -112,10 +112,13 @@ export const api = {
   generateCard: (productId) => request(`/ozon/cards/${productId}/generate`, { method: "POST" }),
 
   // Заказ-наряды: загрузка
-  uploadDocuments: (contractFile, repairOrderFile) => {
+  uploadDocuments: (contractFile, repairOrderFile, extra = {}) => {
     const formData = new FormData();
     formData.append("contract", contractFile);
     formData.append("repair_order", repairOrderFile);
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") formData.append(key, value);
+    });
     return request("/repair-orders/upload", { method: "POST", body: formData });
   },
   listRepairOrders: () => request("/repair-orders/upload"),
@@ -133,4 +136,30 @@ export const api = {
   exportMatchesCsv: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}/export`),
   generateDocument: (repairOrderId) =>
     request(`/repair-orders/matching/${repairOrderId}/generate-document`, { method: "POST" }),
+
+  // Заказ-наряды: работы (нормо-часы)
+  listLaborLines: (repairOrderId) => request(`/repair-orders/labor/${repairOrderId}`),
+  editLaborLine: (laborLineId, data) =>
+    request(`/repair-orders/labor/${laborLineId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  approveLaborLine: (laborLineId) => request(`/repair-orders/labor/${laborLineId}/approve`, { method: "POST" }),
+  rejectLaborLine: (laborLineId) => request(`/repair-orders/labor/${laborLineId}/reject`, { method: "POST" }),
+  bulkReviewLabor: (ids, action) =>
+    request(`/repair-orders/labor/bulk`, { method: "POST", body: JSON.stringify({ ids, action }) }),
+
+  // Контрагенты
+  listContragents: () => request("/contragents"),
+  createContragent: (data) => request("/contragents", { method: "POST", body: JSON.stringify(data) }),
+  updateContragent: (id, data) => request(`/contragents/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteContragent: (id) => request(`/contragents/${id}`, { method: "DELETE" }),
+
+  // Справочник нормо-часов
+  listLaborCatalog: () => request("/labor-catalog"),
+  createLaborCatalogEntry: (data) => request("/labor-catalog", { method: "POST", body: JSON.stringify(data) }),
+  updateLaborCatalogEntry: (id, data) =>
+    request(`/labor-catalog/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteLaborCatalogEntry: (id) => request(`/labor-catalog/${id}`, { method: "DELETE" }),
+
+  // Ozon: статистика/инфографика
+  ozonStatsSummary: () => request("/ozon/stats/summary"),
+  ozonProductPriceHistory: (productId) => request(`/ozon/stats/products/${productId}/history`),
 };

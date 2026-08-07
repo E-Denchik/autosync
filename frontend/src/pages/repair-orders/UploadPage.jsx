@@ -88,6 +88,12 @@ export default function UploadPage() {
   const [orderFile, setOrderFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [llmConfigured, setLlmConfigured] = useState(true); // оптимистично, пока не пришёл ответ
+  const [contragents, setContragents] = useState([]);
+  const [contragentId, setContragentId] = useState("");
+  const [vehicleMake, setVehicleMake] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehicleYear, setVehicleYear] = useState("");
+  const [vehicleVin, setVehicleVin] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
@@ -97,6 +103,7 @@ export default function UploadPage() {
       .dashboardSummary()
       .then((s) => setLlmConfigured(Boolean(s.llm_model)))
       .catch(() => {});
+    api.listContragents().then(setContragents).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -107,7 +114,13 @@ export default function UploadPage() {
     }
     setSubmitting(true);
     try {
-      const { repair_order_id } = await api.uploadDocuments(contractFile, orderFile);
+      const { repair_order_id } = await api.uploadDocuments(contractFile, orderFile, {
+        contragent_id: contragentId,
+        vehicle_make: vehicleMake,
+        vehicle_model: vehicleModel,
+        vehicle_year: vehicleYear,
+        vehicle_vin: vehicleVin,
+      });
       toast.success("Файлы загружены, сопоставление запущено");
       navigate(`/repair-orders/${repair_order_id}/review`);
     } catch (e2) {
@@ -154,6 +167,55 @@ export default function UploadPage() {
               </span>
             ))}
           </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+            <div className="field">
+              <label htmlFor="contragent">Контрагент</label>
+              <select id="contragent" value={contragentId} onChange={(e) => setContragentId(e.target.value)}>
+                <option value="">— не выбран —</option>
+                {contragents.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.hourly_rate} ₽/ч)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="vehicle_vin">VIN</label>
+              <input id="vehicle_vin" value={vehicleVin} onChange={(e) => setVehicleVin(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="vehicle_make">Марка автомобиля</label>
+              <input
+                id="vehicle_make"
+                value={vehicleMake}
+                onChange={(e) => setVehicleMake(e.target.value)}
+                placeholder="например, ВАЗ"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="vehicle_model">Модель</label>
+              <input
+                id="vehicle_model"
+                value={vehicleModel}
+                onChange={(e) => setVehicleModel(e.target.value)}
+                placeholder="например, Granta"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="vehicle_year">Год выпуска</label>
+              <input
+                id="vehicle_year"
+                type="number"
+                value={vehicleYear}
+                onChange={(e) => setVehicleYear(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 18 }}>
+            Марка/модель нужны, чтобы автоматически подтянуть нормо-часы для работ из заказ-наряда;
+            контрагент — чтобы посчитать их стоимость по его ставке.
+          </p>
 
           <button
             className="btn btn-primary"

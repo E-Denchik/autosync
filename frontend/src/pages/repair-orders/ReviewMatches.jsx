@@ -16,8 +16,12 @@ export default function ReviewMatches() {
   const [status, setStatus] = useState(null);
   const [matches, setMatches] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [laborLines, setLaborLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [laborBusyId, setLaborBusyId] = useState(null);
+  const [editingHoursId, setEditingHoursId] = useState(null);
+  const [hoursInput, setHoursInput] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -34,6 +38,10 @@ export default function ReviewMatches() {
     api
       .listCandidates(repairOrderId)
       .then(setCandidates)
+      .catch(() => {});
+    api
+      .listLaborLines(repairOrderId)
+      .then(setLaborLines)
       .catch(() => {});
   };
 
@@ -112,6 +120,37 @@ export default function ReviewMatches() {
     }
   };
 
+  const handleLaborDecision = async (id, decision) => {
+    setLaborBusyId(id);
+    try {
+      const updated =
+        decision === "approve" ? await api.approveLaborLine(id) : await api.rejectLaborLine(id);
+      setLaborLines((prev) => prev.map((l) => (l.id === id ? updated : l)));
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLaborBusyId(null);
+    }
+  };
+
+  const startEditHours = (line) => {
+    setEditingHoursId(line.id);
+    setHoursInput(line.norm_hours ?? "");
+  };
+
+  const saveHours = async (id) => {
+    setLaborBusyId(id);
+    try {
+      const updated = await api.editLaborLine(id, { norm_hours: Number(hoursInput) });
+      setLaborLines((prev) => prev.map((l) => (l.id === id ? updated : l)));
+      setEditingHoursId(null);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLaborBusyId(null);
+    }
+  };
+
   const handleSaveEdit = async (patch) => {
     setBusyId(editingMatch.id);
     try {
@@ -163,7 +202,9 @@ export default function ReviewMatches() {
 
   if (loading) return <Spinner label="Проверяем статус обработки…" />;
 
-  const pendingCount = matches.filter((m) => m.review_status === "pending").length;
+  const partsPending = matches.filter((m) => m.review_status === "pending").length;
+  const laborPending = laborLines.filter((l) => l.review_status === "pending").length;
+  const pendingCount = partsPending + laborPending;
   const pendingIds = matches.filter((m) => m.review_status === "pending").map((m) => m.id);
   const isProcessing = PROCESSING_STATUSES.has(status);
 
@@ -316,6 +357,110 @@ export default function ReviewMatches() {
               </tbody>
             </table>
           </div>
+
+          {laborLines.length > 0 && (
+            <div className="table-wrap" style={{ marginTop: 18 }}>
+              <div className="panel-header" style={{ padding: "10px 16px 0" }}>
+                <h3>Работы (нормо-часы)</h3>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Описание (заказ-наряд)</th>
+                    <th>Операция</th>
+                    <th>Нормо-часы</th>
+                    <th>Сумма</th>
+                    <th>Уверенность</th>
+                    <th>Статус</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {laborLines.map((l) => (
+                    <tr key={l.id}>
+                      <td>{l.description}</td>
+                      <td>
+                        {l.matched_operation_name || "не найдено"}
+                        {l.manually_edited && (
+                          <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
+                            (ручная правка)
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {editingHoursId === l.id ? (
+                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              autoFocus
+                              disabled={laborBusyId === l.id}
+                              value={hoursInput}
+                              onChange={(e) => setHoursInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveHours(l.id);
+                                if (e.key === "Escape") setEditingHoursId(null);
+                              }}
+                              style={{ width: 70, padding: "4px 6px", fontSize: 13 }}
+                            />
+                            <button
+                              className="btn btn-primary btn-sm"
+                              disabled={laborBusyId === l.id}
+                              onClick={() => saveHours(l.id)}
+                            >
+                              OK
+                            </button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => startEditHours(l)}
+                            title="Изменить нормо-часы вручную"
+                            style={{ cursor: "pointer", borderBottom: "1px dashed var(--border-strong)" }}
+                          >
+                            {l.norm_hours ?? "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td>{l.total_cost ?? "—"}</td>
+                      <td>
+                        <ConfidenceBadge level={l.confidence_level} score={l.confidence_score} />
+                      </td>
+                      <td>
+                        <span className={`status-pill status-${l.review_status}`}>
+                          {l.review_status === "pending"
+                            ? "ожидает"
+                            : l.review_status === "approved"
+                            ? "принято"
+                            : "отклонено"}
+                        </span>
+                      </td>
+                      <td>
+                        {l.review_status === "pending" && (
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button
+                              className="btn btn-approve btn-sm"
+                              disabled={laborBusyId === l.id}
+                              onClick={() => handleLaborDecision(l.id, "approve")}
+                            >
+                              Принять
+                            </button>
+                            <button
+                              className="btn btn-reject btn-sm"
+                              disabled={laborBusyId === l.id}
+                              onClick={() => handleLaborDecision(l.id, "reject")}
+                            >
+                              Отклонить
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div style={{ marginTop: 18 }}>
             <button

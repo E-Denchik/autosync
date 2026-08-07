@@ -249,6 +249,7 @@ h3 {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 20px 22px;
+  min-width: 0;
 }
 
 /* ---------- table ---------- */
@@ -1040,6 +1041,16 @@ a.stat-card:hover {
 
 .text-muted {
   color: var(--text-muted);
+}
+
+.reasoning-cell {
+  max-width: 320px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: help;
 }
 
 .section-title {

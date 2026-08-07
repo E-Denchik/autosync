@@ -16,22 +16,30 @@ def create_app(config_class=Config):
     from app.api.auth import bp as auth_bp
     from app.api.ozon.pricing import bp as ozon_pricing_bp
     from app.api.ozon.cards import bp as ozon_cards_bp
+    from app.api.ozon.stats import bp as ozon_stats_bp
     from app.api.repair_orders.upload import bp as repair_upload_bp
     from app.api.repair_orders.matching import bp as repair_matching_bp
+    from app.api.repair_orders.labor import bp as repair_labor_bp
     from app.api.dashboard import bp as dashboard_bp
     from app.api.llm import bp as llm_bp
     from app.api.history import bp as history_bp
     from app.api.integrations import bp as integrations_bp
+    from app.api.contragents import bp as contragents_bp
+    from app.api.labor_catalog import bp as labor_catalog_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
     app.register_blueprint(ozon_cards_bp, url_prefix="/api/ozon/cards")
+    app.register_blueprint(ozon_stats_bp, url_prefix="/api/ozon/stats")
     app.register_blueprint(repair_upload_bp, url_prefix="/api/repair-orders/upload")
     app.register_blueprint(repair_matching_bp, url_prefix="/api/repair-orders/matching")
+    app.register_blueprint(repair_labor_bp, url_prefix="/api/repair-orders/labor")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(llm_bp, url_prefix="/api/llm")
     app.register_blueprint(history_bp, url_prefix="/api/history")
     app.register_blueprint(integrations_bp, url_prefix="/api/integrations")
+    app.register_blueprint(contragents_bp, url_prefix="/api/contragents")
+    app.register_blueprint(labor_catalog_bp, url_prefix="/api/labor-catalog")
 
     @app.get("/api/health")
     def health():
@@ -82,7 +90,7 @@ def create_app(config_class=Config):
     _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, user, llm_setting, history, integration_setting  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, user, llm_setting, history, integration_setting  # noqa: F401
 
     register_cli(app)
 
