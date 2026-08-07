@@ -47,6 +47,22 @@ class PartMatch(db.Model):
 
     raw_match_data = db.Column(db.JSON)  # сырой ответ parts_supplier_client / llm_client
 
+    # Обогащение из внутренней номенклатуры заказчика (см. NomenclatureEntry) —
+    # независимо от того, как нашёлся matched_article/matched_name выше.
+    # nomenclature_source: "code" (точное совпадение по коду/артикулу),
+    # "fuzzy_name" (нечёткое совпадение по названию) или None, если в
+    # номенклатуре ничего не нашлось (таблица пуста или заказчик её не ведёт).
+    nomenclature_code = db.Column(db.String(128))
+    nomenclature_cat_number = db.Column(db.String(128))
+    nomenclature_manufacturer = db.Column(db.String(256))
+    nomenclature_unit = db.Column(db.String(32))
+    nomenclature_stock_qty = db.Column(db.Numeric(12, 2))
+    nomenclature_reserved_qty = db.Column(db.Numeric(12, 2))
+    nomenclature_in_production_qty = db.Column(db.Numeric(12, 2))
+    nomenclature_ordered_qty = db.Column(db.Numeric(12, 2))
+    nomenclature_warehouse = db.Column(db.String(128))
+    nomenclature_source = db.Column(db.String(32))
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     repair_order = db.relationship("RepairOrder", back_populates="part_matches")

@@ -15,6 +15,7 @@ import History from "./pages/admin/History.jsx";
 import Integrations from "./pages/admin/Integrations.jsx";
 import Contragents from "./pages/admin/Contragents.jsx";
 import LaborCatalog from "./pages/admin/LaborCatalog.jsx";
+import NomenclatureCatalog from "./pages/admin/NomenclatureCatalog.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Spinner from "./components/Spinner.jsx";
 import {
@@ -29,6 +30,7 @@ import {
   PlugIcon,
   TrendingUpIcon,
   ClockIcon,
+  BoxIcon,
 } from "./components/icons.jsx";
 
 function ProtectedShell() {
@@ -101,6 +103,9 @@ function ProtectedShell() {
               <NavLink to="/admin/labor-catalog">
                 <ClockIcon /> Нормо-часы
               </NavLink>
+              <NavLink to="/admin/nomenclature">
+                <BoxIcon /> Номенклатура
+              </NavLink>
               <NavLink to="/admin/llm">
                 <CpuIcon /> LLM-модель
               </NavLink>
@@ -154,6 +159,9 @@ function ProtectedShell() {
             {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
             {user.role === "admin" && <Route path="/admin/contragents" element={<Contragents />} />}
             {user.role === "admin" && <Route path="/admin/labor-catalog" element={<LaborCatalog />} />}
+            {user.role === "admin" && (
+              <Route path="/admin/nomenclature" element={<NomenclatureCatalog />} />
+            )}
             {user.role === "admin" && <Route path="/admin/llm" element={<LlmSettings />} />}
             {user.role === "admin" && <Route path="/admin/integrations" element={<Integrations />} />}
             {user.role === "admin" && <Route path="/admin/history" element={<History />} />}

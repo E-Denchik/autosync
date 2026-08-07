@@ -43,7 +43,20 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
 
     ws.append(["Запчасти"])
     ws[f"A{ws.max_row}"].font = bold
-    ws.append(["Артикул (договор)", "Наименование (договор)", "Сопоставлено с", "Цена", "Уверенность"])
+    ws.append(
+        [
+            "Артикул (договор)",
+            "Наименование (договор)",
+            "Сопоставлено с",
+            "Цена",
+            "Уверенность",
+            "Код",
+            "№ кат.",
+            "Производитель",
+            "Остаток",
+            "Склад",
+        ]
+    )
 
     parts_total = 0.0
     for match in part_matches:
@@ -56,6 +69,11 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
                 match.matched_name or "",
                 price or "",
                 match.confidence_level.value,
+                match.nomenclature_code or "",
+                match.nomenclature_cat_number or "",
+                match.nomenclature_manufacturer or "",
+                float(match.nomenclature_stock_qty) if match.nomenclature_stock_qty is not None else "",
+                match.nomenclature_warehouse or "",
             ]
         )
     ws.append(["", "", "", "Итого запчасти:", parts_total])

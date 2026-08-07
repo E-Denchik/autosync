@@ -17,7 +17,12 @@ def test_status_reports_not_configured_by_default(client, admin_headers):
     assert resp.status_code == 200
     body = resp.get_json()
     ids = {item["id"]: item["configured"] for item in body}
-    assert ids == {"ozon_seller": False, "ozon_performance": False, "analytics": False}
+    assert ids == {
+        "ozon_seller": False,
+        "ozon_performance": False,
+        "analytics": False,
+        "nomenclature": False,
+    }
     assert all(item["api_base_override"] is None for item in body)
 
 

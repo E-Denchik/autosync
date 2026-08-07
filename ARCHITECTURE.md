@@ -31,19 +31,30 @@ autosync/
 │   │   ├── api/
 │   │   │   ├── ozon/                   # роуты модуля 1
 │   │   │   │   ├── pricing.py
-│   │   │   │   └── cards.py
+│   │   │   │   ├── cards.py
+│   │   │   │   └── stats.py
 │   │   │   ├── repair_orders/          # роуты модуля 2
 │   │   │   │   ├── upload.py
-│   │   │   │   └── matching.py
+│   │   │   │   ├── matching.py
+│   │   │   │   └── labor.py            # работы/нормо-часы (approve/reject, правка часов)
+│   │   │   ├── nomenclature.py         # номенклатура/остатки: CRUD + загрузка файлом
+│   │   │   ├── contragents.py
+│   │   │   ├── labor_catalog.py        # справочник нормо-часов (ручное ведение)
 │   │   │   ├── integrations.py         # статус/проверка/ключи внешних API
 │   │   │   └── history.py              # аудит-лог (SCD2), параметризованный поиск
 │   │   ├── services/
 │   │   │   ├── ozon_client.py          # обёртка Ozon Seller/Performance API
 │   │   │   ├── analytics_provider.py   # обёртка стороннего аналитического сервиса
 │   │   │   ├── parts_supplier_client.py# обёртка API поставщика запчастей
+│   │   │   ├── autodata_client.py      # нормо-часы: локальный справочник, заглушка под AutoData API
+│   │   │   ├── labor_matcher.py        # сопоставление строк работ с операциями/нормо-часами
+│   │   │   ├── nomenclature_client.py  # номенклатура/остатки: локальный поиск, заглушка под реальный API
+│   │   │   ├── nomenclature_import.py  # парсинг выгрузки номенклатуры (xlsx/ods/csv) в NomenclatureEntry
+│   │   │   ├── nomenclature_matcher.py # обогащение PartMatch данными номенклатуры
 │   │   │   ├── catalog_sync.py         # синхронизация каталога товаров из Ozon
 │   │   │   ├── settings_store.py       # ключи внешних API — в БД (IntegrationSetting)
 │   │   │   ├── document_parser.py      # парсинг xlsx/pdf договоров и нарядов
+│   │   │   ├── document_generator.py   # генерация итогового заказ-наряда (xlsx)
 │   │   │   ├── llm_client.py           # единая точка вызова LLM-сервиса
 │   │   │   ├── matcher.py              # логика сопоставления запчастей
 │   │   │   ├── price_sync.py           # плановая подтяжка цен/продаж (вызывается APScheduler)
@@ -63,9 +74,12 @@ autosync/
 │   │   │   │   └── CardGenerator.jsx   # категории, поиск, синк с Ozon, закупочная цена
 │   │   │   ├── repair-orders/
 │   │   │   │   ├── UploadPage.jsx
-│   │   │   │   └── ReviewMatches.jsx   # approve/reject сопоставлений
+│   │   │   │   └── ReviewMatches.jsx   # approve/reject сопоставлений запчастей и работ
 │   │   │   └── admin/
 │   │   │       ├── Integrations.jsx    # статус/ключи/проверка внешних API
+│   │   │       ├── Contragents.jsx
+│   │   │       ├── LaborCatalog.jsx    # справочник нормо-часов
+│   │   │       ├── NomenclatureCatalog.jsx # номенклатура/остатки: загрузка файлом, поиск, CRUD
 │   │   │       └── History.jsx         # аудит-лог, параметризованный поиск
 │   │   ├── components/
 │   │   ├── api/                        # клиенты к backend
@@ -104,13 +118,19 @@ APScheduler (по расписанию, раз в 6 часов)
   → API принимает файлы → ставит задачу в ThreadPoolExecutor (job_queue.py)
   → repair_order_processor.py:
       document_parser.py парсит оба файла в таблицы
-      matcher.py сопоставляет позиции:
+      matcher.py сопоставляет строки запчастей:
         1. точное совпадение артикула
         2. если нет — запрос в parts_supplier_client.py (кросс-номера)
         3. если и там нет — llm_client.py сопоставляет по названию (fallback)
-  → результат: PartMatch записи со статусом confidence (exact / cross-ref / llm-guess)
-  → фронт: ReviewMatches — человек проверяет позиции с низким confidence
-  → генерация итогового документа
+      nomenclature_matcher.py обогащает каждое совпадение данными склада
+      (код/№ кат./производитель/остаток/резерв) через nomenclature_client.py —
+      не влияет на confidence, только подтягивает метаданные
+      labor_matcher.py параллельно сопоставляет строки работ с операциями/нормо-часами
+      (autodata_client.py) → LaborLine
+  → результат: PartMatch (+ nomenclature_*) и LaborLine записи со статусом confidence
+    (exact / cross-ref / llm-guess) и review_status (pending/approved/rejected)
+  → фронт: ReviewMatches — человек проверяет позиции и работы с низким confidence
+  → генерация итогового документа (document_generator.py) — только approved-позиции
 ```
 
 ## Ключевые решения и почему
@@ -162,3 +182,9 @@ AutoSync ставится на одну машину как обычная deskt
   только реальных ключей и точной схемы ответа выбранного провайдера в `analytics_provider.py`.
 - Точная схема ответа API поставщика запчастей (какие поля доступны для кросс-референсов).
 - Порог confidence, ниже которого сопоставление обязательно уходит на ручную проверку.
+- **Источник номенклатуры/остатков заказчика** (код, № кат., производитель, остаток, резерв, в
+  производстве, склад) — похоже на выгрузку из его 1С/учётной системы, не на прайс поставщика.
+  Модель (`NomenclatureEntry`) и заготовка клиента (`nomenclature_client.py`, локальный поиск +
+  плейсхолдер под реальный API — тот же паттерн, что и `AutoDataClient`/`analytics_provider.py`)
+  уже есть; не хватает только подтверждения источника и, если это API, — реальной схемы ответа в
+  `_find_remote()`. Список конкретных вопросов заказчику — в PROJECT.md, «Ограничения и допущения».

@@ -79,6 +79,13 @@ class Config:
     AUTODATA_BASE_URL = os.environ.get("AUTODATA_BASE_URL", "")
     AUTODATA_API_KEY = os.environ.get("AUTODATA_API_KEY", "")
 
+    # Пусто по умолчанию — NomenclatureClient ищет по локальной таблице
+    # NomenclatureEntry (заполняется загрузкой файла/вручную), пока не
+    # подтверждено, откуда у заказчика реально берётся номенклатура/остатки
+    # (1С API, отдельная складская система — см. PROJECT.md, «Ограничения»).
+    NOMENCLATURE_PROVIDER_BASE_URL = os.environ.get("NOMENCLATURE_PROVIDER_BASE_URL", "")
+    NOMENCLATURE_PROVIDER_API_KEY = os.environ.get("NOMENCLATURE_PROVIDER_API_KEY", "")
+
     # Ниже порога сопоставление обязательно уходит на ручную проверку.
     # TODO: уточнить с заказчиком точное значение.
     MATCH_CONFIDENCE_THRESHOLD = float(os.environ.get("MATCH_CONFIDENCE_THRESHOLD", "0.75"))

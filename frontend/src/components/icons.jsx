@@ -165,3 +165,10 @@ export const ClockIcon = (props) => (
     <path d="M12 7v5l3.5 2" />
   </svg>
 );
+
+export const BoxIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" />
+    <path d="M3 8l9 5 9-5M12 13v8" />
+  </svg>
+);

@@ -26,6 +26,8 @@ from app.services.history import log_change
 from app.services.labor_matcher import match_all_labor
 from app.services.llm_client import LLMClient
 from app.services.matcher import match_all
+from app.services.nomenclature_client import NomenclatureClient
+from app.services.nomenclature_matcher import enrich_all
 from app.services.parts_supplier_client import PartsSupplierClient
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,22 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         log_change("repair_order", repair_order.id, "failed", details={"error": str(exc), "stage": "matching"})
         db.session.commit()
         return {"status": "failed", "error": str(exc)}
+
+    # Обогащаем каждое сопоставление данными из внутренней номенклатуры
+    # заказчика (код, № кат., производитель, остаток/резерв/склад) — не
+    # влияет на confidence_level самого сопоставления, только подтягивает
+    # складские метаданные для уже найденной позиции (см. nomenclature_matcher.py).
+    # Недоступность источника номенклатуры не должна ронять обработку —
+    # тот же принцип, что и для supplier_client/llm_client выше.
+    try:
+        nomenclature_client = NomenclatureClient(
+            current_app.config["NOMENCLATURE_PROVIDER_BASE_URL"],
+            current_app.config["NOMENCLATURE_PROVIDER_API_KEY"],
+        )
+        results = enrich_all(results, nomenclature_client)
+    except Exception as exc:
+        logger.exception("enrich_all (номенклатура) упал для repair_order_id=%s", repair_order_id)
+        log_change("repair_order", repair_order.id, "nomenclature_enrichment_failed", details={"error": str(exc)})
 
     # Все сопоставления создаются со статусом PENDING (см. модель PartMatch) —
     # ReviewMatches сортирует/подсвечивает low-confidence позиции на фронте,

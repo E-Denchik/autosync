@@ -162,4 +162,16 @@ export const api = {
   // Ozon: статистика/инфографика
   ozonStatsSummary: () => request("/ozon/stats/summary"),
   ozonProductPriceHistory: (productId) => request(`/ozon/stats/products/${productId}/history`),
+
+  // Номенклатура/остатки (внутренний склад заказчика)
+  listNomenclature: (q = "") => request(`/nomenclature${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  createNomenclatureEntry: (data) => request("/nomenclature", { method: "POST", body: JSON.stringify(data) }),
+  updateNomenclatureEntry: (id, data) =>
+    request(`/nomenclature/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteNomenclatureEntry: (id) => request(`/nomenclature/${id}`, { method: "DELETE" }),
+  uploadNomenclatureFile: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/nomenclature/upload", { method: "POST", body: formData });
+  },
 };

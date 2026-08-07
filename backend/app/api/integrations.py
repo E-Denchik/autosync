@@ -16,6 +16,7 @@ from app.auth import admin_required, get_current_user
 from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.history import log_change
+from app.services.nomenclature_client import NomenclatureClient, NomenclatureClientError
 from app.services.ozon_client import (
     DEFAULT_PERFORMANCE_API_BASE,
     DEFAULT_SELLER_API_BASE,
@@ -42,6 +43,11 @@ def _ozon_client() -> OzonClient:
 def _analytics_provider() -> AnalyticsProvider:
     cfg = current_app.config
     return AnalyticsProvider(cfg["ANALYTICS_PROVIDER_BASE_URL"], cfg["ANALYTICS_PROVIDER_API_KEY"])
+
+
+def _nomenclature_client() -> NomenclatureClient:
+    cfg = current_app.config
+    return NomenclatureClient(cfg["NOMENCLATURE_PROVIDER_BASE_URL"], cfg["NOMENCLATURE_PROVIDER_API_KEY"])
 
 
 def _api_base_override(env_var: str, default: str) -> str | None:
@@ -78,6 +84,16 @@ def status():
             "configured": bool(cfg["ANALYTICS_PROVIDER_BASE_URL"]),
             "api_base_override": None,
         },
+        {
+            "id": "nomenclature",
+            "name": "Номенклатура/остатки",
+            "description": (
+                "Внутренний склад заказчика — код, № кат., производитель, остаток/резерв/склад "
+                "(источник уточняется с заказчиком; без API работает по локальной загруженной таблице)"
+            ),
+            "configured": bool(cfg["NOMENCLATURE_PROVIDER_BASE_URL"]),
+            "api_base_override": None,
+        },
     ]
     return jsonify(integrations)
 
@@ -91,9 +107,11 @@ def test_connection(integration_id: str):
             message = _ozon_client().test_performance_connection()
         elif integration_id == "analytics":
             message = _analytics_provider().test_connection()
+        elif integration_id == "nomenclature":
+            message = _nomenclature_client().test_connection()
         else:
             return jsonify(error=f"Неизвестная интеграция: {integration_id}"), 404
-    except (OzonClientError, AnalyticsProviderError) as exc:
+    except (OzonClientError, AnalyticsProviderError, NomenclatureClientError) as exc:
         return jsonify(ok=False, message=str(exc))
     except Exception as exc:  # сеть/таймаут/и т.п. — тоже "не удалось", не 500
         current_app.logger.warning("test_connection(%s) failed: %s", integration_id, exc)
