@@ -3,7 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import { useToast } from "../../context/ToastContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { UploadIcon, FileTextIcon, AlertCircleIcon } from "../../components/icons.jsx";
+import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon } from "../../components/icons.jsx";
 
 const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
 const MAX_SIZE_BYTES = 25 * 1024 * 1024; // см. backend/app/config.py: MAX_CONTENT_LENGTH
@@ -16,6 +17,7 @@ function formatSize(bytes) {
 
 function Dropzone({ id, label, hint, files, onChange }) {
   const [dragOver, setDragOver] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
   const toast = useToast();
 
   const addFiles = (fileList) => {
@@ -72,16 +74,29 @@ function Dropzone({ id, label, hint, files, onChange }) {
                   <div className="dz-file">{f.name}</div>
                   <div className="dz-meta">{formatSize(f.size)}</div>
                 </div>
-                <button
-                  type="button"
-                  className="dz-remove"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeAt(i);
-                  }}
-                >
-                  Убрать
-                </button>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="dz-remove"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewFile(f);
+                    }}
+                  >
+                    <EyeIcon style={{ width: 13, height: 13 }} /> Просмотр
+                  </button>
+                  <button
+                    type="button"
+                    className="dz-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeAt(i);
+                    }}
+                  >
+                    Убрать
+                  </button>
+                </div>
               </div>
             ))}
             <div className="dz-hint" style={{ marginTop: 8 }}>
@@ -105,6 +120,9 @@ function Dropzone({ id, label, hint, files, onChange }) {
           }}
         />
       </div>
+      {previewFile && (
+        <FilePreviewModal blob={previewFile} fileName={previewFile.name} onClose={() => setPreviewFile(null)} />
+      )}
     </div>
   );
 }

@@ -4,8 +4,9 @@ import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon } from "../../components/icons.jsx";
+import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
 
 const PER_PAGE = 50;
 
@@ -34,6 +35,8 @@ export default function NomenclatureCatalog() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState(null);
   const toast = useToast();
 
   const load = (q = query, p = page) => {
@@ -92,6 +95,7 @@ export default function NomenclatureCatalog() {
   };
 
   const handleDownloadTemplate = async () => {
+    setDownloadingTemplate(true);
     try {
       const blob = await api.downloadNomenclatureTemplate();
       const url = window.URL.createObjectURL(blob);
@@ -100,8 +104,11 @@ export default function NomenclatureCatalog() {
       a.download = "autosync-shablon-nomenklatura.xlsx";
       a.click();
       window.URL.revokeObjectURL(url);
+      toast.success("Шаблон скачан");
     } catch (e) {
       toast.error(e.message);
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -151,9 +158,22 @@ export default function NomenclatureCatalog() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
-            <DownloadIcon /> Скачать шаблон
+          <button className="btn btn-secondary" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
+            <DownloadIcon /> {downloadingTemplate ? "Скачивание…" : "Скачать шаблон"}
           </button>
+          <label className="btn btn-secondary" style={{ cursor: "pointer" }}>
+            <EyeIcon /> Просмотреть файл
+            <input
+              type="file"
+              accept={ACCEPTED.join(",")}
+              onChange={(e) => {
+                const f = e.target.files[0];
+                e.target.value = "";
+                if (f) setPreviewTarget(f);
+              }}
+              style={{ display: "none" }}
+            />
+          </label>
           <label className="btn btn-secondary" style={{ cursor: uploading ? "default" : "pointer" }}>
             <UploadIcon /> {uploading ? "Загрузка…" : "Загрузить файл(ы)"}
             <input
@@ -326,6 +346,14 @@ export default function NomenclatureCatalog() {
           busy={deleting}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {previewTarget && (
+        <FilePreviewModal
+          blob={previewTarget}
+          fileName={previewTarget.name}
+          onClose={() => setPreviewTarget(null)}
         />
       )}
     </div>

@@ -3,8 +3,9 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, DownloadIcon } from "../../components/icons.jsx";
+import { PlusIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
 
 const TOKENS = [
   ["{{order_number}}, {{order_date}}", "номер и дата заказ-наряда"],
@@ -24,6 +25,8 @@ export default function DocumentTemplates() {
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [downloadingStarter, setDownloadingStarter] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState(null);
   const toast = useToast();
 
   const load = () => {
@@ -38,6 +41,7 @@ export default function DocumentTemplates() {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDownloadStarter = async () => {
+    setDownloadingStarter(true);
     try {
       const blob = await api.downloadStarterTemplate();
       const url = window.URL.createObjectURL(blob);
@@ -46,8 +50,11 @@ export default function DocumentTemplates() {
       a.download = "autosync-starter-shablon.xlsx";
       a.click();
       window.URL.revokeObjectURL(url);
+      toast.success("Стартовый шаблон скачан");
     } catch (e) {
       toast.error(e.message);
+    } finally {
+      setDownloadingStarter(false);
     }
   };
 
@@ -69,6 +76,15 @@ export default function DocumentTemplates() {
       toast.error(e2.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handlePreview = async (template) => {
+    try {
+      const blob = await api.getDocumentTemplateFile(template.id);
+      setPreviewTarget({ blob, fileName: template.original_filename });
+    } catch (e) {
+      toast.error(e.message);
     }
   };
 
@@ -97,23 +113,32 @@ export default function DocumentTemplates() {
             встроенный формат (как у 1С).
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={handleDownloadStarter}>
-          <DownloadIcon /> Скачать стартовый шаблон
+        <button className="btn btn-secondary" disabled={downloadingStarter} onClick={handleDownloadStarter}>
+          <DownloadIcon /> {downloadingStarter ? "Скачивание…" : "Скачать стартовый шаблон"}
         </button>
       </div>
 
       <div className="panel" style={{ marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Доступные плейсхолдеры</h3>
-        <table>
-          <tbody>
-            {TOKENS.map(([tokens, hint]) => (
-              <tr key={tokens}>
-                <td style={{ fontFamily: "monospace", fontSize: 12.5, whiteSpace: "nowrap" }}>{tokens}</td>
-                <td className="text-muted">{hint}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {TOKENS.map(([tokens, hint]) => (
+            <div key={tokens} style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 12.5,
+                  wordBreak: "break-word",
+                  overflowWrap: "break-word",
+                }}
+              >
+                {tokens}
+              </div>
+              <div className="text-muted" style={{ fontSize: 12.5 }}>
+                {hint}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <form className="panel" style={{ marginBottom: 20, maxWidth: 520 }} onSubmit={handleUpload}>
@@ -130,6 +155,16 @@ export default function DocumentTemplates() {
         <div className="field">
           <label htmlFor="tpl-file">Файл (.xlsx)</label>
           <input id="tpl-file" type="file" accept=".xlsx,.xlsm" onChange={(e) => setFile(e.target.files[0])} />
+          {file && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: 8, alignSelf: "flex-start" }}
+              onClick={() => setPreviewTarget({ blob: file, fileName: file.name })}
+            >
+              <EyeIcon style={{ width: 13, height: 13 }} /> Просмотреть перед загрузкой
+            </button>
+          )}
         </div>
         <button className="btn btn-primary" disabled={uploading} type="submit">
           <PlusIcon /> {uploading ? "Загрузка…" : "Загрузить"}
@@ -160,7 +195,10 @@ export default function DocumentTemplates() {
                   <td className="text-muted">{t.original_filename}</td>
                   <td className="text-muted">{new Date(t.created_at).toLocaleDateString("ru-RU")}</td>
                   <td>
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => handlePreview(t)}>
+                        <EyeIcon style={{ width: 13, height: 13 }} /> Просмотр
+                      </button>
                       <button className="btn btn-reject btn-sm" onClick={() => setDeleteTarget(t)}>
                         Удалить
                       </button>
@@ -186,6 +224,14 @@ export default function DocumentTemplates() {
           busy={deleting}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {previewTarget && (
+        <FilePreviewModal
+          blob={previewTarget.blob}
+          fileName={previewTarget.fileName}
+          onClose={() => setPreviewTarget(null)}
         />
       )}
     </div>
