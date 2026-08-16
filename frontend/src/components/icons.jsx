@@ -166,6 +166,13 @@ export const ClockIcon = (props) => (
   </svg>
 );
 
+export const EyeIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 export const BoxIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" />

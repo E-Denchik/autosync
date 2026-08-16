@@ -5,8 +5,9 @@ import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { FileTextIcon, UploadIcon, ChevronRightIcon } from "../../components/icons.jsx";
+import { FileTextIcon, UploadIcon, ChevronRightIcon, EyeIcon } from "../../components/icons.jsx";
 
 const PER_PAGE = 50;
 
@@ -15,7 +16,17 @@ export default function RepairOrdersList() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [previewTarget, setPreviewTarget] = useState(null);
   const toast = useToast();
+
+  const handlePreview = async (orderId, source, fileName) => {
+    try {
+      const blob = await api.getRepairOrderSourceFile(orderId, source);
+      setPreviewTarget({ blob, fileName });
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
 
   const load = (p) => {
     setLoading(true);
@@ -85,14 +96,34 @@ export default function RepairOrdersList() {
               {orders.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    {o.original_filename}
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => handlePreview(o.id, "order", o.original_filename)}
+                      title="Просмотреть файл"
+                    >
+                      <EyeIcon style={{ width: 12, height: 12 }} /> {o.original_filename}
+                    </button>
                     {o.extra_file_count > 0 && (
                       <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
                         +{o.extra_file_count}
                       </span>
                     )}
                   </td>
-                  <td>{o.contract_filename || "—"}</td>
+                  <td>
+                    {o.contract_filename ? (
+                      <button
+                        type="button"
+                        className="btn-link"
+                        onClick={() => handlePreview(o.id, "contract", o.contract_filename)}
+                        title="Просмотреть файл"
+                      >
+                        <EyeIcon style={{ width: 12, height: 12 }} /> {o.contract_filename}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="text-muted">
                     {[o.vehicle_make, o.vehicle_model].filter(Boolean).join(" ") || "—"}
                   </td>
@@ -119,6 +150,14 @@ export default function RepairOrdersList() {
           </table>
           <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
         </div>
+      )}
+
+      {previewTarget && (
+        <FilePreviewModal
+          blob={previewTarget.blob}
+          fileName={previewTarget.fileName}
+          onClose={() => setPreviewTarget(null)}
+        />
       )}
     </div>
   );

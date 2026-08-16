@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
@@ -154,3 +154,18 @@ def upload_status(repair_order_id: int):
         status=repair_order.status.value,
         error_message=repair_order.error_message,
     )
+
+
+@bp.get("/<int:repair_order_id>/file")
+def download_source_file(repair_order_id: int):
+    repair_order = db.get_or_404(RepairOrder, repair_order_id)
+    source = request.args.get("source", "order")
+    if source == "contract":
+        path, name = repair_order.contract.storage_path, repair_order.contract.original_filename
+    elif source == "order":
+        path, name = repair_order.storage_path, repair_order.original_filename
+    else:
+        return jsonify(error="source должен быть 'order' или 'contract'"), 400
+    if not os.path.isfile(path):
+        return jsonify(error="Файл не найден на диске"), 404
+    return send_file(path, as_attachment=True, download_name=name)

@@ -7,6 +7,7 @@ import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import MatchEditModal from "../../components/MatchEditModal.jsx";
 import LaborEditModal from "../../components/LaborEditModal.jsx";
+import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { CheckCircleIcon, DownloadIcon, EditIcon } from "../../components/icons.jsx";
 
@@ -34,6 +35,7 @@ export default function ReviewMatches() {
   const [editingLaborLine, setEditingLaborLine] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [generatedPreview, setGeneratedPreview] = useState(null);
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -236,6 +238,7 @@ export default function ReviewMatches() {
       a.download = `repair_order_${repairOrderId}_matches.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
+      toast.success("CSV-файл скачан");
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -246,14 +249,16 @@ export default function ReviewMatches() {
   const handleGenerateDocument = async () => {
     setGenerating(true);
     try {
+      const fileName = `repair_order_${repairOrderId}_final.xlsx`;
       const blob = await api.generateDocument(repairOrderId, selectedTemplateId || undefined);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `repair_order_${repairOrderId}_final.xlsx`;
+      a.download = fileName;
       a.click();
       window.URL.revokeObjectURL(url);
-      toast.success("Итоговый документ сформирован");
+      toast.success("Итоговый документ сформирован и скачан");
+      setGeneratedPreview({ blob, fileName });
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -668,6 +673,14 @@ export default function ReviewMatches() {
           saving={laborBusyId === editingLaborLine.id}
           onClose={() => setEditingLaborLine(null)}
           onSave={handleSaveLaborEdit}
+        />
+      )}
+
+      {generatedPreview && (
+        <FilePreviewModal
+          blob={generatedPreview.blob}
+          fileName={generatedPreview.fileName}
+          onClose={() => setGeneratedPreview(null)}
         />
       )}
     </div>

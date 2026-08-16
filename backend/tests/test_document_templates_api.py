@@ -52,6 +52,9 @@ def test_upload_and_list_and_delete(client, admin_headers):
     resp2 = client.get("/api/document-templates", headers=admin_headers)
     assert len(resp2.get_json()) == 1
 
+    resp_file = client.get(f"/api/document-templates/{template_id}/file", headers=admin_headers)
+    assert resp_file.status_code == 200
+
     resp3 = client.delete(f"/api/document-templates/{template_id}", headers=admin_headers)
     assert resp3.status_code == 204
 

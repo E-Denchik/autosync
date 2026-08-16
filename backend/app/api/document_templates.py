@@ -39,6 +39,14 @@ def download_starter():
     return send_file(output_path, as_attachment=True, download_name="autosync-starter-shablon.xlsx")
 
 
+@bp.get("/<int:template_id>/file")
+def download_template_file(template_id: int):
+    template = db.get_or_404(DocumentTemplate, template_id)
+    if not os.path.isfile(template.storage_path):
+        return jsonify(error="Файл не найден на диске"), 404
+    return send_file(template.storage_path, as_attachment=True, download_name=template.original_filename)
+
+
 @bp.post("")
 @admin_required
 def upload_template():

@@ -181,4 +181,13 @@ export const api = {
   },
   deleteDocumentTemplate: (id) => request(`/document-templates/${id}`, { method: "DELETE" }),
   downloadStarterTemplate: () => request("/document-templates/starter"),
+  getDocumentTemplateFile: (id) => request(`/document-templates/${id}/file`),
+
+  previewFile: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/file-preview", { method: "POST", body: formData });
+  },
+  getRepairOrderSourceFile: (repairOrderId, source) =>
+    request(`/repair-orders/upload/${repairOrderId}/file?source=${source}`),
 };
