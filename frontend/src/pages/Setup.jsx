@@ -4,8 +4,6 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Setup() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const { completeSetup, setupRequired, loading, user } = useAuth();
@@ -24,18 +22,9 @@ export default function Setup() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Пароль должен быть не короче 8 символов");
-      return;
-    }
-    if (password !== passwordConfirm) {
-      setError("Пароли не совпадают");
-      return;
-    }
-
     setSubmitting(true);
     try {
-      await completeSetup(email.trim(), password);
+      await completeSetup(email.trim());
       navigate("/", { replace: true });
     } catch (e2) {
       setError(e2.message || "Не удалось создать администратора");
@@ -76,29 +65,6 @@ export default function Setup() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@company.ru"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password">Пароль (мин. 8 символов)</label>
-          <input
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="passwordConfirm">Повторите пароль</label>
-          <input
-            id="passwordConfirm"
-            type="password"
-            required
-            value={passwordConfirm}
-            onChange={(e) => setPasswordConfirm(e.target.value)}
-            placeholder="••••••••"
           />
         </div>
 

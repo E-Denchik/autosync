@@ -78,3 +78,60 @@ def match_all_labor(
         match_labor_line(desc, vehicle_make, vehicle_model, autodata_client, llm_client)
         for desc in descriptions
     ]
+
+
+LABOR_SUGGESTION_CANDIDATE_LIMIT = 60
+
+
+def suggest_missing_labor_operations(
+    matched_results: list[dict],
+    vehicle_make: str | None,
+    vehicle_model: str | None,
+    autodata_client: AutoDataClient,
+    llm_client: LLMClient,
+) -> list[dict]:
+    if not matched_results:
+        return []
+
+    try:
+        candidates = autodata_client.find_norm_hours(vehicle_make or "", vehicle_model)
+    except AutoDataError as exc:
+        logger.warning("AutoData недоступен для подбора недостающих работ: %s", exc)
+        return []
+
+    existing_operations = [
+        r.get("matched_operation_name") or r.get("description") for r in matched_results
+    ]
+    already_covered = {name.strip().lower() for name in existing_operations if name}
+    remaining = [c for c in candidates if c["operation_name"].strip().lower() not in already_covered]
+    if not remaining or len(remaining) > LABOR_SUGGESTION_CANDIDATE_LIMIT:
+        return []
+
+    try:
+        llm_result = llm_client.suggest_additional_labor_operations(
+            existing_operations, vehicle_make, vehicle_model, remaining
+        )
+    except Exception as exc:
+        logger.warning("LLM-подбор недостающих работ недоступен: %s", exc)
+        return []
+
+    suggestions = []
+    for item in llm_result.get("suggestions") or []:
+        idx = item.get("index")
+        if idx is None or not (0 <= idx < len(remaining)):
+            continue
+        candidate = remaining[idx]
+        suggestions.append(
+            {
+                "description": candidate["operation_name"],
+                "matched_operation_name": candidate["operation_name"],
+                "norm_hours": candidate["norm_hours"],
+                "confidence_level": ConfidenceLevel.LLM_GUESS,
+                "confidence_score": item.get("confidence", 0.0),
+                "raw_match_data": {
+                    "source": "llm_suggested_addition",
+                    "reasoning": item.get("reasoning"),
+                },
+            }
+        )
+    return suggestions

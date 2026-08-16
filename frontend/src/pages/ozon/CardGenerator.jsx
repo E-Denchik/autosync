@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import {
   TagIcon,
@@ -14,9 +15,12 @@ import {
 } from "../../components/icons.jsx";
 
 const UNCATEGORIZED = "__uncategorized__";
+const PER_PAGE = 50;
 
 export default function CardGenerator() {
   const [products, setProducts] = useState([]);
+  const [productsTotal, setProductsTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState("");
   const [search, setSearch] = useState("");
@@ -35,18 +39,21 @@ export default function CardGenerator() {
     api.listProductCategories().then(setCategories).catch((e) => toast.error(e.message));
   };
 
-  const loadProducts = (category, q) => {
+  const loadProducts = (category, q, p = 1) => {
     setLoading(true);
     api
-      .listProducts({ category, q })
-      .then(setProducts)
+      .listProducts({ category, q, page: p, per_page: PER_PAGE })
+      .then(({ items, total }) => {
+        setProducts(items);
+        setProductsTotal(total);
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   };
 
   const load = () => {
     loadCategories();
-    loadProducts(activeCategory, search);
+    loadProducts(activeCategory, search, page);
   };
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -59,9 +66,15 @@ export default function CardGenerator() {
       isFirstRender.current = false;
       return;
     }
-    const timer = setTimeout(() => loadProducts(activeCategory, search), 300);
+    setPage(1);
+    const timer = setTimeout(() => loadProducts(activeCategory, search, 1), 300);
     return () => clearTimeout(timer);
   }, [activeCategory, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePageChange = (p) => {
+    setPage(p);
+    loadProducts(activeCategory, search, p);
+  };
 
   const totalCount = categories.reduce((sum, c) => sum + c.count, 0);
 
@@ -288,6 +301,7 @@ export default function CardGenerator() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} perPage={PER_PAGE} total={productsTotal} onPageChange={handlePageChange} />
         </div>
       )}
 
@@ -306,6 +320,40 @@ export default function CardGenerator() {
             <p style={{ fontSize: 13.5 }}>
               Предложенная цена: <strong>{content.suggested_price} ₽</strong>
             </p>
+          )}
+          {content.reasoning && (
+            <p className="text-muted" style={{ fontSize: 12.5, fontStyle: "italic" }}>
+              {content.reasoning}
+            </p>
+          )}
+          {content.competitor_listings && content.competitor_listings.length > 0 && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                На основе каких конкурентов сформирована карточка (отсортированы по продажам):
+              </div>
+              <table style={{ fontSize: 12.5 }}>
+                <thead>
+                  <tr>
+                    <th>Конкурент</th>
+                    <th>Цена</th>
+                    <th>Место в продажах</th>
+                    <th>Продано за 30 дн.</th>
+                    <th>Рейтинг</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.competitor_listings.map((l, i) => (
+                    <tr key={i}>
+                      <td>{l.name || "—"}</td>
+                      <td>{l.price != null ? `${l.price} ₽` : "—"}</td>
+                      <td>{l.sales_rank ?? "—"}</td>
+                      <td>{l.units_sold_30d ?? "—"}</td>
+                      <td>{l.rating ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ))}

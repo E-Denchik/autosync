@@ -2,13 +2,13 @@ import os
 import uuid
 
 from flask import Blueprint, current_app, jsonify, request
-from werkzeug.utils import secure_filename
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import (
     Contract,
     DocumentProcessingStatus,
+    LaborLine,
     PartMatch,
     RepairOrder,
     RepairOrderStatus,
@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
+from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("repair_orders_upload", __name__)
 bp.before_request(login_required(lambda: None))
@@ -23,9 +24,12 @@ bp.before_request(login_required(lambda: None))
 ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"}
 
 
+def display_filename(filename: str | None) -> str:
+    return os.path.basename((filename or "").strip()) or "file"
+
+
 def _save_upload(file_storage) -> str:
-    filename = secure_filename(file_storage.filename)
-    ext = os.path.splitext(filename)[1].lower()
+    ext = os.path.splitext(file_storage.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(f"Неподдерживаемый тип файла: {ext}")
 
@@ -53,7 +57,7 @@ def upload_documents():
         return jsonify(error=str(exc)), 400
 
     contract = Contract(
-        original_filename=secure_filename(contract_file.filename),
+        original_filename=display_filename(contract_file.filename),
         storage_path=contract_path,
         status=DocumentProcessingStatus.UPLOADED,
     )
@@ -68,7 +72,7 @@ def upload_documents():
         vehicle_model=(request.form.get("vehicle_model") or "").strip() or None,
         vehicle_year=int(request.form["vehicle_year"]) if request.form.get("vehicle_year") else None,
         vehicle_vin=(request.form.get("vehicle_vin") or "").strip() or None,
-        original_filename=secure_filename(order_file.filename),
+        original_filename=display_filename(order_file.filename),
         storage_path=order_path,
         status=RepairOrderStatus.UPLOADED,
     )
@@ -95,11 +99,16 @@ def upload_documents():
 @bp.get("")
 def list_repair_orders():
     """История загруженных заказ-нарядов для страницы со списком на фронте."""
-    orders = RepairOrder.query.order_by(RepairOrder.created_at.desc()).limit(100).all()
+    query = RepairOrder.query.order_by(RepairOrder.created_at.desc())
+    orders, total_count = paginate(query, request.args)
     result = []
     for order in orders:
         total = PartMatch.query.filter_by(repair_order_id=order.id).count()
         pending = PartMatch.query.filter_by(
+            repair_order_id=order.id, review_status=ReviewStatus.PENDING
+        ).count()
+        labor_total = LaborLine.query.filter_by(repair_order_id=order.id).count()
+        labor_pending = LaborLine.query.filter_by(
             repair_order_id=order.id, review_status=ReviewStatus.PENDING
         ).count()
         result.append(
@@ -110,13 +119,15 @@ def list_repair_orders():
                 "status": order.status.value,
                 "matches_total": total,
                 "matches_pending": pending,
+                "labor_total": labor_total,
+                "labor_pending": labor_pending,
                 "vehicle_make": order.vehicle_make,
                 "vehicle_model": order.vehicle_model,
                 "contragent_name": order.contragent.name if order.contragent else None,
                 "created_at": order.created_at.isoformat(),
             }
         )
-    return jsonify(result)
+    return paginated_response(result, total_count)
 
 
 @bp.get("/<int:repair_order_id>/status")

@@ -3,7 +3,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon } from "../../components/icons.jsx";
+import { PlusIcon, EditIcon } from "../../components/icons.jsx";
 
 const EMPTY_FORM = { name: "", hourly_rate: "", notes: "" };
 
@@ -15,6 +15,9 @@ export default function Contragents() {
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [editingRateId, setEditingRateId] = useState(null);
+  const [rateInput, setRateInput] = useState("");
+  const [savingRate, setSavingRate] = useState(false);
   const toast = useToast();
 
   const load = () => {
@@ -41,6 +44,24 @@ export default function Contragents() {
       toast.error(e2.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const startEditRate = (c) => {
+    setEditingRateId(c.id);
+    setRateInput(c.hourly_rate);
+  };
+
+  const saveRate = async (id) => {
+    setSavingRate(true);
+    try {
+      const updated = await api.updateContragent(id, { hourly_rate: Number(rateInput) });
+      setContragents((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      setEditingRateId(null);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingRate(false);
     }
   };
 
@@ -129,7 +150,48 @@ export default function Contragents() {
               {contragents.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name}</td>
-                  <td>{c.hourly_rate}</td>
+                  <td>
+                    {editingRateId === c.id ? (
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          autoFocus
+                          disabled={savingRate}
+                          value={rateInput}
+                          onChange={(e) => setRateInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveRate(c.id);
+                            if (e.key === "Escape") setEditingRateId(null);
+                          }}
+                          style={{ width: 88, padding: "4px 6px", fontSize: 13 }}
+                        />
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={savingRate}
+                          onClick={() => saveRate(c.id)}
+                        >
+                          OK
+                        </button>
+                      </div>
+                    ) : (
+                      <span
+                        onClick={() => startEditRate(c)}
+                        title="Изменить ставку"
+                        style={{
+                          cursor: "pointer",
+                          borderBottom: "1px dashed var(--border-strong)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {c.hourly_rate}
+                        <EditIcon style={{ width: 11, height: 11, opacity: 0.6 }} />
+                      </span>
+                    )}
+                  </td>
                   <td className="text-muted">{c.notes || "—"}</td>
                   <td>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>

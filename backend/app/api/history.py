@@ -10,7 +10,8 @@ from flask import Blueprint, jsonify, request
 from app.auth import admin_required
 from app.extensions import db
 from app.models import RecordHistory
-from app.services.history import query_history
+from app.services.history import count_history, query_history
+from app.services.pagination import DEFAULT_PER_PAGE, MAX_PER_PAGE, paginated_response, parse_positive_int
 
 bp = Blueprint("history", __name__)
 bp.before_request(admin_required(lambda: None))
@@ -48,7 +49,7 @@ def _parse_date(value: str | None) -> datetime | None:
 @bp.get("")
 def list_history():
     args = request.args
-    entries = query_history(
+    filters = dict(
         entity_type=args.get("entity_type") or None,
         entity_id=_parse_int(args.get("entity_id")),
         action=args.get("action") or None,
@@ -56,9 +57,12 @@ def list_history():
         start_from=_parse_date(args.get("start_from")),
         start_to=_parse_date(args.get("start_to")),
         only_current=args.get("only_current") == "true",
-        limit=min(_parse_int(args.get("limit")) or 200, 1000),
     )
-    return jsonify([_serialize(e) for e in entries])
+    page = parse_positive_int(args.get("page")) or 1
+    per_page = min(parse_positive_int(args.get("per_page")) or DEFAULT_PER_PAGE, MAX_PER_PAGE)
+    entries = query_history(**filters, limit=per_page, offset=(page - 1) * per_page)
+    total = count_history(**filters)
+    return paginated_response([_serialize(e) for e in entries], total)
 
 
 @bp.get("/entity-types")

@@ -47,14 +47,14 @@ class LLMClient:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
         return resp.json()["text"]
 
-    def generate_card_content(self, product: dict, competitor_cards: list[dict]) -> dict:
+    def generate_card_content(self, product: dict, market: dict | list) -> dict:
         """SEO-текст, буллеты и характеристики карточки на основе конкурентов."""
         from app.services.prompt_loader import render_prompt
 
         prompt = render_prompt(
             "card_generation.md",
             product=product,
-            competitor_cards=competitor_cards,
+            market=market,
         )
         text = self._generate(prompt, json_response=True)
         try:
@@ -83,6 +83,24 @@ class LLMClient:
         prompt = render_prompt(
             "labor_matching.md",
             description=description,
+            candidates=candidates,
+        )
+        text = self._generate(prompt, json_response=True)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
+    def suggest_additional_labor_operations(
+        self, existing_operations: list[str], vehicle_make: str | None, vehicle_model: str | None, candidates: list[dict]
+    ) -> dict:
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt(
+            "labor_suggestions.md",
+            existing_operations=existing_operations,
+            vehicle_make=vehicle_make,
+            vehicle_model=vehicle_model,
             candidates=candidates,
         )
         text = self._generate(prompt, json_response=True)

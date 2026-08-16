@@ -7,6 +7,7 @@ from app.services.analytics_provider import AnalyticsProvider, AnalyticsProvider
 from app.services.catalog_sync import sync_ozon_catalog_job
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
+from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("ozon_cards", __name__)
 bp.before_request(login_required(lambda: None))
@@ -31,13 +32,14 @@ def generate_card(product_id: int):
     """
     product = db.get_or_404(Product, product_id)
 
-    competitor_cards = []
+    market = {"price_stats": None, "top_listings": []}
     try:
         provider = AnalyticsProvider(
             current_app.config["ANALYTICS_PROVIDER_BASE_URL"],
             current_app.config["ANALYTICS_PROVIDER_API_KEY"],
         )
-        competitor_cards = [provider.get_competitor_prices(product.name, product.category)]
+        market["price_stats"] = provider.get_competitor_prices(product.name, product.category)
+        market["top_listings"] = provider.get_top_competitor_listings(product.name, product.category)
     except AnalyticsProviderError as exc:
         current_app.logger.warning("analytics provider unavailable: %s", exc)
 
@@ -45,10 +47,12 @@ def generate_card(product_id: int):
     try:
         content = llm.generate_card_content(
             {"name": product.name, "sku": product.sku, "category": product.category},
-            competitor_cards,
+            market,
         )
     except LLMClientError as exc:
         return jsonify(error=f"LLM-сервис недоступен: {exc}"), 502
+
+    content["competitor_listings"] = market["top_listings"]
     return jsonify(content)
 
 
@@ -81,8 +85,9 @@ def list_products():
         like = f"%{q}%"
         query = query.filter(db.or_(Product.name.ilike(like), Product.sku.ilike(like)))
 
-    products = query.order_by(Product.updated_at.desc()).limit(200).all()
-    return jsonify([_serialize_product(p) for p in products])
+    query = query.order_by(Product.updated_at.desc())
+    products, total = paginate(query, request.args)
+    return paginated_response([_serialize_product(p) for p in products], total)
 
 
 @bp.patch("/<int:product_id>")

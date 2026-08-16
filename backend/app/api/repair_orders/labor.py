@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
@@ -12,6 +12,7 @@ bp.before_request(login_required(lambda: None))
 
 
 def _serialize(line: LaborLine) -> dict:
+    threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
     return {
         "id": line.id,
         "repair_order_id": line.repair_order_id,
@@ -22,8 +23,10 @@ def _serialize(line: LaborLine) -> dict:
         "total_cost": float(line.total_cost) if line.total_cost is not None else None,
         "confidence_level": line.confidence_level.value,
         "confidence_score": line.confidence_score,
+        "below_confidence_threshold": line.confidence_score is not None and line.confidence_score < threshold,
         "review_status": line.review_status.value,
         "manually_edited": line.manually_edited,
+        "suggested_addition": bool(line.raw_match_data and line.raw_match_data.get("source") == "llm_suggested_addition"),
     }
 
 
@@ -31,7 +34,14 @@ def _serialize(line: LaborLine) -> dict:
 def list_labor_lines(repair_order_id: int):
     db.get_or_404(RepairOrder, repair_order_id)
     lines = LaborLine.query.filter_by(repair_order_id=repair_order_id).order_by(LaborLine.id).all()
-    return jsonify([_serialize(line) for line in lines])
+    serialized = [_serialize(line) for line in lines]
+    serialized.sort(
+        key=lambda l: (
+            l["review_status"] != "pending",
+            not l["below_confidence_threshold"],
+        )
+    )
+    return jsonify(serialized)
 
 
 @bp.patch("/<int:labor_line_id>")

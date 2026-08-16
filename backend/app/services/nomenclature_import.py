@@ -35,7 +35,7 @@ class NomenclatureImportError(RuntimeError):
 
 
 def _match_column(columns: list[str], aliases: list[str]) -> str | None:
-    normalized = {c: str(c).strip().lower() for c in columns}
+    normalized = {c: str(c).strip().lower() for c in columns if not str(c).strip().lower().startswith("unnamed")}
     for col, norm in normalized.items():
         if any(alias in norm for alias in aliases):
             return col
@@ -104,15 +104,15 @@ def parse_nomenclature_file(file_path: str) -> list[dict]:
     ext = os.path.splitext(file_path)[1].lower()
     if ext in (".xlsx", ".xlsm", ".xls"):
         engine = "xlrd" if ext == ".xls" else "openpyxl"
-        df = pd.read_excel(file_path, engine=engine)
+        df = pd.read_excel(file_path, engine=engine, dtype=str)
     elif ext == ".ods":
-        df = pd.read_excel(file_path, engine="odf")
+        df = pd.read_excel(file_path, engine="odf", dtype=str)
     elif ext == ".csv":
         last_error: Exception | None = None
         df = None
         for encoding in ("utf-8-sig", "cp1251"):
             try:
-                df = pd.read_csv(file_path, sep=None, engine="python", encoding=encoding)
+                df = pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
                 break
             except (UnicodeDecodeError, pd.errors.ParserError) as exc:
                 last_error = exc

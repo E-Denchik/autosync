@@ -175,3 +175,10 @@ def test_generate_document_succeeds_once_all_reviewed(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/octet-stream",
     )
+
+    with app.app_context():
+        order = db.session.get(RepairOrder, order_id)
+        # Регрессия: RepairOrderStatus.REVIEWED никогда не выставлялся —
+        # заказ-наряд навсегда оставался needs_review даже после генерации
+        # документа, засоряя счётчик "нужно проверить" на дашборде.
+        assert order.status == RepairOrderStatus.REVIEWED

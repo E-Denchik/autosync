@@ -58,8 +58,10 @@ Windows-раннерах: `.github/workflows/build-native.yml`, публикуе
 
 ## Авторизация
 
-Все API-эндпоинты, кроме `/api/health`, `/api/auth/login`, `/api/auth/setup*`,
-требуют заголовок `Authorization: Bearer <token>`. Публичной регистрации нет —
+Все API-эндпоинты, кроме `/api/health`, `/api/auth/login`, `/api/auth/login-options`,
+`/api/auth/setup*`, требуют заголовок `Authorization: Bearer <token>`. Входа по
+паролю нет — вход происходит выбором своей учётной записи из списка
+(`/api/auth/login-options`). Публичной регистрации нет —
 первого администратора создаёт мастер `/setup` в окне приложения при первом
 запуске (либо CLI-команда `flask users create-admin`); новых пользователей
 дальше заводит уже сам администратор через страницу «Пользователи» в UI.
@@ -75,7 +77,7 @@ pip install -r requirements-dev.txt
 
 export FLASK_APP=wsgi.py
 flask db upgrade
-flask users create-admin --email you@company.ru --password ...
+flask users create-admin --email you@company.ru
 
 python native_app.py   # откроет своё окно само; БД и загрузки — в data/ (в корне проекта)
 ```

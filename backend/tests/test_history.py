@@ -47,7 +47,6 @@ def test_log_change_is_scoped_per_entity(app):
 def test_query_history_filters_by_action_and_actor(app):
     with app.app_context():
         admin = User(email="actor@test.local", role=UserRole.ADMIN)
-        admin.set_password("adminpass123")
         db.session.add(admin)
         db.session.flush()
 
@@ -85,7 +84,6 @@ def test_actor_email_survives_actor_deletion(app):
     # Postgres — но actor_email переживает удаление в любом случае).
     with app.app_context():
         user = User(email="disappearing@test.local", role=UserRole.OPERATOR)
-        user.set_password("operatorpass123")
         db.session.add(user)
         db.session.flush()
 

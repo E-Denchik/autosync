@@ -48,7 +48,7 @@ def log_change(
     return entry
 
 
-def query_history(
+def _build_history_query(
     entity_type: str | None = None,
     entity_id: int | None = None,
     action: str | None = None,
@@ -56,12 +56,7 @@ def query_history(
     start_from: datetime | None = None,
     start_to: datetime | None = None,
     only_current: bool = False,
-    limit: int = 200,
-) -> list[RecordHistory]:
-    """Параметризованный поиск по журналу — start_from/start_to фильтруют
-    по start_day (когда запись стала действующей), only_current оставляет
-    только ещё не закрытые (end_day IS NULL) записи — то есть текущее
-    состояние сущностей, а не полную историю их изменений."""
+):
     query = RecordHistory.query
 
     if entity_type:
@@ -79,4 +74,40 @@ def query_history(
     if only_current:
         query = query.filter(RecordHistory.end_day.is_(None))
 
-    return query.order_by(RecordHistory.start_day.desc()).limit(limit).all()
+    return query
+
+
+def query_history(
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    action: str | None = None,
+    actor_id: int | None = None,
+    start_from: datetime | None = None,
+    start_to: datetime | None = None,
+    only_current: bool = False,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[RecordHistory]:
+    """Параметризованный поиск по журналу — start_from/start_to фильтруют
+    по start_day (когда запись стала действующей), only_current оставляет
+    только ещё не закрытые (end_day IS NULL) записи — то есть текущее
+    состояние сущностей, а не полную историю их изменений."""
+    query = _build_history_query(
+        entity_type, entity_id, action, actor_id, start_from, start_to, only_current
+    )
+    return query.order_by(RecordHistory.start_day.desc()).offset(offset).limit(limit).all()
+
+
+def count_history(
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    action: str | None = None,
+    actor_id: int | None = None,
+    start_from: datetime | None = None,
+    start_to: datetime | None = None,
+    only_current: bool = False,
+) -> int:
+    query = _build_history_query(
+        entity_type, entity_id, action, actor_id, start_from, start_to, only_current
+    )
+    return query.count()

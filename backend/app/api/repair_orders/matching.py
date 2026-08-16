@@ -2,11 +2,11 @@ import csv
 import io
 from datetime import datetime
 
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
-from app.models import LaborLine, PartMatch, RepairOrder, ReviewStatus
+from app.models import LaborLine, PartMatch, RepairOrder, RepairOrderStatus, ReviewStatus
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
@@ -14,6 +14,7 @@ bp.before_request(login_required(lambda: None))
 
 
 def _serialize(match: PartMatch) -> dict:
+    threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
     return {
         "id": match.id,
         "repair_order_id": match.repair_order_id,
@@ -26,6 +27,7 @@ def _serialize(match: PartMatch) -> dict:
         # обязан отображать их визуально по-разному (см. ARCHITECTURE.md).
         "confidence_level": match.confidence_level.value,
         "confidence_score": match.confidence_score,
+        "below_confidence_threshold": match.confidence_score is not None and match.confidence_score < threshold,
         "review_status": match.review_status.value,
         "manually_edited": match.manually_edited,
         # Обогащение из внутренней номенклатуры заказчика (см. NomenclatureEntry) —
@@ -61,7 +63,14 @@ def list_matches(repair_order_id: int):
         .order_by(PartMatch.id)
         .all()
     )
-    return jsonify([_serialize(m) for m in matches])
+    serialized = [_serialize(m) for m in matches]
+    serialized.sort(
+        key=lambda m: (
+            m["review_status"] != "pending",
+            not m["below_confidence_threshold"],
+        )
+    )
+    return jsonify(serialized)
 
 
 @bp.get("/<int:repair_order_id>/candidates")
@@ -236,6 +245,8 @@ def generate_document(repair_order_id: int):
 
     output_path = generate_repair_order_document(repair_order)
     repair_order.generated_document_path = output_path
+    repair_order.status = RepairOrderStatus.REVIEWED
+    log_change("repair_order", repair_order.id, "reviewed", actor=get_current_user())
     db.session.commit()
 
     return send_file(output_path, as_attachment=True)
