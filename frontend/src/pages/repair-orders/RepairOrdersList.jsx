@@ -84,7 +84,14 @@ export default function RepairOrdersList() {
             <tbody>
               {orders.map((o) => (
                 <tr key={o.id}>
-                  <td>{o.original_filename}</td>
+                  <td>
+                    {o.original_filename}
+                    {o.extra_file_count > 0 && (
+                      <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
+                        +{o.extra_file_count}
+                      </span>
+                    )}
+                  </td>
                   <td>{o.contract_filename || "—"}</td>
                   <td className="text-muted">
                     {[o.vehicle_make, o.vehicle_model].filter(Boolean).join(" ") || "—"}

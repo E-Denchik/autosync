@@ -5,15 +5,16 @@ Priority: optional
 Architecture: amd64
 Installed-Size: __INSTALLED_SIZE__
 Maintainer: AutoSync Internal <noreply@autosync.local>
-Depends: python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0
+Depends: python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, tesseract-ocr, tesseract-ocr-rus
 Description: AutoSync — internal auto-service platform (desktop app, no Docker)
  Single self-contained binary bundling backend, frontend and the LLM
  wrapper service — SQLite instead of PostgreSQL, in-process task queue
  instead of Celery/Redis. Installs and runs like a regular desktop
  application: launch from the applications menu, opens in its own window
  (system webview, no Chromium bundled) — closing it exits the app.
- Also reachable from other devices on the same network at this machine's
- address while the window is open.
+ Only reachable through that window: the backend listens on 127.0.0.1
+ and rejects any request without the window's own per-launch token, so
+ it is not reachable from a browser on this machine or from the network.
  .
  First launch walks you through creating an administrator account
  directly in the app window — no command line needed.

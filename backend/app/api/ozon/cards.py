@@ -21,6 +21,8 @@ def _serialize_product(p: Product) -> dict:
         "category": p.category,
         "cost_price": float(p.cost_price) if p.cost_price is not None else None,
         "current_price": float(p.current_price) if p.current_price is not None else None,
+        "units_sold_7d": p.units_sold_7d,
+        "revenue_7d": float(p.revenue_7d) if p.revenue_7d is not None else None,
     }
 
 

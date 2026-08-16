@@ -57,5 +57,6 @@ echo ""
 echo "==> Готово: $OUTPUT"
 dpkg-deb --info "$OUTPUT" | sed 's/^/    /'
 echo ""
-echo "Установка: sudo dpkg -i $(basename "$OUTPUT")"
+echo "Установка: sudo apt install ./$(basename "$OUTPUT")"
+echo "(именно apt install, а не dpkg -i — иначе зависимости вроде tesseract-ocr-rus не подтянутся сами)"
 echo "Запуск: из меню приложений («AutoSync») или /opt/autosync/autosync"

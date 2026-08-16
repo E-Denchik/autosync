@@ -182,3 +182,51 @@ def test_generate_document_succeeds_once_all_reviewed(
         # заказ-наряд навсегда оставался needs_review даже после генерации
         # документа, засоряя счётчик "нужно проверить" на дашборде.
         assert order.status == RepairOrderStatus.REVIEWED
+
+
+def test_generate_document_with_template_uses_uploaded_template(
+    client, admin_headers, repair_order_with_matches, tmp_path, app
+):
+    import io
+
+    import openpyxl
+
+    order_id = repair_order_with_matches["order_id"]
+
+    with app.app_context():
+        order = db.session.get(RepairOrder, order_id)
+        order.storage_path = str(tmp_path / "order.xlsx")
+        db.session.commit()
+
+    client.post(
+        "/api/repair-orders/matching/bulk",
+        headers=admin_headers,
+        json={"ids": repair_order_with_matches["match_ids"], "action": "approve"},
+    )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Заказ-наряд № {{order_number}}"])
+    ws.append(["{{part.n}}", "{{part.article}}", "{{part.price}}"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    upload_resp = client.post(
+        "/api/document-templates",
+        headers=admin_headers,
+        data={"name": "Кастомный", "file": (buf, "custom.xlsx")},
+        content_type="multipart/form-data",
+    )
+    template_id = upload_resp.get_json()["id"]
+
+    resp = client.post(
+        f"/api/repair-orders/matching/{order_id}/generate-document?template_id={template_id}",
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+
+    output_wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+    values = [cell.value for row in output_wb.active.iter_rows() for cell in row if cell.value is not None]
+    assert f"Заказ-наряд № {order_id}" in values
+    assert "ABC-1" in values

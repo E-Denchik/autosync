@@ -64,6 +64,7 @@ pyinstaller \
   --hidden-import=apscheduler.schedulers.background \
   --collect-submodules apscheduler \
   --hidden-import=logging.config \
+  --hidden-import=pytesseract \
   --collect-all numpy \
   --collect-all pandas \
   --collect-all gi \

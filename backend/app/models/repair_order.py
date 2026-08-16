@@ -46,6 +46,9 @@ class RepairOrder(db.Model):
     labor_lines = db.relationship(
         "LaborLine", back_populates="repair_order", cascade="all, delete-orphan"
     )
+    extra_files = db.relationship(
+        "RepairOrderFile", back_populates="repair_order", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<RepairOrder {self.original_filename} status={self.status}>"

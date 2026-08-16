@@ -19,7 +19,7 @@ from app.models import PriceSnapshot, Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
-from app.services.ozon_client import OzonClient, OzonClientError
+from app.services.ozon_client import OzonClient, OzonClientError, extract_items
 
 
 def sync_ozon_prices_job() -> dict:
@@ -43,19 +43,37 @@ def sync_ozon_prices_job() -> dict:
 
     try:
         prices_resp = ozon.get_product_prices()
-        ozon.get_sales_stats(str(date_from), str(date_to))
     except OzonClientError as exc:
         current_app.logger.error("Ozon Seller API недоступен: %s", exc)
         return {"status": "failed", "error": str(exc)}
 
+    sales_by_sku: dict[str, dict] = {}
+    try:
+        sales_resp = ozon.get_sales_stats(str(date_from), str(date_to))
+        for row in sales_resp.get("result", {}).get("data", []):
+            dims = row.get("dimensions") or []
+            metrics = row.get("metrics") or []
+            if not dims or len(metrics) < 2:
+                continue
+            sku = dims[0].get("id")
+            if sku:
+                sales_by_sku[str(sku)] = {"units_sold": metrics[0], "revenue": metrics[1]}
+    except OzonClientError as exc:
+        current_app.logger.warning("Ozon analytics/data недоступен: %s", exc)
+
     created = 0
-    for item in prices_resp.get("result", {}).get("items", []):
+    for item in extract_items(prices_resp):
         offer_id = item.get("offer_id")
         product = Product.query.filter_by(sku=offer_id).first()
         if not product:
             continue
 
         own_price = item.get("price", {}).get("price")
+
+        sales = sales_by_sku.get(product.ozon_sku) if product.ozon_sku else None
+        if sales:
+            product.units_sold_7d = sales["units_sold"]
+            product.revenue_7d = sales["revenue"]
 
         competitor_data = {}
         if analytics:

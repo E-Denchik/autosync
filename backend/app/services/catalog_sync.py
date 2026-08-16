@@ -17,20 +17,10 @@ from flask import current_app
 from app.extensions import db
 from app.models import Product
 from app.services.history import log_change
-from app.services.ozon_client import OzonClient, OzonClientError
+from app.services.ozon_client import OzonClient, OzonClientError, extract_items
 
 PAGE_SIZE = 100
 MAX_PAGES = 1000  # защита от бесконечного цикла, если Ozon вернёт "зависший" last_id
-
-
-def _extract_items(data: dict) -> list[dict]:
-    # Ozon Seller API исторически непоследователен в оборачивании ответа в
-    # {"result": {...}} — подстраховываемся под оба варианта. Не проверено
-    # вживую без реальных ключей, см. ARCHITECTURE.md, "Открытые вопросы".
-    result = data.get("result")
-    if isinstance(result, dict) and "items" in result:
-        return result["items"]
-    return data.get("items", [])
 
 
 def _extract_category_nodes(tree_resp: dict) -> list[dict]:
@@ -93,7 +83,7 @@ def sync_ozon_catalog_job() -> dict:
                 return {"status": "failed", "error": str(exc)}
             break  # частичный успех — то, что успели забрать, уже сохранено
 
-        items = _extract_items(page)
+        items = extract_items(page)
         if not items:
             break
 
@@ -103,7 +93,7 @@ def sync_ozon_catalog_job() -> dict:
         info_by_id: dict[str, dict] = {}
         try:
             info_resp = ozon.get_product_info(product_ids)
-            for info in _extract_items(info_resp):
+            for info in extract_items(info_resp):
                 pid = str(info.get("product_id") or info.get("id") or "")
                 if pid:
                     info_by_id[pid] = info
@@ -114,8 +104,8 @@ def sync_ozon_catalog_job() -> dict:
         try:
             prices_resp = ozon.get_product_prices(offer_ids=offer_ids)
             # v5 отдаёт items без обёртки в "result" (в отличие от list_products
-            # /product_info) — _extract_items уже поддерживает оба варианта.
-            for p in _extract_items(prices_resp):
+            # /product_info) — extract_items уже поддерживает оба варианта.
+            for p in extract_items(prices_resp):
                 price_by_offer[p.get("offer_id")] = p.get("price", {}).get("price")
         except OzonClientError as exc:
             current_app.logger.warning("Ozon catalog sync: не удалось получить цены: %s", exc)
@@ -125,6 +115,7 @@ def sync_ozon_catalog_job() -> dict:
             offer_id = item.get("offer_id")
             if not ozon_product_id or not offer_id:
                 continue
+            ozon_sku = str(item.get("sku") or "") or None
 
             info = info_by_id.get(ozon_product_id, {})
             name = info.get("name") or offer_id
@@ -153,6 +144,7 @@ def sync_ozon_catalog_job() -> dict:
                 product = Product(
                     ozon_product_id=ozon_product_id,
                     sku=offer_id,
+                    ozon_sku=ozon_sku,
                     name=name,
                     category=category,
                     current_price=price_val,
@@ -165,6 +157,9 @@ def sync_ozon_catalog_job() -> dict:
                 changed = False
                 if product.sku != offer_id:
                     product.sku = offer_id
+                    changed = True
+                if ozon_sku and product.ozon_sku != ozon_sku:
+                    product.ozon_sku = ozon_sku
                     changed = True
                 if info.get("name") and product.name != info["name"]:
                     product.name = info["name"]

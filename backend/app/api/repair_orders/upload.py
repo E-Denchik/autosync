@@ -7,21 +7,24 @@ from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import (
     Contract,
+    ContractFile,
     DocumentProcessingStatus,
     LaborLine,
     PartMatch,
     RepairOrder,
+    RepairOrderFile,
     RepairOrderStatus,
     ReviewStatus,
 )
 from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
+from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("repair_orders_upload", __name__)
 bp.before_request(login_required(lambda: None))
 
-ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"}
+ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
 
 def display_filename(filename: str | None) -> str:
@@ -43,26 +46,30 @@ def _save_upload(file_storage) -> str:
 
 @bp.post("")
 def upload_documents():
-    """Принимает договор + заказ-наряд, ставит задачу парсинга/сопоставления в очередь."""
-    if "contract" not in request.files or "repair_order" not in request.files:
+    """Принимает договор + заказ-наряд (каждый — один или несколько файлов,
+    например отдельные страницы), ставит задачу парсинга/сопоставления в очередь."""
+    contract_files = request.files.getlist("contract")
+    order_files = request.files.getlist("repair_order")
+    if not contract_files or not order_files:
         return jsonify(error="Нужны оба файла: contract и repair_order"), 400
 
-    contract_file = request.files["contract"]
-    order_file = request.files["repair_order"]
-
     try:
-        contract_path = _save_upload(contract_file)
-        order_path = _save_upload(order_file)
+        contract_paths = [_save_upload(f) for f in contract_files]
+        order_paths = [_save_upload(f) for f in order_files]
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
     contract = Contract(
-        original_filename=display_filename(contract_file.filename),
-        storage_path=contract_path,
+        original_filename=display_filename(contract_files[0].filename),
+        storage_path=contract_paths[0],
         status=DocumentProcessingStatus.UPLOADED,
     )
     db.session.add(contract)
     db.session.flush()
+    for f, path in zip(contract_files[1:], contract_paths[1:]):
+        db.session.add(
+            ContractFile(contract_id=contract.id, original_filename=display_filename(f.filename), storage_path=path)
+        )
 
     contragent_id = request.form.get("contragent_id")
     repair_order = RepairOrder(
@@ -72,12 +79,18 @@ def upload_documents():
         vehicle_model=(request.form.get("vehicle_model") or "").strip() or None,
         vehicle_year=int(request.form["vehicle_year"]) if request.form.get("vehicle_year") else None,
         vehicle_vin=(request.form.get("vehicle_vin") or "").strip() or None,
-        original_filename=display_filename(order_file.filename),
-        storage_path=order_path,
+        original_filename=display_filename(order_files[0].filename),
+        storage_path=order_paths[0],
         status=RepairOrderStatus.UPLOADED,
     )
     db.session.add(repair_order)
     db.session.flush()
+    for f, path in zip(order_files[1:], order_paths[1:]):
+        db.session.add(
+            RepairOrderFile(
+                repair_order_id=repair_order.id, original_filename=display_filename(f.filename), storage_path=path
+            )
+        )
 
     log_change(
         "repair_order",
@@ -87,6 +100,8 @@ def upload_documents():
         details={
             "original_filename": repair_order.original_filename,
             "contract_filename": contract.original_filename,
+            "order_file_count": len(order_files),
+            "contract_file_count": len(contract_files),
         },
     )
     db.session.commit()
@@ -115,6 +130,7 @@ def list_repair_orders():
             {
                 "id": order.id,
                 "original_filename": order.original_filename,
+                "extra_file_count": len(order.extra_files),
                 "contract_filename": order.contract.original_filename if order.contract else None,
                 "status": order.status.value,
                 "matches_total": total,

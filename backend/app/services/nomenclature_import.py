@@ -100,14 +100,33 @@ def _dataframe_to_rows(df: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def parse_nomenclature_file(file_path: str) -> list[dict]:
+NOMENCLATURE_FIELDS = [
+    "code",
+    "cat_number",
+    "manufacturer",
+    "name",
+    "unit",
+    "stock_qty",
+    "ordered_qty",
+    "reserved_qty",
+    "in_production_qty",
+    "warehouse",
+    "price",
+]
+
+
+def parse_nomenclature_file(file_path: str, llm_client=None) -> list[dict]:
+    from app.services.document_parser import extract_docx_tables, extract_pdf_tables, needs_ocr
+
     ext = os.path.splitext(file_path)[1].lower()
     if ext in (".xlsx", ".xlsm", ".xls"):
         engine = "xlrd" if ext == ".xls" else "openpyxl"
         df = pd.read_excel(file_path, engine=engine, dtype=str)
-    elif ext == ".ods":
+        return _dataframe_to_rows(df)
+    if ext == ".ods":
         df = pd.read_excel(file_path, engine="odf", dtype=str)
-    elif ext == ".csv":
+        return _dataframe_to_rows(df)
+    if ext == ".csv":
         last_error: Exception | None = None
         df = None
         for encoding in ("utf-8-sig", "cp1251"):
@@ -118,17 +137,63 @@ def parse_nomenclature_file(file_path: str) -> list[dict]:
                 last_error = exc
         if df is None:
             raise NomenclatureImportError(f"Не удалось прочитать CSV (кодировка/разделитель): {last_error}")
-    else:
-        raise NomenclatureImportError(f"Неподдерживаемый формат файла: {ext}")
+        return _dataframe_to_rows(df)
+    if ext == ".docx":
+        rows = []
+        for table_df in extract_docx_tables(file_path):
+            rows.extend(_dataframe_to_rows(table_df))
+        return rows
+    if ext == ".pdf" and not needs_ocr(file_path):
+        rows = []
+        for table_df in extract_pdf_tables(file_path):
+            rows.extend(_dataframe_to_rows(table_df))
+        return rows
+    if needs_ocr(file_path):
+        if llm_client is None:
+            raise NomenclatureImportError(
+                "Файл требует распознавания текста (скан/фото или PDF без текстового слоя), "
+                "но LLM для структурирования результата недоступен"
+            )
+        return _extract_via_ocr(file_path, llm_client)
 
-    return _dataframe_to_rows(df)
+    raise NomenclatureImportError(f"Неподдерживаемый формат файла: {ext}")
 
 
-def import_nomenclature_file(file_path: str) -> dict:
+def _extract_via_ocr(file_path: str, llm_client) -> list[dict]:
+    from app.services.ocr import OcrError, extract_text
+
+    try:
+        raw_text = extract_text(file_path)
+    except OcrError as exc:
+        raise NomenclatureImportError(str(exc)) from exc
+    if not raw_text.strip():
+        raise NomenclatureImportError("Не удалось распознать текст в файле (пустой результат OCR)")
+
+    try:
+        rows = llm_client.extract_table_from_text(raw_text, NOMENCLATURE_FIELDS)
+    except Exception as exc:
+        raise NomenclatureImportError(f"Не удалось извлечь таблицу из распознанного текста: {exc}") from exc
+
+    numeric_fields = {"stock_qty", "ordered_qty", "reserved_qty", "in_production_qty", "price"}
+    cleaned = []
+    for row in rows:
+        name = _clean_str(row.get("name"))
+        if not name:
+            continue
+        cleaned.append(
+            {
+                field: (_clean_num(value) if field in numeric_fields else _clean_str(value))
+                for field, value in {**row, "name": name}.items()
+            }
+        )
+    return cleaned
+
+
+def import_nomenclature_file(file_path: str, llm_client=None) -> dict:
     """Парсит файл и upsert-ит записи в NomenclatureEntry: совпадение по
     коду, иначе по каталожному номеру, иначе — новая запись. Так повторная
     загрузка обновлённой выгрузки не плодит дубликаты."""
-    rows = parse_nomenclature_file(file_path)
+    rows = parse_nomenclature_file(file_path, llm_client)
 
     created = updated = 0
     for row in rows:

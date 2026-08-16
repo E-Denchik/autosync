@@ -5,7 +5,7 @@ import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, UploadIcon, SearchIcon } from "../../components/icons.jsx";
+import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon } from "../../components/icons.jsx";
 
 const PER_PAGE = 50;
 
@@ -20,7 +20,7 @@ const EMPTY_FORM = {
   warehouse: "",
 };
 
-const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv"];
+const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
 
 export default function NomenclatureCatalog() {
   const [entries, setEntries] = useState([]);
@@ -91,21 +91,45 @@ export default function NomenclatureCatalog() {
     }
   };
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    const ext = "." + file.name.split(".").pop().toLowerCase();
-    if (!ACCEPTED.includes(ext)) {
-      toast.error(`Формат ${ext} не поддерживается. Допустимые форматы: ${ACCEPTED.join(", ")}`);
-      return;
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await api.downloadNomenclatureTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "autosync-shablon-nomenklatura.xlsx";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e.message);
     }
+  };
+
+  const handleUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    const valid = [];
+    for (const file of files) {
+      const ext = "." + file.name.split(".").pop().toLowerCase();
+      if (!ACCEPTED.includes(ext)) {
+        toast.error(`Формат ${ext} не поддерживается. Допустимые форматы: ${ACCEPTED.join(", ")}`);
+        continue;
+      }
+      valid.push(file);
+    }
+    if (valid.length === 0) return;
+
     setUploading(true);
     try {
-      const summary = await api.uploadNomenclatureFile(file);
+      const summary = await api.uploadNomenclatureFile(valid);
       toast.success(
         `Загружено: ${summary.rows_parsed} строк — новых ${summary.created}, обновлено ${summary.updated}`
       );
+      if (summary.errors?.length) {
+        summary.errors.forEach((msg) => toast.error(msg));
+      }
       load();
     } catch (e2) {
       toast.error(e2.message);
@@ -127,10 +151,14 @@ export default function NomenclatureCatalog() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
+            <DownloadIcon /> Скачать шаблон
+          </button>
           <label className="btn btn-secondary" style={{ cursor: uploading ? "default" : "pointer" }}>
-            <UploadIcon /> {uploading ? "Загрузка…" : "Загрузить файл"}
+            <UploadIcon /> {uploading ? "Загрузка…" : "Загрузить файл(ы)"}
             <input
               type="file"
+              multiple
               accept={ACCEPTED.join(",")}
               onChange={handleUpload}
               disabled={uploading}

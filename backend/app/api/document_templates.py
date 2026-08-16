@@ -1,0 +1,81 @@
+import os
+import uuid
+
+from flask import Blueprint, current_app, jsonify, request, send_file
+
+from app.auth import admin_required, get_current_user, login_required
+from app.extensions import db
+from app.models import DocumentTemplate
+from app.services import document_template_engine
+from app.services.history import log_change
+
+bp = Blueprint("document_templates", __name__)
+bp.before_request(login_required(lambda: None))
+
+ALLOWED_EXTENSIONS = {".xlsx", ".xlsm"}
+
+
+def _serialize(t: DocumentTemplate) -> dict:
+    return {
+        "id": t.id,
+        "name": t.name,
+        "original_filename": t.original_filename,
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+@bp.get("")
+def list_templates():
+    templates = DocumentTemplate.query.order_by(DocumentTemplate.name).all()
+    return jsonify([_serialize(t) for t in templates])
+
+
+@bp.get("/starter")
+def download_starter():
+    upload_dir = current_app.config["UPLOAD_DIR"]
+    os.makedirs(upload_dir, exist_ok=True)
+    output_path = os.path.join(upload_dir, f"starter-template-{uuid.uuid4().hex}.xlsx")
+    document_template_engine.build_starter_template(output_path)
+    return send_file(output_path, as_attachment=True, download_name="autosync-starter-shablon.xlsx")
+
+
+@bp.post("")
+@admin_required
+def upload_template():
+    name = (request.form.get("name") or "").strip()
+    file_storage = request.files.get("file")
+    if not file_storage or not file_storage.filename:
+        return jsonify(error="Нужен файл 'file'"), 400
+    ext = os.path.splitext(file_storage.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify(error=f"Неподдерживаемый формат {ext} — нужен .xlsx/.xlsm"), 400
+    if not name:
+        name = os.path.splitext(file_storage.filename)[0]
+
+    upload_dir = current_app.config["UPLOAD_DIR"]
+    os.makedirs(upload_dir, exist_ok=True)
+    stored_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{ext}")
+    file_storage.save(stored_path)
+
+    template = DocumentTemplate(
+        name=name,
+        original_filename=file_storage.filename,
+        storage_path=stored_path,
+    )
+    db.session.add(template)
+    db.session.flush()
+    log_change("document_template", template.id, "created", actor=get_current_user(), details={"name": name})
+    db.session.commit()
+    return jsonify(_serialize(template)), 201
+
+
+@bp.delete("/<int:template_id>")
+@admin_required
+def delete_template(template_id: int):
+    template = db.get_or_404(DocumentTemplate, template_id)
+    if os.path.isfile(template.storage_path):
+        os.remove(template.storage_path)
+    log_change("document_template", template.id, "deleted", actor=get_current_user())
+    db.session.delete(template)
+    db.session.commit()
+    return "", 204

@@ -11,6 +11,8 @@ from app.models.user import User, UserRole
 from app.models.llm_setting import LLMModelSelection
 from app.models.history import RecordHistory
 from app.models.integration_setting import IntegrationSetting
+from app.models.upload_file import ContractFile, RepairOrderFile
+from app.models.document_template import DocumentTemplate
 
 __all__ = [
     "Product",
@@ -32,4 +34,7 @@ __all__ = [
     "LLMModelSelection",
     "RecordHistory",
     "IntegrationSetting",
+    "ContractFile",
+    "RepairOrderFile",
+    "DocumentTemplate",
 ]

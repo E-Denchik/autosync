@@ -90,6 +90,20 @@ def get_icon_path() -> str | None:
     return path
 
 
+def configure_tesseract() -> None:
+    if sys.platform != "win32" or not is_frozen():
+        return
+    bundle_dir = resource_path("tesseract")
+    exe_path = os.path.join(bundle_dir, "tesseract.exe")
+    if not os.path.isfile(exe_path):
+        logger.warning("Tesseract не найден в сборке (%s) — загрузка сканов/фото будет недоступна.", exe_path)
+        return
+    import pytesseract
+
+    pytesseract.pytesseract.tesseract_cmd = exe_path
+    os.environ["TESSDATA_PREFIX"] = os.path.join(bundle_dir, "tessdata")
+
+
 def get_data_dir() -> str:
     override = os.environ.get("AUTOSYNC_DATA_DIR")
     if override:
@@ -269,6 +283,8 @@ def main() -> None:
 
     setup_logging(data_dir)
     logger.info("AutoSync запускается, каталог данных: %s", data_dir)
+
+    configure_tesseract()
 
     backend_port = int(os.environ.get("AUTOSYNC_PORT", "5000"))
     llm_port = int(os.environ.get("AUTOSYNC_LLM_PORT", "8001"))

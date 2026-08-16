@@ -24,7 +24,10 @@ class LLMClient:
     def list_models(self) -> dict:
         """Discovery всех LLM-раннеров, которые видит llm-service (Ollama,
         LM Studio) — что реально скачано на этой машине прямо сейчас."""
-        resp = requests.get(f"{self.base_url}/models", timeout=5)
+        try:
+            resp = requests.get(f"{self.base_url}/models", timeout=5)
+        except requests.exceptions.RequestException as exc:
+            raise LLMClientError(f"llm-service недоступен: {exc}") from exc
         if not resp.ok:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
         return resp.json()
@@ -38,11 +41,14 @@ class LLMClient:
             payload["provider"] = selection.provider
             payload["model"] = selection.model_name
 
-        resp = requests.post(
-            f"{self.base_url}/generate",
-            json=payload,
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.post(
+                f"{self.base_url}/generate",
+                json=payload,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise LLMClientError(f"llm-service недоступен: {exc}") from exc
         if not resp.ok:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
         return resp.json()["text"]
@@ -108,6 +114,18 @@ class LLMClient:
             return json.loads(text)
         except json.JSONDecodeError as exc:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
+    def extract_table_from_text(self, raw_text: str, fields: list[str]) -> list[dict]:
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt("ocr_table_extraction.md", raw_text=raw_text[:12000], fields=fields)
+        text = self._generate(prompt, json_response=True)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+        rows = parsed.get("rows") or []
+        return [{field: row.get(field) for field in fields} for row in rows]
 
     def match_part_by_name(self, contract_line: dict, candidates: list[dict]) -> dict:
         """Fallback-сопоставление позиции по названию, когда нет совпадения

@@ -5,7 +5,7 @@ import { useToast } from "../../context/ToastContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { UploadIcon, FileTextIcon, AlertCircleIcon } from "../../components/icons.jsx";
 
-const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"];
+const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
 const MAX_SIZE_BYTES = 25 * 1024 * 1024; // см. backend/app/config.py: MAX_CONTENT_LENGTH
 
 function formatSize(bytes) {
@@ -14,30 +14,43 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
-function Dropzone({ id, label, file, onChange }) {
+function Dropzone({ id, label, hint, files, onChange }) {
   const [dragOver, setDragOver] = useState(false);
   const toast = useToast();
 
-  const handleFiles = (files) => {
-    const f = files?.[0];
-    if (!f) return;
-    const ext = "." + f.name.split(".").pop().toLowerCase();
-    if (!ACCEPTED.includes(ext)) {
-      toast.error(`Формат ${ext} не поддерживается. Допустимые форматы: ${ACCEPTED.join(", ")}`);
-      return;
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    if (incoming.length === 0) return;
+    const accepted = [];
+    for (const f of incoming) {
+      const ext = "." + f.name.split(".").pop().toLowerCase();
+      if (!ACCEPTED.includes(ext)) {
+        toast.error(`Формат ${ext} не поддерживается. Допустимые форматы: ${ACCEPTED.join(", ")}`);
+        continue;
+      }
+      if (f.size > MAX_SIZE_BYTES) {
+        toast.error(`Файл слишком большой (${formatSize(f.size)}) — максимум ${formatSize(MAX_SIZE_BYTES)}`);
+        continue;
+      }
+      accepted.push(f);
     }
-    if (f.size > MAX_SIZE_BYTES) {
-      toast.error(`Файл слишком большой (${formatSize(f.size)}) — максимум ${formatSize(MAX_SIZE_BYTES)}`);
-      return;
-    }
-    onChange(f);
+    if (accepted.length > 0) onChange([...files, ...accepted]);
+  };
+
+  const removeAt = (index) => {
+    onChange(files.filter((_, i) => i !== index));
   };
 
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
+      {hint && (
+        <p className="text-muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
+          {hint}
+        </p>
+      )}
       <div
-        className={`dropzone ${dragOver ? "dragover" : ""} ${file ? "has-file" : ""}`}
+        className={`dropzone ${dragOver ? "dragover" : ""} ${files.length > 0 ? "has-file" : ""}`}
         onClick={() => document.getElementById(id).click()}
         onDragOver={(e) => {
           e.preventDefault();
@@ -47,36 +60,49 @@ function Dropzone({ id, label, file, onChange }) {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          handleFiles(e.dataTransfer.files);
+          addFiles(e.dataTransfer.files);
         }}
       >
         <FileTextIcon className="dz-icon" />
-        {file ? (
-          <>
-            <div className="dz-file">{file.name}</div>
-            <div className="dz-meta">{formatSize(file.size)}</div>
-            <button
-              type="button"
-              className="dz-remove"
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(null);
-              }}
-            >
-              Убрать файл
-            </button>
-          </>
+        {files.length > 0 ? (
+          <div style={{ width: "100%" }}>
+            {files.map((f, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div>
+                  <div className="dz-file">{f.name}</div>
+                  <div className="dz-meta">{formatSize(f.size)}</div>
+                </div>
+                <button
+                  type="button"
+                  className="dz-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeAt(i);
+                  }}
+                >
+                  Убрать
+                </button>
+              </div>
+            ))}
+            <div className="dz-hint" style={{ marginTop: 8 }}>
+              Можно добавить ещё файлы (например, другие страницы) — нажмите или перетащите сюда
+            </div>
+          </div>
         ) : (
           <>
-            <div className="dz-title">Перетащите файл сюда или нажмите для выбора</div>
-            <div className="dz-hint">до {formatSize(MAX_SIZE_BYTES)}</div>
+            <div className="dz-title">Перетащите файл(ы) сюда или нажмите для выбора</div>
+            <div className="dz-hint">до {formatSize(MAX_SIZE_BYTES)} на файл, можно несколько</div>
           </>
         )}
         <input
           id={id}
           type="file"
+          multiple
           accept={ACCEPTED.join(",")}
-          onChange={(e) => handleFiles(e.target.files)}
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
         />
       </div>
     </div>
@@ -84,8 +110,8 @@ function Dropzone({ id, label, file, onChange }) {
 }
 
 export default function UploadPage() {
-  const [contractFile, setContractFile] = useState(null);
-  const [orderFile, setOrderFile] = useState(null);
+  const [contractFiles, setContractFiles] = useState([]);
+  const [orderFiles, setOrderFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [llmConfigured, setLlmConfigured] = useState(true); // оптимистично, пока не пришёл ответ
   const [contragents, setContragents] = useState([]);
@@ -108,13 +134,13 @@ export default function UploadPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!contractFile || !orderFile) {
+    if (contractFiles.length === 0 || orderFiles.length === 0) {
       toast.error("Нужно выбрать оба файла: договор и заказ-наряд");
       return;
     }
     setSubmitting(true);
     try {
-      const { repair_order_id } = await api.uploadDocuments(contractFile, orderFile, {
+      const { repair_order_id } = await api.uploadDocuments(contractFiles, orderFiles, {
         contragent_id: contragentId,
         vehicle_make: vehicleMake,
         vehicle_model: vehicleModel,
@@ -156,8 +182,20 @@ export default function UploadPage() {
       <div className="two-col-grid">
         <form className="panel" onSubmit={handleSubmit}>
           <div className="dropzone-row">
-            <Dropzone id="contract" label="Договор" file={contractFile} onChange={setContractFile} />
-            <Dropzone id="repair_order" label="Заказ-наряд" file={orderFile} onChange={setOrderFile} />
+            <Dropzone
+              id="contract"
+              label="Договор"
+              hint="Прайс-лист/каталог цен поставщика — то, с чем сверяем цены и артикулы. Не заказ-наряд."
+              files={contractFiles}
+              onChange={setContractFiles}
+            />
+            <Dropzone
+              id="repair_order"
+              label="Заказ-наряд"
+              hint="Черновик заказ-наряда, который нужно проверить и дозаполнить. Можно загрузить сканы/фото страниц вместо файла таблицы."
+              files={orderFiles}
+              onChange={setOrderFiles}
+            />
           </div>
 
           <div className="format-chip-list" style={{ marginBottom: 18 }}>
@@ -220,7 +258,7 @@ export default function UploadPage() {
           <button
             className="btn btn-primary"
             style={{ width: "100%", justifyContent: "center" }}
-            disabled={submitting || !contractFile || !orderFile}
+            disabled={submitting || contractFiles.length === 0 || orderFiles.length === 0}
             type="submit"
           >
             <UploadIcon /> {submitting ? "Загрузка…" : "Загрузить и сопоставить"}
