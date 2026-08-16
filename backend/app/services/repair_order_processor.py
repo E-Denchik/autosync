@@ -23,7 +23,7 @@ from app.models import (
 from app.services.autodata_client import AutoDataClient
 from app.services.document_parser import (
     DocumentParseError,
-    parse_document,
+    parse_document_with_ocr_fallback,
     parse_price_catalog_by_brand,
     parse_repair_order_export,
 )
@@ -37,6 +37,51 @@ from app.services.parts_supplier_client import PartsSupplierClient
 
 logger = logging.getLogger(__name__)
 
+DOCUMENT_LINE_FIELDS = ["article", "name", "qty", "price"]
+
+
+def _repair_order_paths(repair_order: RepairOrder) -> list[str]:
+    return [repair_order.storage_path] + [f.storage_path for f in repair_order.extra_files]
+
+
+def _contract_paths(contract: Contract) -> list[str]:
+    return [contract.storage_path] + [f.storage_path for f in contract.extra_files]
+
+
+def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[dict, list[dict], list[dict]]:
+    meta = {"vehicle_make": None, "vehicle_model": None, "vehicle_vin": None, "vehicle_year": None}
+    part_lines: list[dict] = []
+    labor_lines_raw: list[dict] = []
+    for path in paths:
+        export = parse_repair_order_export(path)
+        if export is not None:
+            for key in meta:
+                meta[key] = meta[key] or export["meta"].get(key)
+            part_lines.extend(export["part_lines"])
+            labor_lines_raw.extend(
+                {"name": l["description"]} for l in export["labor_lines"] if l.get("description")
+            )
+        else:
+            order_lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
+            part_lines.extend(line for line in order_lines if line.get("article"))
+            labor_lines_raw.extend(
+                line for line in order_lines if not line.get("article") and line.get("name")
+            )
+    return meta, part_lines, labor_lines_raw
+
+
+def _parse_contract_files(paths: list[str], vehicle_make: str | None, llm_client: LLMClient) -> tuple[list[dict], bool]:
+    catalog_lines: list[dict] = []
+    used_catalog = False
+    for path in paths:
+        lines = parse_price_catalog_by_brand(path, vehicle_make) if vehicle_make else None
+        if lines is not None:
+            used_catalog = True
+            catalog_lines.extend(lines)
+        else:
+            catalog_lines.extend(parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS))
+    return catalog_lines, used_catalog
+
 
 def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     contract = db.session.get(Contract, contract_id)
@@ -48,36 +93,42 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     repair_order.status = RepairOrderStatus.PARSING
     db.session.commit()
 
-    try:
-        export = parse_repair_order_export(repair_order.storage_path)
-        if export is not None:
-            meta = export["meta"]
-            repair_order.vehicle_make = repair_order.vehicle_make or meta.get("vehicle_make")
-            repair_order.vehicle_model = repair_order.vehicle_model or meta.get("vehicle_model")
-            repair_order.vehicle_vin = repair_order.vehicle_vin or meta.get("vehicle_vin")
-            repair_order.vehicle_year = repair_order.vehicle_year or meta.get("vehicle_year")
-            part_lines = export["part_lines"]
-            labor_lines_raw = [
-                {"name": l["description"]} for l in export["labor_lines"] if l.get("description")
-            ]
-            repair_order.parsed_lines = part_lines
-        else:
-            order_lines = parse_document(repair_order.storage_path)
-            repair_order.parsed_lines = order_lines
-            part_lines = [line for line in order_lines if line.get("article")]
-            labor_lines_raw = [line for line in order_lines if not line.get("article") and line.get("name")]
+    llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
 
-        catalog_lines = None
-        if repair_order.vehicle_make:
-            catalog_lines = parse_price_catalog_by_brand(contract.storage_path, repair_order.vehicle_make)
-        contract.parsed_lines = catalog_lines if catalog_lines is not None else parse_document(contract.storage_path)
+    try:
+        meta, part_lines, labor_lines_raw = _parse_repair_order_files(
+            _repair_order_paths(repair_order), llm_client
+        )
+        repair_order.vehicle_make = repair_order.vehicle_make or meta.get("vehicle_make")
+        repair_order.vehicle_model = repair_order.vehicle_model or meta.get("vehicle_model")
+        repair_order.vehicle_vin = repair_order.vehicle_vin or meta.get("vehicle_vin")
+        repair_order.vehicle_year = repair_order.vehicle_year or meta.get("vehicle_year")
+        repair_order.parsed_lines = part_lines
     except DocumentParseError as exc:
+        message = f"Не удалось прочитать заказ-наряд: {exc}"
         contract.status = DocumentProcessingStatus.FAILED
         repair_order.status = RepairOrderStatus.FAILED
-        repair_order.error_message = str(exc)
-        log_change("repair_order", repair_order.id, "failed", details={"error": str(exc), "stage": "parsing"})
+        repair_order.error_message = message
+        log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
         db.session.commit()
-        return {"status": "failed", "error": str(exc)}
+        return {"status": "failed", "error": message}
+
+    try:
+        catalog_lines, used_catalog = _parse_contract_files(
+            _contract_paths(contract), repair_order.vehicle_make, llm_client
+        )
+        contract.parsed_lines = catalog_lines
+    except DocumentParseError as exc:
+        message = (
+            f"Не удалось прочитать договор: {exc}. Ожидается либо прайс-лист "
+            "с колонками артикул/наименование/цена, либо каталог цен по маркам."
+        )
+        contract.status = DocumentProcessingStatus.FAILED
+        repair_order.status = RepairOrderStatus.FAILED
+        repair_order.error_message = message
+        log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
+        db.session.commit()
+        return {"status": "failed", "error": message}
 
     contract.status = DocumentProcessingStatus.PARSED
     repair_order.status = RepairOrderStatus.MATCHING
@@ -87,10 +138,9 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         current_app.config["PARTS_SUPPLIER_BASE_URL"],
         current_app.config["PARTS_SUPPLIER_API_KEY"],
     )
-    llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
 
     try:
-        if catalog_lines is not None:
+        if used_catalog:
             results = match_all(part_lines, contract.parsed_lines, supplier_client, llm_client)
         else:
             results = match_all(contract.parsed_lines, part_lines, supplier_client, llm_client)
@@ -110,8 +160,9 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     # тот же принцип, что и для supplier_client/llm_client выше.
     try:
         nomenclature_client = NomenclatureClient(
-            current_app.config["NOMENCLATURE_PROVIDER_BASE_URL"],
-            current_app.config["NOMENCLATURE_PROVIDER_API_KEY"],
+            current_app.config["ALFAAUTO_BASE_URL"],
+            current_app.config["ALFAAUTO_LOGIN"],
+            current_app.config["ALFAAUTO_PASSWORD"],
         )
         results = enrich_all(results, nomenclature_client)
     except Exception as exc:
@@ -133,8 +184,9 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         )
 
     autodata_client = AutoDataClient(
-        current_app.config["AUTODATA_BASE_URL"],
-        current_app.config["AUTODATA_API_KEY"],
+        current_app.config["ALFAAUTO_BASE_URL"],
+        current_app.config["ALFAAUTO_LOGIN"],
+        current_app.config["ALFAAUTO_PASSWORD"],
     )
     hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
 

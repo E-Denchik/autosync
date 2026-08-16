@@ -102,10 +102,10 @@ export const api = {
   generateCard: (productId) => request(`/ozon/cards/${productId}/generate`, { method: "POST" }),
 
   // Заказ-наряды: загрузка
-  uploadDocuments: (contractFile, repairOrderFile, extra = {}) => {
+  uploadDocuments: (contractFiles, repairOrderFiles, extra = {}) => {
     const formData = new FormData();
-    formData.append("contract", contractFile);
-    formData.append("repair_order", repairOrderFile);
+    contractFiles.forEach((f) => formData.append("contract", f));
+    repairOrderFiles.forEach((f) => formData.append("repair_order", f));
     Object.entries(extra).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") formData.append(key, value);
     });
@@ -124,8 +124,11 @@ export const api = {
   bulkReview: (ids, action) =>
     request(`/repair-orders/matching/bulk`, { method: "POST", body: JSON.stringify({ ids, action }) }),
   exportMatchesCsv: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}/export`),
-  generateDocument: (repairOrderId) =>
-    request(`/repair-orders/matching/${repairOrderId}/generate-document`, { method: "POST" }),
+  generateDocument: (repairOrderId, templateId) =>
+    request(
+      `/repair-orders/matching/${repairOrderId}/generate-document${templateId ? `?template_id=${templateId}` : ""}`,
+      { method: "POST" }
+    ),
 
   // Заказ-наряды: работы (нормо-часы)
   listLaborLines: (repairOrderId) => request(`/repair-orders/labor/${repairOrderId}`),
@@ -159,9 +162,23 @@ export const api = {
   updateNomenclatureEntry: (id, data) =>
     request(`/nomenclature/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteNomenclatureEntry: (id) => request(`/nomenclature/${id}`, { method: "DELETE" }),
-  uploadNomenclatureFile: (file) => {
+  uploadNomenclatureFile: (files) => {
     const formData = new FormData();
-    formData.append("file", file);
+    (Array.isArray(files) ? files : [files]).forEach((f) => formData.append("file", f));
     return request("/nomenclature/upload", { method: "POST", body: formData });
   },
+  downloadNomenclatureTemplate: () => request("/nomenclature/template"),
+
+  getCompanyProfile: () => request("/company-profile"),
+  updateCompanyProfile: (data) => request("/company-profile", { method: "PUT", body: JSON.stringify(data) }),
+
+  listDocumentTemplates: () => request("/document-templates"),
+  uploadDocumentTemplate: (name, file) => {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("file", file);
+    return request("/document-templates", { method: "POST", body: formData });
+  },
+  deleteDocumentTemplate: (id) => request(`/document-templates/${id}`, { method: "DELETE" }),
+  downloadStarterTemplate: () => request("/document-templates/starter"),
 };

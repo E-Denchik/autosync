@@ -6,19 +6,23 @@
 import os
 import uuid
 
-from flask import Blueprint, current_app, jsonify, request
+import openpyxl
+from flask import Blueprint, current_app, jsonify, request, send_file
+from openpyxl.styles import Font
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import NomenclatureEntry
 from app.services.history import log_change
+from app.services.llm_client import LLMClient
 from app.services.nomenclature_import import NomenclatureImportError, import_nomenclature_file
+from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("nomenclature", __name__)
 bp.before_request(login_required(lambda: None))
 
-ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv"}
+ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
 
 def _serialize(entry: NomenclatureEntry) -> dict:
@@ -113,37 +117,80 @@ def delete_entry(entry_id: int):
     return "", 204
 
 
-@bp.post("/upload")
-def upload_file():
-    """Загружает выгрузку номенклатуры файлом и upsert-ит записи (см.
-    nomenclature_import.py) — синхронно: типичная выгрузка склада разбирается
-    за доли секунды через pandas, отдельная очередь не нужна."""
-    if "file" not in request.files:
-        return jsonify(error="Нужен файл 'file'"), 400
-
-    file_storage = request.files["file"]
-    ext = os.path.splitext(file_storage.filename or "")[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify(error=f"Неподдерживаемый тип файла: {ext}"), 400
+@bp.get("/template")
+def download_template():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Номенклатура"
+    headers = [
+        "Код",
+        "№ кат.",
+        "Производитель",
+        "Наименование",
+        "Единица",
+        "Остаток",
+        "Заказано",
+        "В резерве",
+        "В производстве",
+        "Склад",
+        "Цена",
+    ]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.append(["PN-1001", "CAT-55", "LUZAR", "Насос водяной", "шт", 10, 0, 2, 0, "Основной", 3860])
+    for col, width in zip("ABCDEFGHIJK", [12, 12, 16, 32, 10, 10, 10, 10, 14, 14, 10]):
+        ws.column_dimensions[col].width = width
 
     upload_dir = current_app.config["UPLOAD_DIR"]
     os.makedirs(upload_dir, exist_ok=True)
-    stored_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{ext}")
-    file_storage.save(stored_path)
+    output_path = os.path.join(upload_dir, f"nomenclature-template-{uuid.uuid4().hex}.xlsx")
+    wb.save(output_path)
+    return send_file(output_path, as_attachment=True, download_name="autosync-shablon-nomenklatura.xlsx")
 
-    try:
-        summary = import_nomenclature_file(stored_path)
-    except NomenclatureImportError as exc:
-        return jsonify(error=str(exc)), 400
-    finally:
-        os.remove(stored_path)
 
-    log_change(
-        "nomenclature_import",
-        0,
-        "imported",
-        actor=get_current_user(),
-        details={"filename": file_storage.filename, **summary},
-    )
+@bp.post("/upload")
+def upload_file():
+    """Загружает одну или несколько выгрузок номенклатуры файлом и
+    upsert-ит записи (см. nomenclature_import.py) — синхронно: типичная
+    выгрузка склада разбирается за доли секунды через pandas, отдельная
+    очередь не нужна."""
+    files = request.files.getlist("file")
+    if not files:
+        return jsonify(error="Нужен файл 'file'"), 400
+
+    totals = {"rows_parsed": 0, "created": 0, "updated": 0}
+    errors = []
+    upload_dir = current_app.config["UPLOAD_DIR"]
+    os.makedirs(upload_dir, exist_ok=True)
+    llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
+
+    for file_storage in files:
+        ext = os.path.splitext(file_storage.filename or "")[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            errors.append(f"{file_storage.filename}: неподдерживаемый тип файла {ext}")
+            continue
+
+        stored_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{ext}")
+        file_storage.save(stored_path)
+        try:
+            summary = import_nomenclature_file(stored_path, llm_client)
+            for key in totals:
+                totals[key] += summary[key]
+            log_change(
+                "nomenclature_import",
+                0,
+                "imported",
+                actor=get_current_user(),
+                details={"filename": file_storage.filename, **summary},
+            )
+        except NomenclatureImportError as exc:
+            errors.append(f"{file_storage.filename}: {exc}")
+        finally:
+            os.remove(stored_path)
+
+    if errors and totals["rows_parsed"] == 0:
+        return jsonify(error="; ".join(errors)), 400
+
     db.session.commit()
-    return jsonify(summary), 201
+    return jsonify({**totals, "errors": errors}), 201

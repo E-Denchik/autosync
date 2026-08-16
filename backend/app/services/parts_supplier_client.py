@@ -29,12 +29,15 @@ class PartsSupplierClient:
         """Точный поиск по артикулу. Возвращает None, если не найдено."""
         if not self.base_url:
             raise PartsSupplierError("PARTS_SUPPLIER_BASE_URL не задан")
-        resp = requests.get(
-            f"{self.base_url}/v1/parts",
-            params={"article": article},
-            headers=self._headers(),
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.get(
+                f"{self.base_url}/v1/parts",
+                params={"article": article},
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise PartsSupplierError(f"parts supplier недоступен: {exc}") from exc
         if resp.status_code == 404:
             return None
         if not resp.ok:
@@ -49,12 +52,15 @@ class PartsSupplierClient:
         """
         if not self.base_url:
             raise PartsSupplierError("PARTS_SUPPLIER_BASE_URL не задан")
-        resp = requests.get(
-            f"{self.base_url}/v1/parts/cross-references",
-            params={"article": article},
-            headers=self._headers(),
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.get(
+                f"{self.base_url}/v1/parts/cross-references",
+                params={"article": article},
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise PartsSupplierError(f"parts supplier недоступен: {exc}") from exc
         if not resp.ok:
             raise PartsSupplierError(f"parts supplier -> {resp.status_code}: {resp.text}")
         return resp.json().get("results", [])

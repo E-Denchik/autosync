@@ -70,9 +70,32 @@ def test_upload_imports_rows(client, admin_headers, app):
         content_type="multipart/form-data",
     )
     assert resp.status_code == 201
-    assert resp.get_json() == {"rows_parsed": 1, "created": 1, "updated": 0}
+    assert resp.get_json() == {"rows_parsed": 1, "created": 1, "updated": 0, "errors": []}
 
     with app.app_context():
         entry = NomenclatureEntry.query.filter_by(code="PN-2").first()
         assert entry is not None
         assert float(entry.stock_qty) == 5.0
+
+
+def test_template_download_roundtrips_through_upload(client, admin_headers, app):
+    import io
+
+    tpl_resp = client.get("/api/nomenclature/template", headers=admin_headers)
+    assert tpl_resp.status_code == 200
+
+    upload_resp = client.post(
+        "/api/nomenclature/upload",
+        headers=admin_headers,
+        data={"file": (io.BytesIO(tpl_resp.data), "template.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert upload_resp.status_code == 201
+    body = upload_resp.get_json()
+    assert body["created"] == 1
+    assert body["errors"] == []
+
+    with app.app_context():
+        entry = NomenclatureEntry.query.filter_by(code="PN-1001").first()
+        assert entry is not None
+        assert entry.manufacturer == "LUZAR"

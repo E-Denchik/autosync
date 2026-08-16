@@ -36,6 +36,13 @@ class OzonClientError(RuntimeError):
     pass
 
 
+def extract_items(data: dict) -> list[dict]:
+    result = data.get("result")
+    if isinstance(result, dict) and "items" in result:
+        return result["items"]
+    return data.get("items", [])
+
+
 class OzonClient:
     def __init__(
         self,
@@ -132,14 +139,14 @@ class OzonClient:
         return self._post("/v1/product/import/prices", {"prices": price_updates})
 
     def get_sales_stats(self, date_from: str, date_to: str) -> dict:
-        """/v1/analytics/data — свои продажи/позиции в выдаче за период."""
         return self._post(
             "/v1/analytics/data",
             {
                 "date_from": date_from,
                 "date_to": date_to,
-                "metrics": ["ordered_units", "revenue", "position_category"],
+                "metrics": ["ordered_units", "revenue"],
                 "dimension": ["sku"],
+                "limit": 1000,
             },
         )
 

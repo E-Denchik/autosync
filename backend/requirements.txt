@@ -12,6 +12,13 @@ xlrd==2.0.1
 odfpy==1.4.1
 python-docx==1.1.2
 pdfplumber==0.11.4
+# Обёртка над системным бинарником tesseract (см. services/ocr.py) —
+# распознавание сканов/фото. Сам tesseract pip не ставит: нужен системный
+# пакет tesseract-ocr + языковой пакет tesseract-ocr-rus (Debian/Ubuntu/Kali);
+# на Windows — официальный установщик Tesseract-OCR (UB-Mannheim) с
+# добавленным русским языком. Без tesseract функция загрузки сканов отдаёт
+# понятную ошибку вместо падения, остальное приложение не затронуто.
+pytesseract==0.3.13
 python-dotenv==1.0.1
 PyJWT==2.9.0
 waitress==3.0.0

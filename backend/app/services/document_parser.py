@@ -109,33 +109,45 @@ def parse_csv(file_path: str) -> list[dict]:
     raise DocumentParseError(f"Не удалось прочитать CSV (кодировка/разделитель): {last_error}")
 
 
-def parse_docx(file_path: str) -> list[dict]:
+def extract_docx_tables(file_path: str) -> list[pd.DataFrame]:
     from docx import Document
 
     document = Document(file_path)
-    all_lines: list[dict] = []
+    tables: list[pd.DataFrame] = []
     for table in document.tables:
         rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
         if len(rows) < 2:
             continue
         header, *body = rows
-        df = pd.DataFrame(body, columns=header)
-        all_lines.extend(_dataframe_to_lines(df))
-    return all_lines
+        tables.append(pd.DataFrame(body, columns=header))
+    return tables
 
 
-def parse_pdf(file_path: str) -> list[dict]:
+def extract_pdf_tables(file_path: str) -> list[pd.DataFrame]:
     import pdfplumber
 
-    all_lines: list[dict] = []
+    tables: list[pd.DataFrame] = []
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
                 if not table or len(table) < 2:
                     continue
                 header, *rows = table
-                df = pd.DataFrame(rows, columns=header)
-                all_lines.extend(_dataframe_to_lines(df))
+                tables.append(pd.DataFrame(rows, columns=header))
+    return tables
+
+
+def parse_docx(file_path: str) -> list[dict]:
+    all_lines: list[dict] = []
+    for df in extract_docx_tables(file_path):
+        all_lines.extend(_dataframe_to_lines(df))
+    return all_lines
+
+
+def parse_pdf(file_path: str) -> list[dict]:
+    all_lines: list[dict] = []
+    for df in extract_pdf_tables(file_path):
+        all_lines.extend(_dataframe_to_lines(df))
     return all_lines
 
 
@@ -158,6 +170,52 @@ def parse_document(file_path: str) -> list[dict]:
     return parser(file_path)
 
 
+def needs_ocr(file_path: str) -> bool:
+    from app.services.ocr import is_image_extension
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if is_image_extension(ext):
+        return True
+    if ext == ".pdf":
+        try:
+            return len(parse_pdf(file_path)) == 0
+        except Exception:
+            return True
+    return False
+
+
+def parse_document_with_ocr_fallback(file_path: str, llm_client, fields: list[str]) -> list[dict]:
+    if not needs_ocr(file_path):
+        return parse_document(file_path)
+
+    from app.services.ocr import OcrError, extract_text
+
+    try:
+        raw_text = extract_text(file_path)
+    except OcrError as exc:
+        raise DocumentParseError(str(exc)) from exc
+    if not raw_text.strip():
+        raise DocumentParseError("Не удалось распознать текст в файле (пустой результат OCR)")
+
+    try:
+        rows = llm_client.extract_table_from_text(raw_text, fields)
+    except Exception as exc:
+        raise DocumentParseError(f"Не удалось извлечь таблицу из распознанного текста: {exc}") from exc
+
+    numeric_fields = {"qty", "price", "stock_qty", "ordered_qty", "reserved_qty", "in_production_qty", "norm_hours"}
+    cleaned = []
+    for row in rows:
+        if not any(row.values()):
+            continue
+        cleaned.append(
+            {
+                field: (_to_float(value) if field in numeric_fields else _clean(value))
+                for field, value in row.items()
+            }
+        )
+    return cleaned
+
+
 _ORDER_RE = re.compile(r"Заказ-наряд\s*№\s*(\S+)\s*от\s*(\d{2}\.\d{2}\.\d{4})")
 _VEHICLE_RE = re.compile(r"Автомобиль\s*:\s*(.+?)\s+гос\.\s*номер\s*:\s*(\S+)\s+VIN\s*:\s*(\S+)")
 _YEAR_RE = re.compile(r"год\s*вып\.?\s*(\d{4})")
@@ -173,7 +231,7 @@ def parse_repair_order_export(file_path: str) -> dict | None:
 
     has_labor_section = any(any(isinstance(c, str) and "Выполненные работы по заказ-наряду" in c for c in row) for row in rows)
     has_materials_section = any(any(isinstance(c, str) and "Расходная накладная к заказ-наряду" in c for c in row) for row in rows)
-    if not (has_labor_section and has_materials_section):
+    if not (has_labor_section or has_materials_section):
         return None
 
     meta = {

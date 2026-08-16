@@ -29,6 +29,7 @@ class Contract(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     repair_orders = db.relationship("RepairOrder", back_populates="contract")
+    extra_files = db.relationship("ContractFile", back_populates="contract", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Contract {self.original_filename} status={self.status}>"

@@ -32,6 +32,8 @@ export default function ReviewMatches() {
   const [laborSelected, setLaborSelected] = useState(new Set());
   const [editingMatch, setEditingMatch] = useState(null);
   const [editingLaborLine, setEditingLaborLine] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -53,6 +55,13 @@ export default function ReviewMatches() {
       .then(setLaborCatalog)
       .catch(() => {});
   };
+
+  useEffect(() => {
+    api
+      .listDocumentTemplates()
+      .then(setTemplates)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,7 +246,7 @@ export default function ReviewMatches() {
   const handleGenerateDocument = async () => {
     setGenerating(true);
     try {
-      const blob = await api.generateDocument(repairOrderId);
+      const blob = await api.generateDocument(repairOrderId, selectedTemplateId || undefined);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -611,7 +620,20 @@ export default function ReviewMatches() {
             </div>
           )}
 
-          <div style={{ marginTop: 18 }}>
+          <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 8 }}>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              style={{ maxWidth: 240 }}
+              disabled={generating}
+            >
+              <option value="">Встроенный формат (как у 1С)</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
             <button
               className="btn btn-primary"
               disabled={pendingCount > 0 || generating}

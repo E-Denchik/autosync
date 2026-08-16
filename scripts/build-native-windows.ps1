@@ -52,6 +52,27 @@ if (-not (Test-Path $VenvDir)) {
 pip install -q --upgrade pip
 pip install -q -r "$RepoRoot\backend\requirements.txt"
 
+Write-Host "==> Ищу Tesseract OCR для встраивания в сборку" -ForegroundColor Cyan
+$TesseractDir = $env:TESSERACT_DIR
+if (-not $TesseractDir) {
+    $candidates = @(
+        "$env:ProgramFiles\Tesseract-OCR",
+        "${env:ProgramFiles(x86)}\Tesseract-OCR"
+    )
+    $TesseractDir = $candidates | Where-Object { Test-Path "$_\tesseract.exe" } | Select-Object -First 1
+}
+
+$TesseractDataArg = @()
+if ($TesseractDir -and (Test-Path "$TesseractDir\tesseract.exe")) {
+    if (-not (Test-Path "$TesseractDir\tessdata\rus.traineddata")) {
+        Write-Warning "Найден Tesseract в $TesseractDir, но нет tessdata\rus.traineddata — распознавание русского текста в сборке работать не будет."
+    }
+    Write-Host "    Использую Tesseract из $TesseractDir"
+    $TesseractDataArg = @("--add-data", "$TesseractDir;tesseract")
+} else {
+    Write-Warning "Tesseract OCR не найден (проверьте TESSERACT_DIR) — сборка соберётся, но загрузка сканов/фото работать не будет."
+}
+
 Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 $BuildWork = "$RepoRoot\build\native-windows"
 $OutDir = "$RepoRoot\dist\native-windows"
@@ -72,11 +93,13 @@ pyinstaller `
   --add-data "$RepoRoot\llm-service;llm_service_src" `
   --add-data "$RepoRoot\backend\migrations;migrations" `
   --add-data "$RepoRoot\packaging\icon;icon" `
+  @TesseractDataArg `
   --icon "$RepoRoot\packaging\icon\icon.ico" `
   --hidden-import=waitress `
   --hidden-import=apscheduler.schedulers.background `
   --collect-submodules apscheduler `
   --hidden-import=logging.config `
+  --hidden-import=pytesseract `
   --collect-all numpy `
   --collect-all pandas `
   --exclude-module PyQt5 `

@@ -17,14 +17,15 @@ const KEY_FIELDS = {
     { key: "ANALYTICS_PROVIDER_BASE_URL", label: "Base URL", type: "text", placeholder: "https://api.provider.ru" },
     { key: "ANALYTICS_PROVIDER_API_KEY", label: "API Key", type: "password", placeholder: "" },
   ],
-  nomenclature: [
+  alfaauto: [
     {
-      key: "NOMENCLATURE_PROVIDER_BASE_URL",
-      label: "Base URL",
+      key: "ALFAAUTO_BASE_URL",
+      label: "Адрес OData",
       type: "text",
-      placeholder: "https://... (например, 1С OData)",
+      placeholder: "http://server/base/odata/standard.odata",
     },
-    { key: "NOMENCLATURE_PROVIDER_API_KEY", label: "API Key", type: "password", placeholder: "" },
+    { key: "ALFAAUTO_LOGIN", label: "Логин пользователя 1С", type: "text", placeholder: "" },
+    { key: "ALFAAUTO_PASSWORD", label: "Пароль", type: "password", placeholder: "" },
   ],
 };
 
@@ -102,7 +103,7 @@ export default function Integrations() {
           <h2>Интеграции</h2>
           <p>
             Внешние API, которые использует AutoSync: Ozon Seller/Performance, сторонний сервис
-            аналитики цен конкурентов и (когда подтверждён у заказчика) API номенклатуры/остатков.
+            аналитики цен конкурентов и 1С:Альфа-Авто (номенклатура/остатки и нормо-часы).
             Ключи вводятся здесь и сохраняются в базе данных — переживают перезапуск, значения
             обратно не показываются.
           </p>

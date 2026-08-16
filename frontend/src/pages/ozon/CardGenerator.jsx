@@ -226,6 +226,7 @@ export default function CardGenerator() {
                 <th>Категория</th>
                 <th>Цена на Ozon</th>
                 <th>Закупочная цена</th>
+                <th>Продажи за 7 дн.</th>
                 <th></th>
               </tr>
             </thead>
@@ -276,6 +277,15 @@ export default function CardGenerator() {
                         {p.cost_price != null ? `${p.cost_price} ₽` : "—"}
                         <EditIcon style={{ width: 11, height: 11, opacity: 0.6 }} />
                       </span>
+                    )}
+                  </td>
+                  <td className="text-muted">
+                    {p.units_sold_7d != null ? (
+                      <>
+                        {p.units_sold_7d} шт{p.revenue_7d != null ? ` · ${p.revenue_7d} ₽` : ""}
+                      </>
+                    ) : (
+                      "—"
                     )}
                   </td>
                   <td>

@@ -27,6 +27,8 @@ def create_app(config_class=Config):
     from app.api.contragents import bp as contragents_bp
     from app.api.labor_catalog import bp as labor_catalog_bp
     from app.api.nomenclature import bp as nomenclature_bp
+    from app.api.company_profile import bp as company_profile_bp
+    from app.api.document_templates import bp as document_templates_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
@@ -42,6 +44,8 @@ def create_app(config_class=Config):
     app.register_blueprint(contragents_bp, url_prefix="/api/contragents")
     app.register_blueprint(labor_catalog_bp, url_prefix="/api/labor-catalog")
     app.register_blueprint(nomenclature_bp, url_prefix="/api/nomenclature")
+    app.register_blueprint(company_profile_bp, url_prefix="/api/company-profile")
+    app.register_blueprint(document_templates_bp, url_prefix="/api/document-templates")
 
     @app.get("/api/health")
     def health():
@@ -49,18 +53,11 @@ def create_app(config_class=Config):
 
     @app.before_request
     def _require_local_session_token():
-        # 127.0.0.1 всё равно доступен любому локальному процессу — это
-        # неизбежное следствие того, как работает pywebview (само окно —
-        # обычный HTTP-клиент этого же Flask). Без этой проверки открыть
-        # AutoSync можно было бы просто вбив адрес в обычный браузер, в
-        # обход "единственная точка входа — окно приложения" (см. докстринг
-        # native_app.py). SESSION_TOKEN пустой вне native-режима (тесты,
-        # flask db migrate) — там проверка отключена целиком.
-        token = app.config.get("SESSION_TOKEN")
-        if not token or request.path == "/api/health":
+        if app.config.get("TESTING") or request.path == "/api/health":
             return None
+        token = app.config.get("SESSION_TOKEN")
         supplied = request.args.get("token") or request.cookies.get("autosync_token")
-        if supplied != token:
+        if not token or supplied != token:
             return jsonify(error="AutoSync доступен только через собственное окно приложения"), 403
         return None
 
@@ -92,7 +89,7 @@ def create_app(config_class=Config):
     _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, user, llm_setting, history, integration_setting  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, user, llm_setting, history, integration_setting, document_template  # noqa: F401
 
     register_cli(app)
 

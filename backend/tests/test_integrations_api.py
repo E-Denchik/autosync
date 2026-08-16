@@ -21,7 +21,7 @@ def test_status_reports_not_configured_by_default(client, admin_headers):
         "ozon_seller": False,
         "ozon_performance": False,
         "analytics": False,
-        "nomenclature": False,
+        "alfaauto": False,
     }
     assert all(item["api_base_override"] is None for item in body)
 

@@ -56,6 +56,14 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install Tesseract OCR + Russian language data
+        shell: pwsh
+        run: |
+          choco install tesseract -y --no-progress
+          $tessDir = "C:\Program Files\Tesseract-OCR"
+          Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/rus.traineddata" -OutFile "$tessDir\tessdata\rus.traineddata"
+          echo "TESSERACT_DIR=$tessDir" >> $env:GITHUB_ENV
+
       - name: Build native Windows exe
         run: pwsh -File scripts\build-native-windows.ps1
 

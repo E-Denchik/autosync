@@ -1,18 +1,11 @@
 """Поиск по внутренней номенклатуре/складу заказчика (код, № кат.,
-производитель, остаток, резерв, в производстве, склад).
+производитель, остаток, резерв, в производстве, склад) — источник 1С:Альфа-Авто.
 
-ОТКРЫТЫЙ ВОПРОС (см. PROJECT.md/ARCHITECTURE.md): в какой системе у
-заказчика ведётся эта таблица — 1С с каким-то API, отдельная складская
-программа или просто периодическая выгрузка файлом — ещё не подтверждено.
-
-Поэтому, как и AutoDataClient для нормо-часов, этот клиент работает в двух
-режимах:
-  - NOMENCLATURE_PROVIDER_BASE_URL не задан (по умолчанию) — ищем по
-    локальной таблице NomenclatureEntry, которую наполняют через
-    nomenclature_import.py (загрузка файла) или вручную из UI.
-  - Задан — обращаемся к реальному API. Путь/схема ответа ниже —
-    заглушка (нормализованный контракт), донастроить под реальный API,
-    когда заказчик подтвердит источник.
+Как и AutoDataClient для нормо-часов, этот клиент работает в двух режимах:
+  - ALFAAUTO_BASE_URL не задан (по умолчанию) — ищем по локальной таблице
+    NomenclatureEntry, которую наполняют через nomenclature_import.py
+    (загрузка файла) или вручную из UI.
+  - Задан — обращаемся к реальному OData.
 """
 
 from __future__ import annotations
@@ -32,13 +25,29 @@ class NomenclatureClientError(RuntimeError):
 
 
 class NomenclatureClient:
-    def __init__(self, base_url: str, api_key: str, timeout: int = 15):
+    def __init__(self, base_url: str, login: str = "", password: str = "", timeout: int = 15):
         self.base_url = base_url.rstrip("/") if base_url else ""
-        self.api_key = api_key
+        self.login = login
+        self.password = password
         self.timeout = timeout
 
-    def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+    def _auth(self) -> tuple[str, str] | None:
+        return (self.login, self.password) if self.login else None
+
+    def discover_entities(self) -> list[str]:
+        try:
+            resp = requests.get(
+                f"{self.base_url}/",
+                params={"$format": "json"},
+                headers={"Accept": "application/json"},
+                auth=self._auth(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise NomenclatureClientError(f"1С OData недоступен: {exc}") from exc
+        if not resp.ok:
+            raise NomenclatureClientError(f"1С OData -> {resp.status_code}: {resp.text}")
+        return [entry["name"] for entry in resp.json().get("value", [])]
 
     def find_match(self, code: str | None, name: str | None) -> dict | None:
         """Возвращает лучшую запись номенклатуры для артикула/названия
@@ -54,17 +63,19 @@ class NomenclatureClient:
         return self._find_local(code, name)
 
     def _find_remote(self, code: str | None, name: str | None) -> dict | None:
-        # TODO: заменить путь/разбор ответа на схему реального провайдера,
-        # когда заказчик подтвердит источник (см. докстринг модуля).
-        resp = requests.get(
-            f"{self.base_url}/v1/nomenclature",
-            params={"code": code or "", "name": name or ""},
-            headers=self._headers(),
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.get(
+                f"{self.base_url}/Catalog_Номенклатура",
+                params={"$filter": f"Код eq '{code or name or ''}'", "$format": "json"},
+                headers={"Accept": "application/json"},
+                auth=self._auth(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise NomenclatureClientError(f"1С OData недоступен: {exc}") from exc
         if not resp.ok:
-            raise NomenclatureClientError(f"nomenclature provider -> {resp.status_code}: {resp.text}")
-        results = resp.json().get("results") or []
+            raise NomenclatureClientError(f"1С OData -> {resp.status_code}: {resp.text}")
+        results = resp.json().get("value") or []
         return results[0] if results else None
 
     def _find_local(self, code: str | None, name: str | None) -> dict | None:
@@ -122,6 +133,6 @@ class NomenclatureClient:
     def test_connection(self) -> str:
         if not self.base_url:
             count = NomenclatureEntry.query.count()
-            return f"Работает по локальной таблице номенклатуры ({count} записей) — внешний API не настроен"
-        result = self._find_remote(None, "тест")
-        return f"Подключение работает, образец ответа: {result}"
+            return f"Работает по локальной таблице номенклатуры ({count} записей) — 1С не подключена"
+        entities = self.discover_entities()
+        return f"1С OData отвечает, опубликовано объектов: {len(entities)} (например: {', '.join(entities[:5])})"

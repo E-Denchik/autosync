@@ -6,7 +6,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
-from app.models import LaborLine, PartMatch, RepairOrder, RepairOrderStatus, ReviewStatus
+from app.models import DocumentTemplate, LaborLine, PartMatch, RepairOrder, RepairOrderStatus, ReviewStatus
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
@@ -241,9 +241,21 @@ def generate_document(repair_order_id: int):
     if pending:
         return jsonify(error=f"Есть {pending} непроверенных позиций, сгенерировать документ нельзя"), 409
 
-    from app.services.document_generator import generate_repair_order_document
+    from app.services.document_generator import (
+        generate_repair_order_document,
+        generate_repair_order_document_from_template,
+    )
+    from app.services.document_template_engine import DocumentTemplateError
 
-    output_path = generate_repair_order_document(repair_order)
+    template_id = request.args.get("template_id", type=int)
+    if template_id:
+        template = db.get_or_404(DocumentTemplate, template_id)
+        try:
+            output_path = generate_repair_order_document_from_template(repair_order, template)
+        except DocumentTemplateError as exc:
+            return jsonify(error=str(exc)), 400
+    else:
+        output_path = generate_repair_order_document(repair_order)
     repair_order.generated_document_path = output_path
     repair_order.status = RepairOrderStatus.REVIEWED
     log_change("repair_order", repair_order.id, "reviewed", actor=get_current_user())

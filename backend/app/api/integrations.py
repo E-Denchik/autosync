@@ -45,9 +45,9 @@ def _analytics_provider() -> AnalyticsProvider:
     return AnalyticsProvider(cfg["ANALYTICS_PROVIDER_BASE_URL"], cfg["ANALYTICS_PROVIDER_API_KEY"])
 
 
-def _nomenclature_client() -> NomenclatureClient:
+def _alfaauto_client() -> NomenclatureClient:
     cfg = current_app.config
-    return NomenclatureClient(cfg["NOMENCLATURE_PROVIDER_BASE_URL"], cfg["NOMENCLATURE_PROVIDER_API_KEY"])
+    return NomenclatureClient(cfg["ALFAAUTO_BASE_URL"], cfg["ALFAAUTO_LOGIN"], cfg["ALFAAUTO_PASSWORD"])
 
 
 def _api_base_override(env_var: str, default: str) -> str | None:
@@ -85,13 +85,13 @@ def status():
             "api_base_override": None,
         },
         {
-            "id": "nomenclature",
-            "name": "Номенклатура/остатки",
+            "id": "alfaauto",
+            "name": "1С: Альфа-Авто",
             "description": (
-                "Внутренний склад заказчика — код, № кат., производитель, остаток/резерв/склад "
-                "(источник уточняется с заказчиком; без API работает по локальной загруженной таблице)"
+                "Номенклатура/остатки и нормо-часы напрямую из 1С (OData, логин/пароль пользователя 1С; "
+                "без подключения обе работают по локальным загруженным таблицам)"
             ),
-            "configured": bool(cfg["NOMENCLATURE_PROVIDER_BASE_URL"]),
+            "configured": bool(cfg["ALFAAUTO_BASE_URL"]),
             "api_base_override": None,
         },
     ]
@@ -107,8 +107,8 @@ def test_connection(integration_id: str):
             message = _ozon_client().test_performance_connection()
         elif integration_id == "analytics":
             message = _analytics_provider().test_connection()
-        elif integration_id == "nomenclature":
-            message = _nomenclature_client().test_connection()
+        elif integration_id == "alfaauto":
+            message = _alfaauto_client().test_connection()
         else:
             return jsonify(error=f"Неизвестная интеграция: {integration_id}"), 404
     except (OzonClientError, AnalyticsProviderError, NomenclatureClientError) as exc:
