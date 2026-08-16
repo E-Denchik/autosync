@@ -29,23 +29,16 @@ def setup_required():
 
 @bp.post("/setup")
 def setup():
-    """Создаёт первого администратора. Работает только пока в системе
-    вообще нет пользователей — после этого эндпоинт навсегда недоступен,
-    новых пользователей заводит уже admin_required /users."""
     if User.query.count() > 0:
         return jsonify(error="Настройка уже выполнена"), 403
 
     body = request.get_json(force=True) or {}
     email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
 
-    if not email or not password:
-        return jsonify(error="'email' и 'password' обязательны"), 400
-    if len(password) < 8:
-        return jsonify(error="Пароль должен быть не короче 8 символов"), 400
+    if not email:
+        return jsonify(error="'email' обязателен"), 400
 
     user = User(email=email, role=UserRole.ADMIN)
-    user.set_password(password)
     db.session.add(user)
     db.session.flush()
     log_change("user", user.id, "created", actor=user, details={"email": email, "role": "admin", "via": "setup"})
@@ -54,15 +47,20 @@ def setup():
     return jsonify(token=issue_token(user), user=_serialize_user(user)), 201
 
 
+@bp.get("/login-options")
+def login_options():
+    users = User.query.filter_by(is_active=True).order_by(User.email).all()
+    return jsonify([_serialize_user(u) for u in users])
+
+
 @bp.post("/login")
 def login():
     body = request.get_json(force=True) or {}
-    email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
+    user_id = body.get("user_id")
 
-    user = User.query.filter_by(email=email).first()
-    if not user or not user.is_active or not user.check_password(password):
-        return jsonify(error="Неверный email или пароль"), 401
+    user = db.session.get(User, user_id) if user_id is not None else None
+    if not user or not user.is_active:
+        return jsonify(error="Пользователь не найден"), 401
 
     return jsonify(token=issue_token(user), user=_serialize_user(user))
 
@@ -71,28 +69,6 @@ def login():
 @login_required
 def me():
     return jsonify(_serialize_user(get_current_user()))
-
-
-@bp.patch("/me/password")
-@login_required
-def change_own_password():
-    """Пользователь меняет свой пароль сам — нужно знать текущий. До этого
-    эндпоинта сменить пароль после первоначальной выдачи было вообще
-    невозможно (только полное удаление и создание учётки заново)."""
-    user = get_current_user()
-    body = request.get_json(force=True) or {}
-    current_password = body.get("current_password") or ""
-    new_password = body.get("new_password") or ""
-
-    if not user.check_password(current_password):
-        return jsonify(error="Текущий пароль неверен"), 401
-    if len(new_password) < 8:
-        return jsonify(error="Новый пароль должен быть не короче 8 символов"), 400
-
-    user.set_password(new_password)
-    log_change("user", user.id, "password_changed", actor=user)
-    db.session.commit()
-    return jsonify(_serialize_user(user))
 
 
 @bp.get("/users")
@@ -109,20 +85,16 @@ def create_user():
     без публичной саморегистрации (внутренняя платформа)."""
     body = request.get_json(force=True) or {}
     email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
     role = body.get("role", UserRole.OPERATOR.value)
 
-    if not email or not password:
-        return jsonify(error="'email' и 'password' обязательны"), 400
-    if len(password) < 8:
-        return jsonify(error="Пароль должен быть не короче 8 символов"), 400
+    if not email:
+        return jsonify(error="'email' обязателен"), 400
     if role not in (UserRole.ADMIN.value, UserRole.OPERATOR.value):
         return jsonify(error="Недопустимая роль"), 400
     if User.query.filter_by(email=email).first():
         return jsonify(error="Пользователь с таким email уже существует"), 409
 
     user = User(email=email, role=UserRole(role))
-    user.set_password(password)
     db.session.add(user)
     db.session.flush()
     log_change(
@@ -130,27 +102,6 @@ def create_user():
     )
     db.session.commit()
     return jsonify(_serialize_user(user)), 201
-
-
-@bp.patch("/users/<int:user_id>/password")
-@admin_required
-def admin_reset_password(user_id: int):
-    """Администратор задаёт новый пароль другому пользователю напрямую, без
-    знания старого — единственный способ восстановить доступ, если человек
-    свой пароль забыл (публичного flow сброса по email в системе нет)."""
-    user = db.get_or_404(User, user_id)
-    body = request.get_json(force=True) or {}
-    new_password = body.get("new_password") or ""
-
-    if len(new_password) < 8:
-        return jsonify(error="Пароль должен быть не короче 8 символов"), 400
-
-    user.set_password(new_password)
-    log_change(
-        "user", user.id, "password_reset_by_admin", actor=get_current_user(), details={"target_email": user.email}
-    )
-    db.session.commit()
-    return jsonify(_serialize_user(user))
 
 
 @bp.delete("/users/<int:user_id>")

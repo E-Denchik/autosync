@@ -3,8 +3,11 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, UploadIcon, SearchIcon } from "../../components/icons.jsx";
+
+const PER_PAGE = 50;
 
 const EMPTY_FORM = {
   code: "",
@@ -21,6 +24,8 @@ const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv"];
 
 export default function NomenclatureCatalog() {
   const [entries, setEntries] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -31,11 +36,14 @@ export default function NomenclatureCatalog() {
   const [uploading, setUploading] = useState(false);
   const toast = useToast();
 
-  const load = (q = query) => {
+  const load = (q = query, p = page) => {
     setLoading(true);
     api
-      .listNomenclature(q)
-      .then(setEntries)
+      .listNomenclature(q, { page: p, per_page: PER_PAGE })
+      .then(({ items, total: t }) => {
+        setEntries(items);
+        setTotal(t);
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   };
@@ -44,7 +52,13 @@ export default function NomenclatureCatalog() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    load(query);
+    setPage(1);
+    load(query, 1);
+  };
+
+  const handlePageChange = (p) => {
+    setPage(p);
+    load(query, p);
   };
 
   const handleCreate = async (e) => {
@@ -267,6 +281,7 @@ export default function NomenclatureCatalog() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
         </div>
       )}
 

@@ -125,9 +125,8 @@ def register_cli(app):
 
     @users_group.command("create-admin")
     @click.option("--email", required=True)
-    @click.option("--password", required=True)
-    def create_admin(email, password):
-        """Создать первого администратора: flask users create-admin --email ... --password ..."""
+    def create_admin(email):
+        """Создать первого администратора: flask users create-admin --email ..."""
         from app.extensions import db
         from app.models import User, UserRole
 
@@ -136,7 +135,6 @@ def register_cli(app):
             click.echo(f"Пользователь {email} уже существует.")
             return
         user = User(email=email, role=UserRole.ADMIN)
-        user.set_password(password)
         db.session.add(user)
         db.session.commit()
         click.echo(f"Администратор {email} создан.")

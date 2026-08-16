@@ -65,16 +65,16 @@ export function AuthProvider({ children }) {
     })();
   }, [clearSession]);
 
-  const login = async (email, password) => {
-    const { token, user: loggedInUser } = await api.login(email, password);
+  const login = async (userId) => {
+    const { token, user: loggedInUser } = await api.login(userId);
     safeStorage()?.setItem(STORAGE_KEY, token);
     setAuthToken(token);
     setUser(loggedInUser);
     return loggedInUser;
   };
 
-  const completeSetup = async (email, password) => {
-    const { token, user: createdUser } = await api.setup(email, password);
+  const completeSetup = async (email) => {
+    const { token, user: createdUser } = await api.setup(email);
     safeStorage()?.setItem(STORAGE_KEY, token);
     setAuthToken(token);
     setUser(createdUser);

@@ -9,6 +9,7 @@ from app.services.analytics_provider import AnalyticsProvider, AnalyticsProvider
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 from app.services.ozon_client import OzonClient, OzonClientError
+from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("ozon_pricing", __name__)
 bp.before_request(login_required(lambda: None))
@@ -41,8 +42,9 @@ def list_snapshots():
     query = PriceSnapshot.query
     if status != "all":
         query = query.filter(PriceSnapshot.status == PriceSuggestionStatus(status))
-    snapshots = query.order_by(PriceSnapshot.created_at.desc()).limit(200).all()
-    return jsonify([_serialize(s) for s in snapshots])
+    query = query.order_by(PriceSnapshot.created_at.desc())
+    snapshots, total = paginate(query, request.args)
+    return paginated_response([_serialize(s) for s in snapshots], total)
 
 
 @bp.post("/<int:snapshot_id>/approve")

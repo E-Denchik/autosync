@@ -3,6 +3,7 @@ from app.models import (
     Contract,
     ConfidenceLevel,
     DocumentProcessingStatus,
+    LaborLine,
     PartMatch,
     PriceSnapshot,
     PriceSuggestionStatus,
@@ -22,6 +23,7 @@ def test_dashboard_summary_empty_state(client, admin_headers):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["products_total"] == 0
+    assert body["pending_labor_lines"] == 0
     assert body["recent_repair_orders"] == []
     assert body["recent_price_suggestions"] == []
     assert body["llm_model"] is None
@@ -66,6 +68,14 @@ def test_dashboard_summary_reflects_real_data(client, admin_headers, app):
                 review_status=ReviewStatus.PENDING,
             )
         )
+        db.session.add(
+            LaborLine(
+                repair_order_id=order.id,
+                description="Замена колодок",
+                confidence_level=ConfidenceLevel.LLM_GUESS,
+                review_status=ReviewStatus.PENDING,
+            )
+        )
         db.session.commit()
 
     resp = client.get("/api/dashboard/summary", headers=admin_headers)
@@ -74,8 +84,14 @@ def test_dashboard_summary_reflects_real_data(client, admin_headers, app):
     assert body["pending_price_suggestions"] == 1
     assert body["repair_orders_needs_review"] == 1
     assert body["pending_part_matches"] == 1
+    assert body["pending_labor_lines"] == 1
     assert len(body["recent_repair_orders"]) == 1
-    assert body["recent_repair_orders"][0]["status"] == "needs_review"
+    recent_order = body["recent_repair_orders"][0]
+    assert recent_order["status"] == "needs_review"
+    assert recent_order["matches_total"] == 1
+    assert recent_order["matches_pending"] == 1
+    assert recent_order["labor_total"] == 1
+    assert recent_order["labor_pending"] == 1
     assert len(body["recent_price_suggestions"]) == 1
     assert body["recent_price_suggestions"][0]["suggested_price"] == 90.0
 

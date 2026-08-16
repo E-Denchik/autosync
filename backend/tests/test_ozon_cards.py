@@ -77,6 +77,109 @@ def test_update_cost_price_unknown_product_404(client, admin_headers):
     assert resp.status_code == 404
 
 
+def test_generate_card_passes_top_listings_to_llm_and_returns_them(
+    client, admin_headers, product, monkeypatch
+):
+    """generate_card должен не просто спрашивать LLM о цене конкурентов, а
+    передавать список топовых конкурентных карточек (что продаётся лучше) и
+    возвращать его фронту — иначе не выполняется требование заказчика
+    'анализировал, какие карточки лучше продают'."""
+    captured = {}
+
+    class FakeProvider:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def get_competitor_prices(self, name, category):
+            return {"min_price": 900, "avg_price": 1100, "max_price": 1400, "sample_size": 5}
+
+        def get_top_competitor_listings(self, name, category):
+            return [{"name": "Конкурент А", "price": 950, "sales_rank": 1, "units_sold_30d": 500,
+                      "rating": 4.9, "reviews_count": 80}]
+
+    class FakeLLMClient:
+        def __init__(self, base_url):
+            pass
+
+        def generate_card_content(self, product_data, market):
+            captured["product"] = product_data
+            captured["market"] = market
+            return {"title": "т", "bullets": [], "description": "d", "suggested_price": 950, "reasoning": "r"}
+
+    monkeypatch.setattr("app.api.ozon.cards.AnalyticsProvider", FakeProvider)
+    monkeypatch.setattr("app.api.ozon.cards.LLMClient", FakeLLMClient)
+
+    resp = client.post(f"/api/ozon/cards/{product}/generate", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+
+    assert captured["market"]["top_listings"][0]["name"] == "Конкурент А"
+    assert captured["market"]["price_stats"]["min_price"] == 900
+    assert body["competitor_listings"] == [
+        {"name": "Конкурент А", "price": 950, "sales_rank": 1, "units_sold_30d": 500,
+         "rating": 4.9, "reviews_count": 80}
+    ]
+    assert body["suggested_price"] == 950
+
+
+def test_generate_card_survives_analytics_provider_unavailable(client, admin_headers, product, monkeypatch):
+    """analytics provider не настроен/недоступен — генерация карточки всё
+    равно должна работать (без рыночных данных), а не падать 500."""
+    from app.services.analytics_provider import AnalyticsProviderError
+
+    class FailingProvider:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def get_competitor_prices(self, name, category):
+            raise AnalyticsProviderError("не настроен")
+
+        def get_top_competitor_listings(self, name, category):
+            raise AnalyticsProviderError("не настроен")
+
+    class FakeLLMClient:
+        def __init__(self, base_url):
+            pass
+
+        def generate_card_content(self, product_data, market):
+            assert market == {"price_stats": None, "top_listings": []}
+            return {"title": "т", "bullets": [], "description": "d", "suggested_price": None, "reasoning": "r"}
+
+    monkeypatch.setattr("app.api.ozon.cards.AnalyticsProvider", FailingProvider)
+    monkeypatch.setattr("app.api.ozon.cards.LLMClient", FakeLLMClient)
+
+    resp = client.post(f"/api/ozon/cards/{product}/generate", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.get_json()["competitor_listings"] == []
+
+
+def test_generate_card_returns_502_when_llm_unavailable(client, admin_headers, product, monkeypatch):
+    from app.services.llm_client import LLMClientError
+
+    class FakeProvider:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def get_competitor_prices(self, name, category):
+            return {}
+
+        def get_top_competitor_listings(self, name, category):
+            return []
+
+    class FailingLLMClient:
+        def __init__(self, base_url):
+            pass
+
+        def generate_card_content(self, product_data, market):
+            raise LLMClientError("llm-service недоступен")
+
+    monkeypatch.setattr("app.api.ozon.cards.AnalyticsProvider", FakeProvider)
+    monkeypatch.setattr("app.api.ozon.cards.LLMClient", FailingLLMClient)
+
+    resp = client.post(f"/api/ozon/cards/{product}/generate", headers=admin_headers)
+    assert resp.status_code == 502
+
+
 def test_sync_endpoint_returns_ok_false_when_not_configured(client, admin_headers):
     resp = client.post("/api/ozon/cards/sync", headers=admin_headers)
     assert resp.status_code == 200

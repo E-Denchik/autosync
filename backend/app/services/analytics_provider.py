@@ -60,6 +60,32 @@ class AnalyticsProvider:
             "raw": data,
         }
 
+    def get_top_competitor_listings(self, query: str, category: str | None = None, limit: int = 10) -> list[dict]:
+        """Топовые конкурентные карточки по запросу/категории."""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/v1/competitors/top-listings",
+                params={"query": query, "category": category, "limit": limit},
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise AnalyticsProviderError(f"analytics provider недоступен: {exc}") from exc
+        if not resp.ok:
+            raise AnalyticsProviderError(f"analytics provider -> {resp.status_code}: {resp.text}")
+        results = resp.json().get("results") or []
+        return [
+            {
+                "name": item.get("name"),
+                "price": item.get("price"),
+                "sales_rank": item.get("sales_rank"),
+                "units_sold_30d": item.get("units_sold_30d"),
+                "rating": item.get("rating"),
+                "reviews_count": item.get("reviews_count"),
+            }
+            for item in results
+        ]
+
     def test_connection(self) -> str:
         """Лёгкая проверка доступности провайдера тестовым запросом.
 

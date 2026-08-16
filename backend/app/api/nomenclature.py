@@ -7,13 +7,13 @@ import os
 import uuid
 
 from flask import Blueprint, current_app, jsonify, request
-from werkzeug.utils import secure_filename
 
 from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import NomenclatureEntry
 from app.services.history import log_change
 from app.services.nomenclature_import import NomenclatureImportError, import_nomenclature_file
+from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("nomenclature", __name__)
 bp.before_request(login_required(lambda: None))
@@ -52,8 +52,9 @@ def list_entries():
                 NomenclatureEntry.cat_number.ilike(like),
             )
         )
-    entries = query.order_by(NomenclatureEntry.name).limit(500).all()
-    return jsonify([_serialize(e) for e in entries])
+    query = query.order_by(NomenclatureEntry.name)
+    entries, total = paginate(query, request.args)
+    return paginated_response([_serialize(e) for e in entries], total)
 
 
 @bp.post("")
@@ -121,8 +122,7 @@ def upload_file():
         return jsonify(error="Нужен файл 'file'"), 400
 
     file_storage = request.files["file"]
-    filename = secure_filename(file_storage.filename)
-    ext = os.path.splitext(filename)[1].lower()
+    ext = os.path.splitext(file_storage.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         return jsonify(error=f"Неподдерживаемый тип файла: {ext}"), 400
 
@@ -143,7 +143,7 @@ def upload_file():
         0,
         "imported",
         actor=get_current_user(),
-        details={"filename": filename, **summary},
+        details={"filename": file_storage.filename, **summary},
     )
     db.session.commit()
     return jsonify(summary), 201

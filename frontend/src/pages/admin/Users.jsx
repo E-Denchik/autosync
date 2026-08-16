@@ -6,7 +6,7 @@ import { useToast } from "../../context/ToastContext.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { PlusIcon } from "../../components/icons.jsx";
 
-const EMPTY_FORM = { email: "", password: "", role: "operator" };
+const EMPTY_FORM = { email: "", role: "operator" };
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -16,9 +16,6 @@ export default function Users() {
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [resetTarget, setResetTarget] = useState(null);
-  const [resetPassword, setResetPassword] = useState("");
-  const [resetting, setResetting] = useState(false);
   const toast = useToast();
   const { user: currentUser } = useAuth();
 
@@ -63,24 +60,6 @@ export default function Users() {
     }
   };
 
-  const handleResetPassword = async () => {
-    if (resetPassword.length < 8) {
-      toast.error("Пароль должен быть не короче 8 символов");
-      return;
-    }
-    setResetting(true);
-    try {
-      await api.resetUserPassword(resetTarget.id, resetPassword);
-      toast.success(`Пароль для ${resetTarget.email} изменён`);
-      setResetTarget(null);
-      setResetPassword("");
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setResetting(false);
-    }
-  };
-
   return (
     <div>
       <div className="page-header">
@@ -103,17 +82,6 @@ export default function Users() {
               required
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Пароль (мин. 8 символов)</label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             />
           </div>
           <div className="field">
@@ -168,15 +136,6 @@ export default function Users() {
                     <td>
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                         <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            setResetPassword("");
-                            setResetTarget(u);
-                          }}
-                        >
-                          Сбросить пароль
-                        </button>
-                        <button
                           className="btn btn-reject btn-sm"
                           disabled={isSelf}
                           title={isSelf ? "Нельзя удалить самого себя" : "Удалить пользователя"}
@@ -208,43 +167,6 @@ export default function Users() {
           busy={deleting}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {resetTarget && (
-        <ConfirmDialog
-          title="Сбросить пароль?"
-          message={
-            <>
-              <div style={{ marginBottom: 10 }}>
-                Новый пароль для <strong>{resetTarget.email}</strong> — сообщите его пользователю
-                отдельно, здесь он больше не отображается.
-              </div>
-              <input
-                type="password"
-                autoFocus
-                placeholder="Новый пароль (мин. 8 символов)"
-                minLength={8}
-                value={resetPassword}
-                onChange={(e) => setResetPassword(e.target.value)}
-                style={{
-                  width: "100%",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  fontSize: 13.5,
-                  fontFamily: "inherit",
-                }}
-              />
-            </>
-          }
-          confirmLabel="Сохранить"
-          busy={resetting}
-          onConfirm={handleResetPassword}
-          onCancel={() => {
-            setResetTarget(null);
-            setResetPassword("");
-          }}
         />
       )}
     </div>

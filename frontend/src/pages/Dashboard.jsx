@@ -82,8 +82,8 @@ export default function Dashboard() {
             />
             <StatCard
               icon={ListIcon}
-              label="Позиций сопоставления ждут решения"
-              value={summary.pending_part_matches}
+              label="Позиций и работ ждут решения"
+              value={summary.pending_part_matches + summary.pending_labor_lines}
               to="/repair-orders"
             />
           </div>
@@ -110,8 +110,10 @@ export default function Dashboard() {
                       <div className="activity-main">
                         <div className="activity-title">{o.original_filename}</div>
                         <div className="activity-sub">
-                          {o.matches_total > 0
-                            ? `сопоставлено ${o.matches_total - o.matches_pending} из ${o.matches_total}`
+                          {o.matches_total + o.labor_total > 0
+                            ? `проверено ${
+                                o.matches_total + o.labor_total - o.matches_pending - o.labor_pending
+                              } из ${o.matches_total + o.labor_total}`
                             : "ещё обрабатывается"}
                           {" · "}
                           {new Date(o.created_at).toLocaleDateString("ru-RU")}

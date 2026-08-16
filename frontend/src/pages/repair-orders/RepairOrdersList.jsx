@@ -4,22 +4,40 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { FileTextIcon, UploadIcon, ChevronRightIcon } from "../../components/icons.jsx";
 
+const PER_PAGE = 50;
+
 export default function RepairOrdersList() {
   const [orders, setOrders] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
-  useEffect(() => {
+  const load = (p) => {
+    setLoading(true);
     api
-      .listRepairOrders()
-      .then(setOrders)
+      .listRepairOrders({ page: p, per_page: PER_PAGE })
+      .then(({ items, total: t }) => {
+        setOrders(items);
+        setTotal(t);
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handlePageChange = (p) => {
+    setPage(p);
+    load(p);
+  };
 
   return (
     <div>
@@ -58,7 +76,7 @@ export default function RepairOrdersList() {
                 <th>Автомобиль</th>
                 <th>Контрагент</th>
                 <th>Статус</th>
-                <th>Сопоставлено позиций</th>
+                <th>Проверено позиций и работ</th>
                 <th>Загружено</th>
                 <th></th>
               </tr>
@@ -76,8 +94,10 @@ export default function RepairOrdersList() {
                     <StatusPill status={o.status} />
                   </td>
                   <td>
-                    {o.matches_total > 0
-                      ? `${o.matches_total - o.matches_pending} / ${o.matches_total}`
+                    {o.matches_total + o.labor_total > 0
+                      ? `${
+                          o.matches_total + o.labor_total - o.matches_pending - o.labor_pending
+                        } / ${o.matches_total + o.labor_total}`
                       : "—"}
                   </td>
                   <td className="text-muted">{new Date(o.created_at).toLocaleString("ru-RU")}</td>
@@ -90,6 +110,7 @@ export default function RepairOrdersList() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
         </div>
       )}
     </div>

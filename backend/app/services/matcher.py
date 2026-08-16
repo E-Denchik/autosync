@@ -12,13 +12,28 @@
 
 from __future__ import annotations
 
+import difflib
 import logging
 
 from app.models import ConfidenceLevel
-from app.services.llm_client import LLMClient, LLMClientError
+from app.services.llm_client import LLMClient
 from app.services.parts_supplier_client import PartsSupplierClient
 
 logger = logging.getLogger(__name__)
+
+LLM_CANDIDATE_LIMIT = 20
+
+
+def _shortlist_candidates(name: str | None, order_lines: list[dict]) -> list[dict]:
+    if not name or len(order_lines) <= LLM_CANDIDATE_LIMIT:
+        return order_lines
+    normalized = name.strip().lower()
+    scored = [
+        (difflib.SequenceMatcher(None, normalized, (line.get("name") or "").strip().lower()).ratio(), line)
+        for line in order_lines
+    ]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [line for _, line in scored[:LLM_CANDIDATE_LIMIT]]
 
 
 def match_line(
@@ -77,17 +92,18 @@ def match_line(
     # позицию несопоставленной и отправляем на ручную проверку.
     llm_error = None
     if order_lines:
+        shortlist = _shortlist_candidates(contract_line.get("name"), order_lines)
         try:
-            llm_result = llm_client.match_part_by_name(contract_line, order_lines)
-        except LLMClientError as exc:
+            llm_result = llm_client.match_part_by_name(contract_line, shortlist)
+        except Exception as exc:
             llm_result = None
             llm_error = str(exc)
             logger.warning("LLM-сопоставление недоступно для %r: %s", contract_line.get("name"), exc)
 
         if llm_result is not None:
             idx = llm_result.get("matched_index")
-            if idx is not None and 0 <= idx < len(order_lines):
-                candidate = order_lines[idx]
+            if idx is not None and 0 <= idx < len(shortlist):
+                candidate = shortlist[idx]
                 return {
                     "contract_article": article,
                     "contract_name": contract_line.get("name"),

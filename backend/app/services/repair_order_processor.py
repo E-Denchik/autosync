@@ -21,9 +21,14 @@ from app.models import (
     RepairOrderStatus,
 )
 from app.services.autodata_client import AutoDataClient
-from app.services.document_parser import DocumentParseError, parse_document
+from app.services.document_parser import (
+    DocumentParseError,
+    parse_document,
+    parse_price_catalog_by_brand,
+    parse_repair_order_export,
+)
 from app.services.history import log_change
-from app.services.labor_matcher import match_all_labor
+from app.services.labor_matcher import match_all_labor, suggest_missing_labor_operations
 from app.services.llm_client import LLMClient
 from app.services.matcher import match_all
 from app.services.nomenclature_client import NomenclatureClient
@@ -44,8 +49,28 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     db.session.commit()
 
     try:
-        contract.parsed_lines = parse_document(contract.storage_path)
-        repair_order.parsed_lines = parse_document(repair_order.storage_path)
+        export = parse_repair_order_export(repair_order.storage_path)
+        if export is not None:
+            meta = export["meta"]
+            repair_order.vehicle_make = repair_order.vehicle_make or meta.get("vehicle_make")
+            repair_order.vehicle_model = repair_order.vehicle_model or meta.get("vehicle_model")
+            repair_order.vehicle_vin = repair_order.vehicle_vin or meta.get("vehicle_vin")
+            repair_order.vehicle_year = repair_order.vehicle_year or meta.get("vehicle_year")
+            part_lines = export["part_lines"]
+            labor_lines_raw = [
+                {"name": l["description"]} for l in export["labor_lines"] if l.get("description")
+            ]
+            repair_order.parsed_lines = part_lines
+        else:
+            order_lines = parse_document(repair_order.storage_path)
+            repair_order.parsed_lines = order_lines
+            part_lines = [line for line in order_lines if line.get("article")]
+            labor_lines_raw = [line for line in order_lines if not line.get("article") and line.get("name")]
+
+        catalog_lines = None
+        if repair_order.vehicle_make:
+            catalog_lines = parse_price_catalog_by_brand(contract.storage_path, repair_order.vehicle_make)
+        contract.parsed_lines = catalog_lines if catalog_lines is not None else parse_document(contract.storage_path)
     except DocumentParseError as exc:
         contract.status = DocumentProcessingStatus.FAILED
         repair_order.status = RepairOrderStatus.FAILED
@@ -64,17 +89,12 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     )
     llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
 
-    order_lines = repair_order.parsed_lines or []
-    part_lines = [line for line in order_lines if line.get("article")]
-    labor_lines_raw = [line for line in order_lines if not line.get("article") and line.get("name")]
-
     try:
-        results = match_all(contract.parsed_lines, part_lines, supplier_client, llm_client)
+        if catalog_lines is not None:
+            results = match_all(part_lines, contract.parsed_lines, supplier_client, llm_client)
+        else:
+            results = match_all(contract.parsed_lines, part_lines, supplier_client, llm_client)
     except Exception as exc:
-        # Подстраховка на случай непредвиденной ошибки сопоставления —
-        # без этого заказ-наряд зависает в статусе "matching" навсегда,
-        # ничего не сообщая пользователю (см. matcher.py — там уже есть
-        # защита от ошибок самой LLM, это доп. уровень на случай прочего).
         logger.exception("match_all упал для repair_order_id=%s", repair_order_id)
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = f"Ошибка сопоставления: {exc}"
@@ -130,6 +150,19 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         logger.exception("match_all_labor упал для repair_order_id=%s", repair_order_id)
         labor_results = []
         log_change("repair_order", repair_order.id, "labor_matching_failed", details={"error": str(exc)})
+
+    try:
+        suggested_labor = suggest_missing_labor_operations(
+            labor_results,
+            repair_order.vehicle_make,
+            repair_order.vehicle_model,
+            autodata_client,
+            llm_client,
+        )
+    except Exception as exc:
+        logger.exception("suggest_missing_labor_operations упал для repair_order_id=%s", repair_order_id)
+        suggested_labor = []
+    labor_results = labor_results + suggested_labor
 
     for result in labor_results:
         norm_hours = result.get("norm_hours")

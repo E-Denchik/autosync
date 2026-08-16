@@ -2,20 +2,30 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { ListIcon, SearchIcon } from "../../components/icons.jsx";
 
+const PER_PAGE = 50;
+
 const ENTITY_LABELS = {
-  part_match: "Сопоставление",
+  part_match: "Сопоставление запчасти",
+  labor_line: "Работа (нормо-часы)",
   repair_order: "Заказ-наряд",
+  nomenclature_entry: "Номенклатура",
+  nomenclature_import: "Импорт номенклатуры",
   price_snapshot: "Предложение по цене",
+  product: "Товар",
   user: "Пользователь",
   llm_model_selection: "LLM-модель",
+  integration_keys: "Ключи интеграций",
 };
 
 const ACTION_LABELS = {
   created: "создано",
   edited: "изменено",
+  updated: "обновлено",
+  imported: "импортировано",
   approved: "одобрено",
   rejected: "отклонено",
   deleted: "удалено",
@@ -24,6 +34,8 @@ const ACTION_LABELS = {
   password_changed: "смена пароля",
   password_reset_by_admin: "сброс пароля админом",
   selected: "выбрана",
+  labor_matching_failed: "ошибка сопоставления работ",
+  nomenclature_enrichment_failed: "ошибка обогащения номенклатурой",
 };
 
 const EMPTY_FILTERS = {
@@ -37,6 +49,8 @@ const EMPTY_FILTERS = {
 
 export default function History() {
   const [entries, setEntries] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [entityTypes, setEntityTypes] = useState([]);
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -48,28 +62,40 @@ export default function History() {
     api.listUsers().then(setUsers).catch(() => {});
   }, []);
 
-  const load = (activeFilters) => {
+  const load = (activeFilters, p = 1) => {
     setLoading(true);
     api
       .listHistory({
         ...activeFilters,
         only_current: activeFilters.only_current ? "true" : undefined,
+        page: p,
+        per_page: PER_PAGE,
       })
-      .then(setEntries)
+      .then(({ items, total: t }) => {
+        setEntries(items);
+        setTotal(t);
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => load(EMPTY_FILTERS), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => load(EMPTY_FILTERS, 1), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (e) => {
     e.preventDefault();
-    load(filters);
+    setPage(1);
+    load(filters, 1);
   };
 
   const handleReset = () => {
     setFilters(EMPTY_FILTERS);
-    load(EMPTY_FILTERS);
+    setPage(1);
+    load(EMPTY_FILTERS, 1);
+  };
+
+  const handlePageChange = (p) => {
+    setPage(p);
+    load(filters, p);
   };
 
   return (
@@ -208,6 +234,7 @@ export default function History() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
         </div>
       )}
     </div>

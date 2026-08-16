@@ -3,25 +3,38 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import Pagination from "../../components/Pagination.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { TrendingUpIcon, SparklesIcon } from "../../components/icons.jsx";
 
+const PER_PAGE = 50;
+
 export default function PricingDashboard() {
   const [snapshots, setSnapshots] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const toast = useToast();
 
-  const load = () => {
+  const load = (p = page) => {
     setLoading(true);
     api
-      .listPriceSnapshots("pending")
-      .then(setSnapshots)
+      .listPriceSnapshots("pending", { page: p, per_page: PER_PAGE })
+      .then(({ items, total: t }) => {
+        setSnapshots(items);
+        setTotal(t);
+      })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePageChange = (p) => {
+    setPage(p);
+    load(p);
+  };
 
   const handleDecision = async (id, decision) => {
     setBusyId(id);
@@ -34,6 +47,7 @@ export default function PricingDashboard() {
         toast.info("Предложение отклонено");
       }
       setSnapshots((prev) => prev.filter((s) => s.id !== id));
+      setTotal((prev) => Math.max(0, prev - 1));
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -127,6 +141,7 @@ export default function PricingDashboard() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
         </div>
       )}
     </div>
