@@ -1,5 +1,4 @@
 import os
-import uuid
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
@@ -18,58 +17,55 @@ from app.models import (
 )
 from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
-from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
+from app.services.upload_helpers import display_filename, save_upload as _save_upload
 
 bp = Blueprint("repair_orders_upload", __name__)
 bp.before_request(login_required(lambda: None))
 
-ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
-
-
-def display_filename(filename: str | None) -> str:
-    return os.path.basename((filename or "").strip()) or "file"
-
-
-def _save_upload(file_storage) -> str:
-    ext = os.path.splitext(file_storage.filename or "")[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(f"Неподдерживаемый тип файла: {ext}")
-
-    upload_dir = current_app.config["UPLOAD_DIR"]
-    os.makedirs(upload_dir, exist_ok=True)
-    stored_name = f"{uuid.uuid4().hex}{ext}"
-    path = os.path.join(upload_dir, stored_name)
-    file_storage.save(path)
-    return path
-
 
 @bp.post("")
 def upload_documents():
-    """Принимает договор + заказ-наряд (каждый — один или несколько файлов,
-    например отдельные страницы), ставит задачу парсинга/сопоставления в очередь."""
-    contract_files = request.files.getlist("contract")
+    """Принимает заказ-наряд (один или несколько файлов, например отдельные
+    страницы) и либо новый договор файлом, либо ссылку на уже загруженный
+    ранее каталог контракта (contract_id) — см. app/api/contracts.py."""
     order_files = request.files.getlist("repair_order")
-    if not contract_files or not order_files:
-        return jsonify(error="Нужны оба файла: contract и repair_order"), 400
+    if not order_files:
+        return jsonify(error="Нужен файл repair_order"), 400
+
+    existing_contract_id = request.form.get("contract_id")
+    contract_files = request.files.getlist("contract")
+    if not existing_contract_id and not contract_files:
+        return jsonify(error="Нужен либо файл contract, либо contract_id уже загруженного договора"), 400
 
     try:
-        contract_paths = [_save_upload(f) for f in contract_files]
         order_paths = [_save_upload(f) for f in order_files]
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
-    contract = Contract(
-        original_filename=display_filename(contract_files[0].filename),
-        storage_path=contract_paths[0],
-        status=DocumentProcessingStatus.UPLOADED,
-    )
-    db.session.add(contract)
-    db.session.flush()
-    for f, path in zip(contract_files[1:], contract_paths[1:]):
-        db.session.add(
-            ContractFile(contract_id=contract.id, original_filename=display_filename(f.filename), storage_path=path)
+    if existing_contract_id:
+        contract = db.session.get(Contract, int(existing_contract_id))
+        if not contract:
+            return jsonify(error="Указанный договор не найден"), 404
+    else:
+        try:
+            contract_paths = [_save_upload(f) for f in contract_files]
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
+        contract = Contract(
+            original_filename=display_filename(contract_files[0].filename),
+            storage_path=contract_paths[0],
+            status=DocumentProcessingStatus.UPLOADED,
         )
+        db.session.add(contract)
+        db.session.flush()
+        for f, path in zip(contract_files[1:], contract_paths[1:]):
+            db.session.add(
+                ContractFile(
+                    contract_id=contract.id, original_filename=display_filename(f.filename), storage_path=path
+                )
+            )
 
     contragent_id = request.form.get("contragent_id")
     repair_order = RepairOrder(

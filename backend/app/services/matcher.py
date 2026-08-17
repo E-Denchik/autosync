@@ -15,13 +15,14 @@ from __future__ import annotations
 import difflib
 import logging
 
-from app.models import ConfidenceLevel
+from app.models import ConfidenceLevel, ContractPart
 from app.services.llm_client import LLMClient
 from app.services.parts_supplier_client import PartsSupplierClient
 
 logger = logging.getLogger(__name__)
 
 LLM_CANDIDATE_LIMIT = 20
+CONTRACT_CANDIDATE_POOL_LIMIT = 500
 
 
 def _shortlist_candidates(name: str | None, order_lines: list[dict]) -> list[dict]:
@@ -138,4 +139,110 @@ def match_all(
     return [
         match_line(line, order_lines, supplier_client, llm_client)
         for line in contract_lines
+    ]
+
+
+def _contract_candidate_pool(contract_id: int, name: str | None, limit: int = CONTRACT_CANDIDATE_POOL_LIMIT) -> list[ContractPart]:
+    base = ContractPart.query.filter_by(contract_id=contract_id)
+    if name:
+        for word in [w for w in name.strip().split() if len(w) >= 3][:3]:
+            filtered = base.filter(ContractPart.name.ilike(f"%{word}%")).limit(limit).all()
+            if filtered:
+                return filtered
+    return base.limit(limit).all()
+
+
+def match_line_against_contract(
+    order_line: dict,
+    contract_id: int,
+    supplier_client: PartsSupplierClient,
+    llm_client: LLMClient,
+) -> dict:
+    article = order_line.get("article")
+    name = order_line.get("name")
+
+    if article:
+        exact = ContractPart.query.filter_by(contract_id=contract_id, article=article).first()
+        if exact:
+            return {
+                "contract_article": article,
+                "contract_name": name,
+                "matched_article": exact.article,
+                "matched_name": exact.name,
+                "matched_price": exact.price,
+                "confidence_level": ConfidenceLevel.EXACT,
+                "confidence_score": 1.0,
+                "raw_match_data": {"source": "exact_article_match"},
+            }
+
+    if article:
+        try:
+            cross_refs = supplier_client.find_cross_references(article)
+        except Exception:
+            cross_refs = []
+        for ref in cross_refs:
+            found = ContractPart.query.filter_by(contract_id=contract_id, article=ref.get("article")).first()
+            if found:
+                return {
+                    "contract_article": article,
+                    "contract_name": name,
+                    "matched_article": found.article,
+                    "matched_name": found.name,
+                    "matched_price": found.price,
+                    "confidence_level": ConfidenceLevel.CROSS_REF,
+                    "confidence_score": 0.9,
+                    "raw_match_data": {"source": "parts_supplier_cross_reference", "candidates": cross_refs},
+                }
+
+    llm_error = None
+    candidates = _contract_candidate_pool(contract_id, name)
+    if candidates:
+        pool = [
+            {"article": c.article, "name": c.name, "price": float(c.price) if c.price is not None else None}
+            for c in candidates
+        ]
+        shortlist = _shortlist_candidates(name, pool)
+        try:
+            llm_result = llm_client.match_part_by_name(order_line, shortlist)
+        except Exception as exc:
+            llm_result = None
+            llm_error = str(exc)
+            logger.warning("LLM-сопоставление недоступно для %r: %s", name, exc)
+
+        if llm_result is not None:
+            idx = llm_result.get("matched_index")
+            if idx is not None and 0 <= idx < len(shortlist):
+                candidate = shortlist[idx]
+                return {
+                    "contract_article": article,
+                    "contract_name": name,
+                    "matched_article": candidate.get("article"),
+                    "matched_name": candidate.get("name"),
+                    "matched_price": candidate.get("price"),
+                    "confidence_level": ConfidenceLevel.LLM_GUESS,
+                    "confidence_score": llm_result.get("confidence", 0.0),
+                    "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
+                }
+
+    return {
+        "contract_article": article,
+        "contract_name": name,
+        "matched_article": None,
+        "matched_name": None,
+        "matched_price": None,
+        "confidence_level": ConfidenceLevel.LLM_GUESS,
+        "confidence_score": 0.0,
+        "raw_match_data": {"source": "llm_error", "error": llm_error} if llm_error else {"source": "no_match_found"},
+    }
+
+
+def match_all_against_contract(
+    order_lines: list[dict],
+    contract_id: int,
+    supplier_client: PartsSupplierClient,
+    llm_client: LLMClient,
+) -> list[dict]:
+    return [
+        match_line_against_contract(line, contract_id, supplier_client, llm_client)
+        for line in order_lines
     ]

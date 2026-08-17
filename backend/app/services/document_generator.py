@@ -94,7 +94,7 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
         ws.append(
             [
                 i,
-                match.contract_article or "",
+                match.matched_article or match.contract_article or "",
                 match.nomenclature_cat_number or "",
                 match.matched_name or match.contract_name or "",
                 match.nomenclature_manufacturer or "",
@@ -157,7 +157,7 @@ def generate_repair_order_document_from_template(repair_order: RepairOrder, temp
 
     part_items = [
         {
-            "article": m.contract_article or "",
+            "article": m.matched_article or m.contract_article or "",
             "cat_number": m.nomenclature_cat_number or "",
             "name": m.matched_name or m.contract_name or "",
             "manufacturer": m.nomenclature_manufacturer or "",

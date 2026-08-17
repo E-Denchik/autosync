@@ -195,17 +195,31 @@ def import_nomenclature_file(file_path: str, llm_client=None) -> dict:
     загрузка обновлённой выгрузки не плодит дубликаты."""
     rows = parse_nomenclature_file(file_path, llm_client)
 
+    codes = {row["code"] for row in rows if row["code"]}
+    cat_numbers = {row["cat_number"] for row in rows if row["cat_number"]}
+    by_code = {e.code: e for e in NomenclatureEntry.query.filter(NomenclatureEntry.code.in_(codes)).all()} if codes else {}
+    by_cat_number = (
+        {e.cat_number: e for e in NomenclatureEntry.query.filter(NomenclatureEntry.cat_number.in_(cat_numbers)).all()}
+        if cat_numbers
+        else {}
+    )
+
     created = updated = 0
+    new_entries = []
     for row in rows:
         entry = None
         if row["code"]:
-            entry = NomenclatureEntry.query.filter_by(code=row["code"]).first()
+            entry = by_code.get(row["code"])
         if entry is None and row["cat_number"]:
-            entry = NomenclatureEntry.query.filter_by(cat_number=row["cat_number"]).first()
+            entry = by_cat_number.get(row["cat_number"])
 
         if entry is None:
             entry = NomenclatureEntry(source="import")
-            db.session.add(entry)
+            new_entries.append(entry)
+            if row["code"]:
+                by_code[row["code"]] = entry
+            if row["cat_number"]:
+                by_cat_number.setdefault(row["cat_number"], entry)
             created += 1
         else:
             updated += 1
@@ -213,5 +227,6 @@ def import_nomenclature_file(file_path: str, llm_client=None) -> dict:
         for field, value in row.items():
             setattr(entry, field, value)
 
+    db.session.add_all(new_entries)
     db.session.commit()
     return {"rows_parsed": len(rows), "created": created, "updated": updated}

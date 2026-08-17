@@ -353,7 +353,8 @@ tbody tr:hover {
 }
 
 .status-pill.status-approved,
-.status-pill.status-reviewed {
+.status-pill.status-reviewed,
+.status-pill.status-parsed {
   background: var(--success-soft);
   color: var(--success-text);
 }

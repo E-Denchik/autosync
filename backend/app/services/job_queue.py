@@ -19,6 +19,7 @@ from flask import current_app
 # старте. К моменту, когда этот файл вообще импортируют (первый апload),
 # приложение уже полностью инициализировано, так что импортировать здесь
 # безопасно.
+from app.services.contract_catalog_import import import_contract_job
 from app.services.repair_order_processor import process_upload_job
 
 logger = logging.getLogger(__name__)
@@ -39,5 +40,18 @@ def enqueue_process_upload(contract_id: int, repair_order_id: int) -> None:
                     contract_id,
                     repair_order_id,
                 )
+
+    _executor.submit(_run)
+
+
+def enqueue_import_contract(contract_id: int, paths: list[str], vehicle_make: str | None) -> None:
+    app = current_app._get_current_object()
+
+    def _run():
+        with app.app_context():
+            try:
+                import_contract_job(contract_id, paths, vehicle_make)
+            except Exception:
+                logger.exception("import_contract_job упал для contract_id=%s", contract_id)
 
     _executor.submit(_run)

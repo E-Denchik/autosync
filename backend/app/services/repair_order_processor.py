@@ -1,5 +1,6 @@
-"""Бизнес-логика обработки загруженного договора + заказ-наряда: парсинг
-обоих файлов, сопоставление позиций (см. services/matcher.py).
+"""Бизнес-логика обработки загруженного заказ-наряда: парсинг файла,
+сопоставление позиций с каталогом контракта (см. services/matcher.py,
+services/contract_catalog_import.py).
 
 Вызывается из ThreadPoolExecutor (см. services/job_queue.py) — единственное
 требование вызывающей стороны: выполнять внутри app_context().
@@ -14,6 +15,7 @@ from flask import current_app
 from app.extensions import db
 from app.models import (
     Contract,
+    ContractLaborNorm,
     DocumentProcessingStatus,
     LaborLine,
     PartMatch,
@@ -21,16 +23,17 @@ from app.models import (
     RepairOrderStatus,
 )
 from app.services.autodata_client import AutoDataClient
-from app.services.document_parser import (
-    DocumentParseError,
-    parse_document_with_ocr_fallback,
-    parse_price_catalog_by_brand,
-    parse_repair_order_export,
-)
+from app.services.contract_catalog_import import import_contract_files
+from app.services.document_parser import DocumentParseError, parse_document_with_ocr_fallback, parse_repair_order_export
 from app.services.history import log_change
-from app.services.labor_matcher import match_all_labor, suggest_missing_labor_operations
+from app.services.labor_matcher import (
+    match_all_labor,
+    match_all_labor_against_contract,
+    suggest_missing_labor_operations,
+    suggest_missing_labor_operations_from_contract,
+)
 from app.services.llm_client import LLMClient
-from app.services.matcher import match_all
+from app.services.matcher import match_all_against_contract
 from app.services.nomenclature_client import NomenclatureClient
 from app.services.nomenclature_matcher import enrich_all
 from app.services.parts_supplier_client import PartsSupplierClient
@@ -70,26 +73,12 @@ def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[
     return meta, part_lines, labor_lines_raw
 
 
-def _parse_contract_files(paths: list[str], vehicle_make: str | None, llm_client: LLMClient) -> tuple[list[dict], bool]:
-    catalog_lines: list[dict] = []
-    used_catalog = False
-    for path in paths:
-        lines = parse_price_catalog_by_brand(path, vehicle_make) if vehicle_make else None
-        if lines is not None:
-            used_catalog = True
-            catalog_lines.extend(lines)
-        else:
-            catalog_lines.extend(parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS))
-    return catalog_lines, used_catalog
-
-
 def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     contract = db.session.get(Contract, contract_id)
     repair_order = db.session.get(RepairOrder, repair_order_id)
     if not contract or not repair_order:
         return {"status": "failed", "error": "contract or repair_order not found"}
 
-    contract.status = DocumentProcessingStatus.PARSING
     repair_order.status = RepairOrderStatus.PARSING
     db.session.commit()
 
@@ -106,31 +95,33 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         repair_order.parsed_lines = part_lines
     except DocumentParseError as exc:
         message = f"Не удалось прочитать заказ-наряд: {exc}"
-        contract.status = DocumentProcessingStatus.FAILED
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = message
         log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
         db.session.commit()
         return {"status": "failed", "error": message}
 
-    try:
-        catalog_lines, used_catalog = _parse_contract_files(
-            _contract_paths(contract), repair_order.vehicle_make, llm_client
-        )
-        contract.parsed_lines = catalog_lines
-    except DocumentParseError as exc:
-        message = (
-            f"Не удалось прочитать договор: {exc}. Ожидается либо прайс-лист "
-            "с колонками артикул/наименование/цена, либо каталог цен по маркам."
-        )
-        contract.status = DocumentProcessingStatus.FAILED
-        repair_order.status = RepairOrderStatus.FAILED
-        repair_order.error_message = message
-        log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
+    if contract.status != DocumentProcessingStatus.PARSED:
+        contract.status = DocumentProcessingStatus.PARSING
         db.session.commit()
-        return {"status": "failed", "error": message}
+        try:
+            import_contract_files(contract.id, _contract_paths(contract), repair_order.vehicle_make, llm_client)
+        except DocumentParseError as exc:
+            message = (
+                f"Не удалось прочитать договор: {exc}. Ожидается либо прайс-лист "
+                "с колонками артикул/наименование/цена, либо каталог цен по маркам, "
+                "либо экспорт заказ-наряда с разделами работ/материалов."
+            )
+            contract.status = DocumentProcessingStatus.FAILED
+            contract.error_message = message
+            repair_order.status = RepairOrderStatus.FAILED
+            repair_order.error_message = message
+            log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
+            db.session.commit()
+            return {"status": "failed", "error": message}
+        contract.status = DocumentProcessingStatus.PARSED
+        contract.error_message = None
 
-    contract.status = DocumentProcessingStatus.PARSED
     repair_order.status = RepairOrderStatus.MATCHING
     db.session.commit()
 
@@ -140,24 +131,15 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     )
 
     try:
-        if used_catalog:
-            results = match_all(part_lines, contract.parsed_lines, supplier_client, llm_client)
-        else:
-            results = match_all(contract.parsed_lines, part_lines, supplier_client, llm_client)
+        results = match_all_against_contract(part_lines, contract.id, supplier_client, llm_client)
     except Exception as exc:
-        logger.exception("match_all упал для repair_order_id=%s", repair_order_id)
+        logger.exception("match_all_against_contract упал для repair_order_id=%s", repair_order_id)
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = f"Ошибка сопоставления: {exc}"
         log_change("repair_order", repair_order.id, "failed", details={"error": str(exc), "stage": "matching"})
         db.session.commit()
         return {"status": "failed", "error": str(exc)}
 
-    # Обогащаем каждое сопоставление данными из внутренней номенклатуры
-    # заказчика (код, № кат., производитель, остаток/резерв/склад) — не
-    # влияет на confidence_level самого сопоставления, только подтягивает
-    # складские метаданные для уже найденной позиции (см. nomenclature_matcher.py).
-    # Недоступность источника номенклатуры не должна ронять обработку —
-    # тот же принцип, что и для supplier_client/llm_client выше.
     try:
         nomenclature_client = NomenclatureClient(
             current_app.config["ALFAAUTO_BASE_URL"],
@@ -169,9 +151,6 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         logger.exception("enrich_all (номенклатура) упал для repair_order_id=%s", repair_order_id)
         log_change("repair_order", repair_order.id, "nomenclature_enrichment_failed", details={"error": str(exc)})
 
-    # Все сопоставления создаются со статусом PENDING (см. модель PartMatch) —
-    # ReviewMatches сортирует/подсвечивает low-confidence позиции на фронте,
-    # но ни одна не применяется без явного approve человеком.
     for result in results:
         match = PartMatch(repair_order_id=repair_order.id, **result)
         db.session.add(match)
@@ -183,34 +162,43 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             details={"confidence_level": match.confidence_level.value, "source": "auto-match"},
         )
 
-    autodata_client = AutoDataClient(
-        current_app.config["ALFAAUTO_BASE_URL"],
-        current_app.config["ALFAAUTO_LOGIN"],
-        current_app.config["ALFAAUTO_PASSWORD"],
-    )
     hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
+    has_contract_labor_norms = ContractLaborNorm.query.filter_by(contract_id=contract.id).first() is not None
+    descriptions = [line["name"] for line in labor_lines_raw]
 
     try:
-        labor_results = match_all_labor(
-            [line["name"] for line in labor_lines_raw],
-            repair_order.vehicle_make,
-            repair_order.vehicle_model,
-            autodata_client,
-            llm_client,
-        )
+        if has_contract_labor_norms:
+            labor_results = match_all_labor_against_contract(
+                descriptions, contract.id, repair_order.vehicle_make, repair_order.vehicle_model, llm_client
+            )
+        else:
+            autodata_client = AutoDataClient(
+                current_app.config["ALFAAUTO_BASE_URL"],
+                current_app.config["ALFAAUTO_LOGIN"],
+                current_app.config["ALFAAUTO_PASSWORD"],
+            )
+            labor_results = match_all_labor(
+                descriptions, repair_order.vehicle_make, repair_order.vehicle_model, autodata_client, llm_client
+            )
     except Exception as exc:
-        logger.exception("match_all_labor упал для repair_order_id=%s", repair_order_id)
+        logger.exception("сопоставление работ упало для repair_order_id=%s", repair_order_id)
         labor_results = []
         log_change("repair_order", repair_order.id, "labor_matching_failed", details={"error": str(exc)})
 
     try:
-        suggested_labor = suggest_missing_labor_operations(
-            labor_results,
-            repair_order.vehicle_make,
-            repair_order.vehicle_model,
-            autodata_client,
-            llm_client,
-        )
+        if has_contract_labor_norms:
+            suggested_labor = suggest_missing_labor_operations_from_contract(
+                labor_results, contract.id, repair_order.vehicle_make, repair_order.vehicle_model, llm_client
+            )
+        else:
+            autodata_client = AutoDataClient(
+                current_app.config["ALFAAUTO_BASE_URL"],
+                current_app.config["ALFAAUTO_LOGIN"],
+                current_app.config["ALFAAUTO_PASSWORD"],
+            )
+            suggested_labor = suggest_missing_labor_operations(
+                labor_results, repair_order.vehicle_make, repair_order.vehicle_model, autodata_client, llm_client
+            )
     except Exception as exc:
         logger.exception("suggest_missing_labor_operations упал для repair_order_id=%s", repair_order_id)
         suggested_labor = []

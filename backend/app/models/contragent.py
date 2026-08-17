@@ -15,6 +15,7 @@ class Contragent(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     repair_orders = db.relationship("RepairOrder", back_populates="contragent")
+    contracts = db.relationship("Contract", back_populates="contragent")
 
     def __repr__(self):
         return f"<Contragent {self.name} rate={self.hourly_rate}>"

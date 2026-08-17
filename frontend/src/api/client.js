@@ -114,6 +114,29 @@ export const api = {
   listRepairOrders: (params = {}) => request(`/repair-orders/upload${withPaging(params)}`),
   getUploadStatus: (repairOrderId) => request(`/repair-orders/upload/${repairOrderId}/status`),
 
+  listContracts: () => request("/contracts"),
+  getContract: (id) => request(`/contracts/${id}`),
+  getContractStatus: (id) => request(`/contracts/${id}/status`),
+  createContract: (files, extra = {}) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((f) => formData.append("file", f));
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") formData.append(key, value);
+    });
+    return request("/contracts", { method: "POST", body: formData });
+  },
+  importMoreIntoContract: (id, files, extra = {}) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((f) => formData.append("file", f));
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") formData.append(key, value);
+    });
+    return request(`/contracts/${id}/import`, { method: "POST", body: formData });
+  },
+  listContractParts: (id, params = {}) => request(`/contracts/${id}/parts${withPaging(params)}`),
+  listContractLaborNorms: (id, params = {}) => request(`/contracts/${id}/labor-norms${withPaging(params)}`),
+  deleteContract: (id) => request(`/contracts/${id}`, { method: "DELETE" }),
+
   // Заказ-наряды: сопоставление
   listMatches: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}`),
   listCandidates: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}/candidates`),

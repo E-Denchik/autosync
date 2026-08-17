@@ -128,7 +128,10 @@ function Dropzone({ id, label, hint, files, onChange }) {
 }
 
 export default function UploadPage() {
+  const [contractMode, setContractMode] = useState("new");
   const [contractFiles, setContractFiles] = useState([]);
+  const [existingContractId, setExistingContractId] = useState("");
+  const [contracts, setContracts] = useState([]);
   const [orderFiles, setOrderFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [llmConfigured, setLlmConfigured] = useState(true); // оптимистично, пока не пришёл ответ
@@ -148,23 +151,39 @@ export default function UploadPage() {
       .then((s) => setLlmConfigured(Boolean(s.llm_model)))
       .catch(() => {});
     api.listContragents().then(setContragents).catch(() => {});
+    api.listContracts().then(setContracts).catch(() => {});
   }, []);
+
+  const parsedContracts = contracts.filter((c) => c.status === "parsed");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (contractFiles.length === 0 || orderFiles.length === 0) {
-      toast.error("Нужно выбрать оба файла: договор и заказ-наряд");
+    if (orderFiles.length === 0) {
+      toast.error("Нужно выбрать файл заказ-наряда");
+      return;
+    }
+    if (contractMode === "new" && contractFiles.length === 0) {
+      toast.error("Нужно выбрать файл договора (или переключиться на существующий контракт)");
+      return;
+    }
+    if (contractMode === "existing" && !existingContractId) {
+      toast.error("Нужно выбрать контракт из списка");
       return;
     }
     setSubmitting(true);
     try {
-      const { repair_order_id } = await api.uploadDocuments(contractFiles, orderFiles, {
-        contragent_id: contragentId,
-        vehicle_make: vehicleMake,
-        vehicle_model: vehicleModel,
-        vehicle_year: vehicleYear,
-        vehicle_vin: vehicleVin,
-      });
+      const { repair_order_id } = await api.uploadDocuments(
+        contractMode === "new" ? contractFiles : [],
+        orderFiles,
+        {
+          contract_id: contractMode === "existing" ? existingContractId : undefined,
+          contragent_id: contragentId,
+          vehicle_make: vehicleMake,
+          vehicle_model: vehicleModel,
+          vehicle_year: vehicleYear,
+          vehicle_vin: vehicleVin,
+        }
+      );
       toast.success("Файлы загружены, сопоставление запущено");
       navigate(`/repair-orders/${repair_order_id}/review`);
     } catch (e2) {
@@ -200,13 +219,51 @@ export default function UploadPage() {
       <div className="two-col-grid">
         <form className="panel" onSubmit={handleSubmit}>
           <div className="dropzone-row">
-            <Dropzone
-              id="contract"
-              label="Договор"
-              hint="Прайс-лист/каталог цен поставщика — то, с чем сверяем цены и артикулы. Не заказ-наряд."
-              files={contractFiles}
-              onChange={setContractFiles}
-            />
+            <div className="field">
+              <label>Договор</label>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={contractMode === "new" ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+                  onClick={() => setContractMode("new")}
+                >
+                  Новый файл
+                </button>
+                <button
+                  type="button"
+                  className={contractMode === "existing" ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+                  onClick={() => setContractMode("existing")}
+                >
+                  Уже загруженный контракт
+                </button>
+              </div>
+              {contractMode === "existing" ? (
+                <>
+                  <select value={existingContractId} onChange={(e) => setExistingContractId(e.target.value)}>
+                    <option value="">— выберите контракт —</option>
+                    {parsedContracts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.original_filename} ({c.parts_count} запчастей, {c.labor_norms_count} нормо-часов)
+                      </option>
+                    ))}
+                  </select>
+                  {contracts.length > 0 && parsedContracts.length === 0 && (
+                    <p className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                      Есть контракты, но ни один ещё не разобран — подождите или проверьте статус в{" "}
+                      <Link to="/admin/contracts">Каталогах контрактов</Link>.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <Dropzone
+                  id="contract"
+                  label=""
+                  hint="Прайс-лист/каталог цен поставщика — то, с чем сверяем цены и артикулы. Не заказ-наряд."
+                  files={contractFiles}
+                  onChange={setContractFiles}
+                />
+              )}
+            </div>
             <Dropzone
               id="repair_order"
               label="Заказ-наряд"
