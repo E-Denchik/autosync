@@ -18,6 +18,8 @@ import LaborCatalog from "./pages/admin/LaborCatalog.jsx";
 import NomenclatureCatalog from "./pages/admin/NomenclatureCatalog.jsx";
 import DocumentTemplates from "./pages/admin/DocumentTemplates.jsx";
 import CompanyProfile from "./pages/admin/CompanyProfile.jsx";
+import ContractCatalogs from "./pages/admin/ContractCatalogs.jsx";
+import ContractCatalogDetail from "./pages/admin/ContractCatalogDetail.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import Spinner from "./components/Spinner.jsx";
 import {
@@ -103,6 +105,9 @@ function ProtectedShell() {
               <NavLink to="/admin/contragents">
                 <UsersIcon /> Контрагенты
               </NavLink>
+              <NavLink to="/admin/contracts">
+                <FileTextIcon /> Каталоги контрактов
+              </NavLink>
               <NavLink to="/admin/labor-catalog">
                 <ClockIcon /> Нормо-часы
               </NavLink>
@@ -167,6 +172,10 @@ function ProtectedShell() {
             <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
             {user.role === "admin" && <Route path="/admin/users" element={<Users />} />}
             {user.role === "admin" && <Route path="/admin/contragents" element={<Contragents />} />}
+            {user.role === "admin" && <Route path="/admin/contracts" element={<ContractCatalogs />} />}
+            {user.role === "admin" && (
+              <Route path="/admin/contracts/:contractId" element={<ContractCatalogDetail />} />
+            )}
             {user.role === "admin" && <Route path="/admin/labor-catalog" element={<LaborCatalog />} />}
             {user.role === "admin" && (
               <Route path="/admin/nomenclature" element={<NomenclatureCatalog />} />

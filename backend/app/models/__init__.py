@@ -1,6 +1,6 @@
 from app.models.product import Product
 from app.models.price_snapshot import PriceSnapshot, PriceSuggestionStatus
-from app.models.contract import Contract, DocumentProcessingStatus
+from app.models.contract import Contract, ContractLaborNorm, ContractPart, DocumentProcessingStatus
 from app.models.contragent import Contragent
 from app.models.repair_order import RepairOrder, RepairOrderStatus
 from app.models.part_match import PartMatch, ConfidenceLevel, ReviewStatus
@@ -19,6 +19,8 @@ __all__ = [
     "PriceSnapshot",
     "PriceSuggestionStatus",
     "Contract",
+    "ContractPart",
+    "ContractLaborNorm",
     "DocumentProcessingStatus",
     "Contragent",
     "RepairOrder",

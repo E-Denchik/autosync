@@ -119,3 +119,42 @@ def test_import_creates_and_updates_by_code(app, tmp_path):
 
         entry = NomenclatureEntry.query.filter_by(code="PN-1").first()
         assert float(entry.stock_qty) == 7.0
+
+
+def test_import_merges_duplicate_code_within_same_batch(app, tmp_path):
+    path = tmp_path / "nomenclature.xlsx"
+    rows = [dict(ROWS[0], Остаток=1), dict(ROWS[0], Остаток=99)]
+    pd.DataFrame(rows).to_excel(path, index=False, engine="openpyxl")
+
+    with app.app_context():
+        summary = import_nomenclature_file(str(path))
+        assert summary == {"rows_parsed": 2, "created": 1, "updated": 1}
+        assert NomenclatureEntry.query.filter_by(code="PN-1").count() == 1
+        entry = NomenclatureEntry.query.filter_by(code="PN-1").first()
+        assert float(entry.stock_qty) == 99.0
+
+
+def test_import_handles_large_batch_without_per_row_queries(app, tmp_path):
+    path = tmp_path / "nomenclature.xlsx"
+    rows = [
+        {
+            "Код": f"PN-{i}",
+            "№ кат.": "",
+            "Производитель": "",
+            "Номенклатура": f"Деталь {i}",
+            "Ед.": "шт",
+            "Остаток": i,
+            "Заказано": 0,
+            "В резерве": 0,
+            "В производстве": 0,
+            "Склад": "Основной",
+            "Цена": 100,
+        }
+        for i in range(1500)
+    ]
+    pd.DataFrame(rows).to_excel(path, index=False, engine="openpyxl")
+
+    with app.app_context():
+        summary = import_nomenclature_file(str(path))
+        assert summary == {"rows_parsed": 1500, "created": 1500, "updated": 0}
+        assert NomenclatureEntry.query.count() == 1500

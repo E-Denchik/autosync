@@ -38,6 +38,7 @@ autosync/
 │   │   │   │   ├── matching.py
 │   │   │   │   └── labor.py            # работы/нормо-часы (approve/reject, правка часов)
 │   │   │   ├── nomenclature.py         # номенклатура/остатки: CRUD + загрузка файлом
+│   │   │   ├── contracts.py            # каталоги контрактов: CRUD, догрузка файлов, парчасти/нормо-часы
 │   │   │   ├── contragents.py
 │   │   │   ├── labor_catalog.py        # справочник нормо-часов (ручное ведение)
 │   │   │   ├── integrations.py         # статус/проверка/ключи внешних API
@@ -55,6 +56,7 @@ autosync/
 │   │   │   ├── settings_store.py       # ключи внешних API — в БД (IntegrationSetting)
 │   │   │   ├── document_parser.py      # парсинг xlsx/pdf договоров и нарядов
 │   │   │   ├── document_generator.py   # генерация итогового заказ-наряда (xlsx)
+│   │   │   ├── contract_catalog_import.py # bulk-импорт каталога контракта (парчасти+нормо-часы) в БД
 │   │   │   ├── llm_client.py           # единая точка вызова LLM-сервиса
 │   │   │   ├── matcher.py              # логика сопоставления запчастей
 │   │   │   ├── price_sync.py           # плановая подтяжка цен/продаж (вызывается APScheduler)
@@ -112,25 +114,48 @@ APScheduler (по расписанию, раз в 6 часов)
   → фронт: PricingDashboard показывает предложение → человек approve/reject
 ```
 
-**Модуль 2 (заказ-наряды), по загрузке файлов:**
+**Модуль 2 (заказ-наряды):**
+
+Договор (Contract) — переиспользуемый каталог контракта/тендера с фиксированным
+списком запчастей (`ContractPart`) и нормо-часов (`ContractLaborNorm`), а не
+файл, который грузится заново на каждый заказ-наряд. Загружается один раз
+(`app/api/contracts.py`, `contract_catalog_import.py` — парсит через
+`document_parser.py`: `parse_repair_order_export` для файлов-экспортов
+заказ-наряда с разделами работ/материалов, `parse_price_catalog_by_brand` для
+каталогов по маркам, иначе плоский прайс-лист) и bulk-insert'ится в БД —
+реальные тендерные каталоги легко превышают 10–50 тыс. позиций (см.
+`testdata/`), поэтому вставка батчами (`bulk_insert_mappings`) и индексы по
+`article`/`operation_name`, а не Python-список в JSON-поле.
+
 ```
-Пользователь загружает договор + заказ-наряд (frontend)
-  → API принимает файлы → ставит задачу в ThreadPoolExecutor (job_queue.py)
-  → repair_order_processor.py:
-      document_parser.py парсит оба файла в таблицы
-      matcher.py сопоставляет строки запчастей:
-        1. точное совпадение артикула
+Пользователь загружает заказ-наряд + либо новый договор, либо ссылку на уже
+загруженный каталог контракта (frontend: UploadPage)
+  → API принимает → ставит задачу в ThreadPoolExecutor (job_queue.py)
+  → repair_order_processor.py (process_upload_job):
+      document_parser.py парсит заказ-наряд в таблицу
+      если у Contract ещё нет ContractPart/ContractLaborNorm — парсит и
+      импортирует его файлы (только один раз на весь контракт)
+      matcher.py (match_all_against_contract) сопоставляет каждую строку
+      заказ-наряда с каталогом КОНКРЕТНОГО контракта через индексированный
+      SQL-запрос по артикулу (не Python-скан):
+        1. точное совпадение артикула в ContractPart
         2. если нет — запрос в parts_supplier_client.py (кросс-номера)
-        3. если и там нет — llm_client.py сопоставляет по названию (fallback)
+        3. если и там нет — llm_client.py сопоставляет по названию (fallback,
+           кандидаты — ограниченная SQL-выборка по контракту, не весь каталог)
       nomenclature_matcher.py обогащает каждое совпадение данными склада
       (код/№ кат./производитель/остаток/резерв) через nomenclature_client.py —
       не влияет на confidence, только подтягивает метаданные
-      labor_matcher.py параллельно сопоставляет строки работ с операциями/нормо-часами
-      (autodata_client.py) → LaborLine
+      labor_matcher.py сопоставляет строки работ: если у Contract есть
+      ContractLaborNorm — СТРОГО только из его списка (match_all_labor_against_contract,
+      без подмешивания общего справочника LaborCatalogEntry), иначе — старый
+      путь через autodata_client.py/LaborCatalogEntry
   → результат: PartMatch (+ nomenclature_*) и LaborLine записи со статусом confidence
     (exact / cross-ref / llm-guess) и review_status (pending/approved/rejected)
   → фронт: ReviewMatches — человек проверяет позиции и работы с низким confidence
-  → генерация итогового документа (document_generator.py) — только approved-позиции
+  → генерация итогового документа (document_generator.py, либо загруженный
+    Excel-шаблон с плейсхолдерами — document_template_engine.py) — только
+    approved-позиции, артикул/название/цена берутся из авторитетного
+    каталога контракта (matched_*), не из черновика заказ-наряда
 ```
 
 ## Ключевые решения и почему

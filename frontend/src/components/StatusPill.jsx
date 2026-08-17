@@ -4,6 +4,7 @@ const LABELS = {
   rejected: "отклонено",
   uploaded: "загружено",
   parsing: "парсинг",
+  parsed: "готово",
   matching: "сопоставление",
   needs_review: "нужна проверка",
   reviewed: "готово",
