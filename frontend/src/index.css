@@ -201,6 +201,49 @@ h3 {
   padding-top: 14px;
 }
 
+.update-checker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--sidebar-text);
+  font-size: 12px;
+  padding: 6px 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.update-checker-trigger:hover {
+  color: #fff;
+  background: #ffffff0d;
+}
+
+.update-checker-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--sidebar-text);
+  padding: 4px;
+  line-height: 1.5;
+}
+
+.update-checker-panel {
+  padding: 4px;
+}
+
+.update-checker-changes {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #ffffff80;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
 .content {
   flex: 1;
   min-width: 0;

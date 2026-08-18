@@ -76,6 +76,9 @@ if ($TesseractDir -and (Test-Path "$TesseractDir\tesseract.exe")) {
 Write-Host "==> Готовлю ключи интеграций для вшивания в сборку" -ForegroundColor Cyan
 python "$RepoRoot\scripts\bake_integration_keys.py"
 
+Write-Host "==> Записываю commit сборки (для проверки обновлений)" -ForegroundColor Cyan
+python "$RepoRoot\scripts\write_build_info.py"
+
 Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 $BuildWork = "$RepoRoot\build\native-windows"
 $OutDir = "$RepoRoot\dist\native-windows"
@@ -97,6 +100,7 @@ pyinstaller `
   --add-data "$RepoRoot\backend\migrations;migrations" `
   --add-data "$RepoRoot\packaging\icon;icon" `
   --add-data "$RepoRoot\backend\app\_baked_integration_keys.json;app" `
+  --add-data "$RepoRoot\backend\app\_build_info.json;app" `
   @TesseractDataArg `
   --icon "$RepoRoot\packaging\icon\icon.ico" `
   --hidden-import=waitress `

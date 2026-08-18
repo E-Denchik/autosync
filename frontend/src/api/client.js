@@ -202,4 +202,7 @@ export const api = {
   },
   getRepairOrderSourceFile: (repairOrderId, source) =>
     request(`/repair-orders/upload/${repairOrderId}/file?source=${source}`),
+
+  checkForUpdate: () => request("/update/check"),
+  installUpdate: () => request("/update/install", { method: "POST" }),
 };
