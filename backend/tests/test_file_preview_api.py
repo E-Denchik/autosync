@@ -11,11 +11,6 @@ def _xlsx_bytes(rows):
     return buffer
 
 
-def test_preview_requires_auth(client):
-    resp = client.post("/api/file-preview", data={}, content_type="multipart/form-data")
-    assert resp.status_code == 401
-
-
 def test_preview_requires_file(client, operator_headers):
     resp = client.post("/api/file-preview", headers=operator_headers, data={}, content_type="multipart/form-data")
     assert resp.status_code == 400
@@ -115,3 +110,22 @@ def test_download_source_file_invalid_source(client, admin_headers, repair_order
         f"/api/repair-orders/upload/{repair_order_with_files}/file?source=bogus", headers=admin_headers
     )
     assert resp.status_code == 400
+
+
+def test_preview_uses_first_sheet_by_position_not_the_active_tab(tmp_path):
+    import openpyxl
+
+    from app.services.file_preview import preview_table
+
+    path = tmp_path / "multi_sheet.xlsx"
+    wb = openpyxl.Workbook()
+    first = wb.active
+    first.title = "First"
+    first.append(["from first sheet"])
+    second = wb.create_sheet("Second")
+    second.append(["from second sheet"])
+    wb.active = 1
+    wb.save(path)
+
+    result = preview_table(str(path))
+    assert result["rows"][0] == ["from first sheet"]

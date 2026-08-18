@@ -1,11 +1,9 @@
 from flask import Blueprint, jsonify, request
 
-from app.auth import login_required
 from app.extensions import db
 from app.models import Contragent
 
 bp = Blueprint("contragents", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 def _serialize(c: Contragent) -> dict:

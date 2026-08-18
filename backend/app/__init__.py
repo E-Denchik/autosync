@@ -13,7 +13,6 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db, directory=app.config.get("MIGRATIONS_DIR") or "migrations")
 
-    from app.api.auth import bp as auth_bp
     from app.api.ozon.pricing import bp as ozon_pricing_bp
     from app.api.ozon.cards import bp as ozon_cards_bp
     from app.api.ozon.stats import bp as ozon_stats_bp
@@ -32,7 +31,6 @@ def create_app(config_class=Config):
     from app.api.file_preview import bp as file_preview_bp
     from app.api.contracts import bp as contracts_bp
 
-    app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
     app.register_blueprint(ozon_cards_bp, url_prefix="/api/ozon/cards")
     app.register_blueprint(ozon_stats_bp, url_prefix="/api/ozon/stats")
@@ -80,12 +78,9 @@ def create_app(config_class=Config):
     def _no_store_api_responses(response):
         # Ответы Flask по умолчанию не несут Cache-Control — WebKitGTK (окно
         # native-режима) в таком случае агрессивно кэширует GET-запросы даже
-        # через полный reload страницы. На практике это било по
-        # /api/auth/setup-required: администратор проходил мастер /setup,
-        # но при повторной загрузке окно показывало устаревший ответ
-        # "setup_required: true" и снова предлагало создать администратора.
-        # API-ответы не должны кэшироваться браузером/webview вообще —
-        # актуальность данных важнее лишнего запроса.
+        # через полный reload страницы. API-ответы не должны кэшироваться
+        # браузером/webview вообще — актуальность данных важнее лишнего
+        # запроса.
         if request.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -93,9 +88,7 @@ def create_app(config_class=Config):
     _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, user, llm_setting, history, integration_setting, document_template  # noqa: F401
-
-    register_cli(app)
+    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, llm_setting, history, integration_setting, document_template  # noqa: F401
 
     return app
 
@@ -115,27 +108,3 @@ def _register_frontend_static_routes(app):
         # SPA-роутинг: любой не-статический путь отдаёт index.html,
         # react-router разбирается с ним уже на клиенте.
         return send_from_directory(frontend_dist, "index.html")
-
-
-def register_cli(app):
-    import click
-
-    @app.cli.group("users")
-    def users_group():
-        """Управление пользователями AutoSync."""
-
-    @users_group.command("create-admin")
-    @click.option("--email", required=True)
-    def create_admin(email):
-        """Создать первого администратора: flask users create-admin --email ..."""
-        from app.extensions import db
-        from app.models import User, UserRole
-
-        email = email.strip().lower()
-        if User.query.filter_by(email=email).first():
-            click.echo(f"Пользователь {email} уже существует.")
-            return
-        user = User(email=email, role=UserRole.ADMIN)
-        db.session.add(user)
-        db.session.commit()
-        click.echo(f"Администратор {email} создан.")

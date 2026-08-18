@@ -21,17 +21,6 @@ def test_list_empty_by_default(client, operator_headers):
     assert resp.get_json() == []
 
 
-def test_create_requires_admin(client, operator_headers, monkeypatch):
-    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
-    resp = client.post(
-        "/api/contracts",
-        headers=operator_headers,
-        data={"name": "Контракт", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
-        content_type="multipart/form-data",
-    )
-    assert resp.status_code == 403
-
-
 def test_create_and_list_and_delete(client, admin_headers, monkeypatch):
     monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
 
@@ -113,3 +102,102 @@ def test_parts_and_labor_norms_are_paginated(client, admin_headers, app):
 
     resp3 = client.get(f"/api/contracts/{contract_id}/labor-norms", headers=admin_headers)
     assert resp3.headers["X-Total-Count"] == "5"
+
+
+def test_new_contract_is_active_by_default(client, admin_headers, monkeypatch):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    resp = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.get_json()["active"] is True
+
+
+def test_archive_and_unarchive_contract(client, admin_headers, operator_headers, monkeypatch):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    resp = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    )
+    contract_id = resp.get_json()["id"]
+
+    archived = client.post(f"/api/contracts/{contract_id}/archive", headers=admin_headers)
+    assert archived.status_code == 200
+    assert archived.get_json()["active"] is False
+
+    unarchived = client.post(f"/api/contracts/{contract_id}/unarchive", headers=admin_headers)
+    assert unarchived.get_json()["active"] is True
+
+
+def test_archived_contract_with_repair_orders_cannot_be_deleted_but_stays_archived(
+    client, admin_headers, app, monkeypatch
+):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    resp = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    )
+    contract_id = resp.get_json()["id"]
+
+    from app.extensions import db
+    from app.models import RepairOrder, RepairOrderStatus
+
+    with app.app_context():
+        order = RepairOrder(
+            contract_id=contract_id,
+            original_filename="o.xlsx",
+            storage_path="/tmp/o.xlsx",
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    client.post(f"/api/contracts/{contract_id}/archive", headers=admin_headers)
+    resp2 = client.delete(f"/api/contracts/{contract_id}", headers=admin_headers)
+    assert resp2.status_code == 409
+
+    resp3 = client.get(f"/api/contracts/{contract_id}", headers=admin_headers)
+    assert resp3.get_json()["active"] is False
+
+
+def test_hourly_rates_crud(client, admin_headers, operator_headers, monkeypatch):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    resp = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    )
+    contract_id = resp.get_json()["id"]
+
+    created = client.post(
+        f"/api/contracts/{contract_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "KIA", "hourly_rate": 1200},
+    )
+    assert created.status_code == 201
+    rate_id = created.get_json()["id"]
+
+    listed = client.get(f"/api/contracts/{contract_id}/hourly-rates", headers=operator_headers)
+    assert listed.status_code == 200
+    assert len(listed.get_json()) == 1
+    assert listed.get_json()[0]["vehicle_make"] == "KIA"
+
+    invalid = client.post(
+        f"/api/contracts/{contract_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "", "hourly_rate": 1200},
+    )
+    assert invalid.status_code == 400
+
+    deleted = client.delete(f"/api/contracts/{contract_id}/hourly-rates/{rate_id}", headers=admin_headers)
+    assert deleted.status_code == 204
+
+    listed2 = client.get(f"/api/contracts/{contract_id}/hourly-rates", headers=admin_headers)
+    assert listed2.get_json() == []

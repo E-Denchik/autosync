@@ -18,16 +18,6 @@ def test_list_templates_empty_by_default(client, operator_headers):
     assert resp.get_json() == []
 
 
-def test_upload_requires_admin(client, operator_headers):
-    resp = client.post(
-        "/api/document-templates",
-        headers=operator_headers,
-        data={"name": "Акт", "file": (_xlsx_bytes(), "act.xlsx")},
-        content_type="multipart/form-data",
-    )
-    assert resp.status_code == 403
-
-
 def test_upload_rejects_unsupported_extension(client, admin_headers):
     resp = client.post(
         "/api/document-templates",

@@ -3,11 +3,9 @@ import uuid
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import login_required
 from app.services.file_preview import FilePreviewError, TABLE_EXTENSIONS, preview_table
 
 bp = Blueprint("file_preview", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 @bp.post("")

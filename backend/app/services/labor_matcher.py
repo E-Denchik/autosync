@@ -167,16 +167,18 @@ def match_labor_line_against_contract(
     normalized = (description or "").strip().lower()
     candidates = _contract_labor_candidates(contract_id, vehicle_make, vehicle_model)
 
-    for candidate in candidates:
-        if candidate["operation_name"].strip().lower() == normalized:
-            return {
-                "description": description,
-                "matched_operation_name": candidate["operation_name"],
-                "norm_hours": candidate["norm_hours"],
-                "confidence_level": ConfidenceLevel.EXACT,
-                "confidence_score": 1.0,
-                "raw_match_data": {"source": "contract_catalog_exact"},
-            }
+    exact_matches = [c for c in candidates if c["operation_name"].strip().lower() == normalized]
+    distinct_hours = {c["norm_hours"] for c in exact_matches}
+    if len(distinct_hours) == 1:
+        candidate = exact_matches[0]
+        return {
+            "description": description,
+            "matched_operation_name": candidate["operation_name"],
+            "norm_hours": candidate["norm_hours"],
+            "confidence_level": ConfidenceLevel.EXACT,
+            "confidence_score": 1.0,
+            "raw_match_data": {"source": "contract_catalog_exact"},
+        }
 
     llm_error = None
     if candidates:

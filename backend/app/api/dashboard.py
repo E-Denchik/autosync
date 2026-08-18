@@ -3,7 +3,6 @@
 
 from flask import Blueprint, jsonify
 
-from app.auth import login_required
 from app.models import (
     LaborLine,
     PartMatch,
@@ -17,7 +16,6 @@ from app.models import (
 from app.services import llm_settings
 
 bp = Blueprint("dashboard", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 def _serialize_recent_order(order: RepairOrder) -> dict:

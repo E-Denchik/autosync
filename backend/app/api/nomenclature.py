@@ -10,7 +10,6 @@ import openpyxl
 from flask import Blueprint, current_app, jsonify, request, send_file
 from openpyxl.styles import Font
 
-from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import NomenclatureEntry
 from app.services.history import log_change
@@ -20,7 +19,6 @@ from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("nomenclature", __name__)
-bp.before_request(login_required(lambda: None))
 
 ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
@@ -84,7 +82,7 @@ def create_entry():
     )
     db.session.add(entry)
     db.session.flush()
-    log_change("nomenclature_entry", entry.id, "created", actor=get_current_user())
+    log_change("nomenclature_entry", entry.id, "created")
     db.session.commit()
     return jsonify(_serialize(entry)), 201
 
@@ -103,7 +101,7 @@ def update_entry(entry_id: int):
         if field in body:
             setattr(entry, field, body.get(field))
 
-    log_change("nomenclature_entry", entry.id, "updated", actor=get_current_user())
+    log_change("nomenclature_entry", entry.id, "updated")
     db.session.commit()
     return jsonify(_serialize(entry))
 
@@ -112,7 +110,7 @@ def update_entry(entry_id: int):
 def delete_entry(entry_id: int):
     entry = db.get_or_404(NomenclatureEntry, entry_id)
     db.session.delete(entry)
-    log_change("nomenclature_entry", entry_id, "deleted", actor=get_current_user())
+    log_change("nomenclature_entry", entry_id, "deleted")
     db.session.commit()
     return "", 204
 
@@ -181,7 +179,6 @@ def upload_file():
                 "nomenclature_import",
                 0,
                 "imported",
-                actor=get_current_user(),
                 details={"filename": file_storage.filename, **summary},
             )
         except NomenclatureImportError as exc:

@@ -92,7 +92,15 @@ export default function FilePreviewModal({ blob, fileName, onClose }) {
         </div>
 
         <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-          {loading && <Spinner label="Загрузка предпросмотра…" />}
+          {loading && (
+            <Spinner
+              label={
+                blob && blob.size > 3 * 1024 * 1024
+                  ? "Загрузка предпросмотра… файл большой, это может занять несколько секунд"
+                  : "Загрузка предпросмотра…"
+              }
+            />
+          )}
           {!loading && error && (
             <div className="text-muted" style={{ padding: "8px 0" }}>
               {error}

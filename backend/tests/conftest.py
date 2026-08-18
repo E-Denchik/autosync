@@ -39,31 +39,11 @@ def client(app):
     return app.test_client()
 
 
-def _create_user(app, email, role):
-    from app.extensions import db
-    from app.models import User, UserRole
-
-    with app.app_context():
-        user = User(email=email, role=UserRole(role))
-        db.session.add(user)
-        db.session.commit()
-        return user.id
-
-
-def _login_headers(client, user_id):
-    resp = client.post("/api/auth/login", json={"user_id": user_id})
-    assert resp.status_code == 200, resp.get_json()
-    token = resp.get_json()["token"]
-    return {"Authorization": f"Bearer {token}"}
+@pytest.fixture
+def admin_headers():
+    return {}
 
 
 @pytest.fixture
-def admin_headers(app, client):
-    user_id = _create_user(app, "admin@test.local", "admin")
-    return _login_headers(client, user_id)
-
-
-@pytest.fixture
-def operator_headers(app, client):
-    user_id = _create_user(app, "operator@test.local", "operator")
-    return _login_headers(client, user_id)
+def operator_headers():
+    return {}

@@ -917,3 +917,135 @@ sqlalchemy.exc.ProgrammingError: (sqlite3.ProgrammingError) Error binding parame
 2026-08-17 00:00:44,909 INFO autosync.native: backend слушает на 127.0.0.1:5000
 2026-08-17 00:00:44,918 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
 2026-08-17 00:01:29,579 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-17 19:44:01,820 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-17 19:44:02,262 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-17 19:44:02,263 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-17 19:44:02,263 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-17 19:44:02,263 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-17 19:44:02,263 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-17 19:44:02,263 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-17 19:44:02,636 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-17 19:44:03,148 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-17 19:44:03,171 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-17 19:44:03,171 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-17 19:44:03,171 INFO apscheduler.scheduler: Scheduler started
+2026-08-17 19:44:03,171 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-17 19:44:03,181 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-17 19:54:51,437 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-18 00:27:13,283 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 00:27:13,680 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 00:27:13,680 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 00:27:13,680 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 00:27:13,680 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 00:27:13,681 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 00:27:13,681 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 00:27:14,081 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 00:27:14,532 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 00:27:14,552 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 00:27:14,552 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 00:27:14,552 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 00:27:14,552 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 00:27:14,559 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 00:32:32,333 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 00:32:33,000 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 00:32:33,001 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-18 00:32:34,115 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 00:32:34,154 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 00:32:34,154 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 00:32:34,154 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 00:32:34,154 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 00:32:34,167 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 00:32:34,168 ERROR autosync.native: pywebview недоступен — не могу открыть окно приложения. Установите системный webview (WebView2 на Windows, python3-gi + gir1.2-webkit2-4.1 или -4.0 на Linux) и запустите AutoSync заново.
+Traceback (most recent call last):
+  File "/home/kali/Рабочий стол/projects/autosync/backend/native_app.py", line 234, in run_window
+    import webview
+ModuleNotFoundError: No module named 'webview'
+2026-08-18 00:35:58,841 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 00:35:59,949 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 00:35:59,950 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 00:35:59,950 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 00:35:59,950 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 00:35:59,950 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 00:35:59,950 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 00:36:00,665 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 00:36:01,386 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 00:36:01,602 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 00:36:01,602 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 00:36:01,602 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 00:36:01,603 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 00:36:01,615 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 01:05:45,018 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 01:05:46,083 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 01:05:46,835 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 01:05:47,541 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 01:05:47,765 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 01:05:47,765 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 01:05:47,765 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 01:05:47,766 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 01:05:47,781 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 01:11:58,210 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 01:11:59,206 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 01:11:59,207 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 01:11:59,207 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 01:11:59,207 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 01:11:59,207 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 01:11:59,207 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 01:11:59,786 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 01:12:00,381 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 01:12:00,563 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 01:12:00,564 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 01:12:00,564 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 01:12:00,564 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 01:12:00,573 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 01:16:24,558 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 01:16:25,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 01:16:25,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 01:16:25,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 01:16:25,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 01:16:25,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 01:16:25,632 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 01:16:26,306 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 01:16:27,010 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 01:16:27,259 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 01:16:27,259 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 01:16:27,259 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 01:16:27,260 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 01:16:27,270 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 02:13:57,615 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 02:13:58,289 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 02:13:58,290 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 02:13:58,290 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 02:13:58,290 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 02:13:58,290 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 02:13:58,290 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 02:13:58,755 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 02:13:59,321 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 02:13:59,474 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 02:13:59,474 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 02:13:59,474 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 02:13:59,475 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 02:13:59,485 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-18 02:15:41,770 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-18 02:15:42,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-18 02:15:42,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-18 02:15:42,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-18 02:15:42,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-18 02:15:42,631 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-18 02:15:42,632 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-18 02:15:43,098 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-18 02:15:43,711 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-18 02:15:43,908 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-18 02:15:43,908 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-18 02:15:43,908 INFO apscheduler.scheduler: Scheduler started
+2026-08-18 02:15:43,909 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-18 02:15:43,920 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/

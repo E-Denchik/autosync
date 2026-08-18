@@ -21,6 +21,54 @@ def test_upload_requires_both_files(client, admin_headers):
     assert resp.status_code == 400
 
 
+def test_upload_reuses_already_parsed_contract(client, admin_headers, app, monkeypatch):
+    monkeypatch.setattr("app.api.repair_orders.upload.enqueue_process_upload", lambda *a, **kw: None)
+
+    with app.app_context():
+        contract = Contract(
+            original_filename="existing.xlsx",
+            storage_path="/tmp/existing.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.commit()
+        contract_id = contract.id
+
+    resp = client.post(
+        "/api/repair-orders/upload",
+        headers=admin_headers,
+        data={"contract_id": str(contract_id), "repair_order": (io.BytesIO(b"x"), "order.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 202
+    body = resp.get_json()
+    assert body["contract_id"] == contract_id
+
+    with app.app_context():
+        order = db.session.get(RepairOrder, body["repair_order_id"])
+        assert order.contract_id == contract_id
+
+
+def test_upload_rejects_reusing_a_contract_still_being_parsed(client, admin_headers, app):
+    with app.app_context():
+        contract = Contract(
+            original_filename="pending.xlsx",
+            storage_path="/tmp/pending.xlsx",
+            status=DocumentProcessingStatus.PARSING,
+        )
+        db.session.add(contract)
+        db.session.commit()
+        contract_id = contract.id
+
+    resp = client.post(
+        "/api/repair-orders/upload",
+        headers=admin_headers,
+        data={"contract_id": str(contract_id), "repair_order": (io.BytesIO(b"x"), "order.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 409
+
+
 def test_upload_rejects_unsupported_extension(client, admin_headers):
     resp = client.post(
         "/api/repair-orders/upload",
@@ -57,13 +105,6 @@ def test_upload_creates_records_and_enqueues_processing(client, admin_headers, a
         assert contract.status == DocumentProcessingStatus.UPLOADED
         assert order.status == RepairOrderStatus.UPLOADED
         assert order.contract_id == contract.id
-
-
-def test_upload_requires_auth(client):
-    resp = client.post(
-        "/api/repair-orders/upload", data=_files(), content_type="multipart/form-data"
-    )
-    assert resp.status_code == 401
 
 
 def test_list_and_status_endpoints(client, admin_headers, app, monkeypatch):

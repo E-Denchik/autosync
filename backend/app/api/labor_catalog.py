@@ -1,11 +1,9 @@
 from flask import Blueprint, jsonify, request
 
-from app.auth import login_required
 from app.extensions import db
 from app.models import LaborCatalogEntry
 
 bp = Blueprint("labor_catalog", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 def _serialize(entry: LaborCatalogEntry) -> dict:

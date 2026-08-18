@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import { useToast } from "../../context/ToastContext.jsx";
-import { useAuth } from "../../context/AuthContext.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon } from "../../components/icons.jsx";
 
@@ -143,7 +142,6 @@ export default function UploadPage() {
   const [vehicleVin, setVehicleVin] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
 
   useEffect(() => {
     api
@@ -154,7 +152,7 @@ export default function UploadPage() {
     api.listContracts().then(setContracts).catch(() => {});
   }, []);
 
-  const parsedContracts = contracts.filter((c) => c.status === "parsed");
+  const parsedContracts = contracts.filter((c) => c.status === "parsed" && c.active);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -210,8 +208,7 @@ export default function UploadPage() {
           <AlertCircleIcon />
           <span>
             LLM-модель не выбрана — шаг сопоставления по названию будет недоступен, такие позиции
-            уйдут на ручную проверку.
-            {user?.role === "admin" && <> <Link to="/admin/llm">Выбрать модель →</Link></>}
+            уйдут на ручную проверку. <Link to="/admin/llm">Выбрать модель →</Link>
           </span>
         </div>
       )}

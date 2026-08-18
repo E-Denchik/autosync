@@ -6,7 +6,6 @@ import Spinner from "../components/Spinner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import StatusPill from "../components/StatusPill.jsx";
 import { useToast } from "../context/ToastContext.jsx";
-import { useAuth } from "../context/AuthContext.jsx";
 import {
   TagIcon,
   FileTextIcon,
@@ -14,7 +13,6 @@ import {
   TrendingUpIcon,
   UploadIcon,
   SparklesIcon,
-  UsersIcon,
   CpuIcon,
   ChevronRightIcon,
   AlertCircleIcon,
@@ -27,8 +25,6 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     api
@@ -56,7 +52,7 @@ export default function Dashboard() {
         </p>
       ) : (
         <>
-          {isAdmin && !summary.llm_model && (
+          {!summary.llm_model && (
             <div className="hint-banner hint-warning">
               <AlertCircleIcon />
               <span>
@@ -184,33 +180,19 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        {isAdmin && (
-          <Link to="/admin/llm" className="action-card">
-            <div className="action-icon">
-              <CpuIcon />
+        <Link to="/admin/llm" className="action-card">
+          <div className="action-icon">
+            <CpuIcon />
+          </div>
+          <div>
+            <div className="action-title">LLM-модель</div>
+            <div className="action-desc">
+              {summary?.llm_model
+                ? `Сейчас: ${summary.llm_model.model} (${PROVIDER_LABELS[summary.llm_model.provider] || summary.llm_model.provider})`
+                : "Выбрать модель из скачанных на этой машине."}
             </div>
-            <div>
-              <div className="action-title">LLM-модель</div>
-              <div className="action-desc">
-                {summary?.llm_model
-                  ? `Сейчас: ${summary.llm_model.model} (${PROVIDER_LABELS[summary.llm_model.provider] || summary.llm_model.provider})`
-                  : "Выбрать модель из скачанных на этой машине."}
-              </div>
-            </div>
-          </Link>
-        )}
-
-        {isAdmin && (
-          <Link to="/admin/users" className="action-card">
-            <div className="action-icon">
-              <UsersIcon />
-            </div>
-            <div>
-              <div className="action-title">Пользователи</div>
-              <div className="action-desc">Выдать или отозвать доступ к AutoSync.</div>
-            </div>
-          </Link>
-        )}
+          </div>
+        </Link>
       </div>
     </div>
   );

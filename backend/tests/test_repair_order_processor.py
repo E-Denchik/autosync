@@ -4,6 +4,7 @@ from app.extensions import db
 from app.models import (
     ConfidenceLevel,
     Contract,
+    ContractHourlyRate,
     ContractLaborNorm,
     ContractPart,
     DocumentProcessingStatus,
@@ -46,6 +47,7 @@ def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
                 norm_hours=28.0,
             )
         )
+        db.session.add(ContractHourlyRate(contract_id=contract.id, vehicle_make="HYUNDAI", hourly_rate=1170.0))
         db.session.commit()
         contract_id = contract.id
 
@@ -85,6 +87,52 @@ def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
         assert labor_match is not None
         assert labor_match.confidence_level == ConfidenceLevel.EXACT
         assert float(labor_match.norm_hours) == 28.0
+        assert float(labor_match.hourly_rate) == 1170.0
+        assert float(labor_match.total_cost) == 28.0 * 1170.0
+
+
+def test_process_upload_job_uses_contragent_rate_when_no_contract_rate_for_make(app):
+    from app.models import Contragent
+
+    with app.app_context():
+        contragent = Contragent(name="Заказчик Б", hourly_rate=1000)
+        db.session.add(contragent)
+
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract.id,
+                operation_name="ДВС снятие",
+                vehicle_make="HYUNDAI",
+                vehicle_model="IX35",
+                norm_hours=28.0,
+            )
+        )
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        labor_match = LaborLine.query.filter_by(
+            repair_order_id=repair_order_id, matched_operation_name="ДВС снятие"
+        ).first()
+        assert float(labor_match.hourly_rate) == 1000.0
 
 
 def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):
@@ -110,5 +158,40 @@ def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):
         result = process_upload_job(contract.id, repair_order.id)
 
         assert result["status"] == "failed"
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.status == RepairOrderStatus.FAILED
+
+
+def test_process_upload_job_marks_contract_failed_instead_of_hanging_on_unexpected_import_error(app, monkeypatch):
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.UPLOADED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        contract_id = contract.id
+        repair_order_id = repair_order.id
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("неожиданная ошибка парсинга договора")
+
+        monkeypatch.setattr("app.services.repair_order_processor.import_contract_files", _boom)
+
+        result = process_upload_job(contract_id, repair_order_id)
+
+        assert result["status"] == "failed"
+        contract = db.session.get(Contract, contract_id)
+        assert contract.status == DocumentProcessingStatus.FAILED
         repair_order = db.session.get(RepairOrder, repair_order_id)
         assert repair_order.status == RepairOrderStatus.FAILED

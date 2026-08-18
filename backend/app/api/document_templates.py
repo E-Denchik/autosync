@@ -3,14 +3,12 @@ import uuid
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
-from app.auth import admin_required, get_current_user, login_required
 from app.extensions import db
 from app.models import DocumentTemplate
 from app.services import document_template_engine
 from app.services.history import log_change
 
 bp = Blueprint("document_templates", __name__)
-bp.before_request(login_required(lambda: None))
 
 ALLOWED_EXTENSIONS = {".xlsx", ".xlsm"}
 
@@ -48,7 +46,6 @@ def download_template_file(template_id: int):
 
 
 @bp.post("")
-@admin_required
 def upload_template():
     name = (request.form.get("name") or "").strip()
     file_storage = request.files.get("file")
@@ -72,18 +69,17 @@ def upload_template():
     )
     db.session.add(template)
     db.session.flush()
-    log_change("document_template", template.id, "created", actor=get_current_user(), details={"name": name})
+    log_change("document_template", template.id, "created", details={"name": name})
     db.session.commit()
     return jsonify(_serialize(template)), 201
 
 
 @bp.delete("/<int:template_id>")
-@admin_required
 def delete_template(template_id: int):
     template = db.get_or_404(DocumentTemplate, template_id)
     if os.path.isfile(template.storage_path):
         os.remove(template.storage_path)
-    log_change("document_template", template.id, "deleted", actor=get_current_user())
+    log_change("document_template", template.id, "deleted")
     db.session.delete(template)
     db.session.commit()
     return "", 204

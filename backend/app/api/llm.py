@@ -1,20 +1,15 @@
 """Настройки LLM: какую скачанную модель (Ollama или LM Studio) использовать
-для предложений по цене, генерации карточек и LLM-фоллбэка сопоставления.
-
-Только администратор — это системная настройка, влияющая на все модули
-(см. app/api/auth.py — тот же admin_required-паттерн для /users)."""
+для предложений по цене, генерации карточек и LLM-фоллбэка сопоставления."""
 
 from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import admin_required, get_current_user
 from app.services import llm_settings
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
 
 bp = Blueprint("llm", __name__)
-bp.before_request(admin_required(lambda: None))
 
 
 def _client() -> LLMClient:
@@ -67,7 +62,6 @@ def select_model():
         "llm_model_selection",
         llm_settings.SELECTION_ID,
         "selected",
-        actor=get_current_user(),
         details={"provider": provider, "model": model_name},
     )
     llm_settings.set_selection(provider, model_name)

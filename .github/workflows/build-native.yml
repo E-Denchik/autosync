@@ -7,13 +7,20 @@ name: Build native packages
 #     (packaging/native-windows/) — обязательно нужен настоящий Windows-
 #     раннер, PyInstaller не кросс-компилирует.
 #
-# На тег vX.Y.Z публикует оба артефакта в GitHub Release.
+# Два способа получить готовые файлы:
+#   - push в main — пересобирает и обновляет pre-release с тегом `latest`
+#     (быстрый доступ к самой свежей сборке, без версии);
+#   - тег vX.Y.Z — публикует версионный GitHub Release.
 
 on:
   push:
+    branches: [main]
     tags:
       - "v*"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   build-linux:
@@ -28,6 +35,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Install system webview dependencies
+        # pywebview на Linux использует системный WebKitGTK через PyGObject
+        # (gi) — тот НЕ ставится через pip (см. backend/requirements.txt),
+        # build-native-linux.sh наследует его из системного Python через
+        # --system-site-packages, поэтому раннеру нужны эти apt-пакеты ДО
+        # сборки, иначе PyInstaller не найдёт модуль gi (--collect-all gi).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
       - name: Build native Linux binary
         run: ./scripts/build-native-linux.sh
@@ -89,6 +106,27 @@ jobs:
             dist/native-windows/autosync.exe
             dist/native-windows-installer/*.exe
           if-no-files-found: error
+
+  release-latest:
+    needs: [build-linux, build-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Update "latest" pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (main)
+          body: Автосборка последнего коммита в main — не версионный релиз, файлы перезаписываются на каждый push.
+          prerelease: true
+          make_latest: false
+          files: |
+            autosync-linux/native-linux/autosync
+            autosync-linux/autosync-desktop_*_amd64.deb
+            autosync-windows/native-windows/autosync.exe
+            autosync-windows/native-windows-installer/*.exe
 
   release:
     needs: [build-linux, build-windows]

@@ -1,12 +1,10 @@
 from flask import Blueprint, jsonify
 from sqlalchemy import func
 
-from app.auth import login_required
 from app.extensions import db
 from app.models import PriceSnapshot
 
 bp = Blueprint("ozon_stats", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 @bp.get("/summary")

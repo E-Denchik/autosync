@@ -7,8 +7,8 @@
 ; вручную: iscc packaging\native-windows\autosync.iss
 ;
 ; Никаких зависимостей от Docker — устанавливает один exe + ярлыки.
-; Открывается в собственном окне (WebView2, без Chromium внутри), первый
-; запуск настраивается прямо там (мастер /setup).
+; Открывается в собственном окне (WebView2, без Chromium внутри), сразу
+; готово к работе — без экрана входа и настройки при первом запуске.
 
 #define MyAppName "AutoSync"
 #define MyAppVersion GetEnv("AUTOSYNC_VERSION")

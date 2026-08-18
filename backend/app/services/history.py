@@ -12,14 +12,12 @@ from datetime import datetime
 
 from app.extensions import db
 from app.models.history import RecordHistory
-from app.models.user import User
 
 
 def log_change(
     entity_type: str,
     entity_id: int,
     action: str,
-    actor: User | None = None,
     details: dict | None = None,
 ) -> RecordHistory:
     """Закрывает текущую открытую (end_day IS NULL) запись истории для
@@ -38,8 +36,6 @@ def log_change(
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
-        actor_id=actor.id if actor else None,
-        actor_email=actor.email if actor else None,
         details=details,
         start_day=now,
         end_day=None,
@@ -52,7 +48,6 @@ def _build_history_query(
     entity_type: str | None = None,
     entity_id: int | None = None,
     action: str | None = None,
-    actor_id: int | None = None,
     start_from: datetime | None = None,
     start_to: datetime | None = None,
     only_current: bool = False,
@@ -65,8 +60,6 @@ def _build_history_query(
         query = query.filter(RecordHistory.entity_id == entity_id)
     if action:
         query = query.filter(RecordHistory.action == action)
-    if actor_id is not None:
-        query = query.filter(RecordHistory.actor_id == actor_id)
     if start_from is not None:
         query = query.filter(RecordHistory.start_day >= start_from)
     if start_to is not None:
@@ -81,7 +74,6 @@ def query_history(
     entity_type: str | None = None,
     entity_id: int | None = None,
     action: str | None = None,
-    actor_id: int | None = None,
     start_from: datetime | None = None,
     start_to: datetime | None = None,
     only_current: bool = False,
@@ -92,9 +84,7 @@ def query_history(
     по start_day (когда запись стала действующей), only_current оставляет
     только ещё не закрытые (end_day IS NULL) записи — то есть текущее
     состояние сущностей, а не полную историю их изменений."""
-    query = _build_history_query(
-        entity_type, entity_id, action, actor_id, start_from, start_to, only_current
-    )
+    query = _build_history_query(entity_type, entity_id, action, start_from, start_to, only_current)
     return query.order_by(RecordHistory.start_day.desc()).offset(offset).limit(limit).all()
 
 
@@ -102,12 +92,9 @@ def count_history(
     entity_type: str | None = None,
     entity_id: int | None = None,
     action: str | None = None,
-    actor_id: int | None = None,
     start_from: datetime | None = None,
     start_to: datetime | None = None,
     only_current: bool = False,
 ) -> int:
-    query = _build_history_query(
-        entity_type, entity_id, action, actor_id, start_from, start_to, only_current
-    )
+    query = _build_history_query(entity_type, entity_id, action, start_from, start_to, only_current)
     return query.count()

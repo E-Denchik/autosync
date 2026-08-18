@@ -35,7 +35,6 @@ def test_sync_creates_snapshot_and_history_entry(app, monkeypatch):
         assert len(entries) == 1
         assert entries[0].action == "created"
         assert entries[0].details["source"] == "scheduled_sync"
-        assert entries[0].actor_id is None  # фоновая задача — не человек
 
 
 def test_sync_skips_unknown_offer_ids(app, monkeypatch):

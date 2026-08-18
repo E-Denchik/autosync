@@ -16,7 +16,6 @@ const ENTITY_LABELS = {
   nomenclature_import: "Импорт номенклатуры",
   price_snapshot: "Предложение по цене",
   product: "Товар",
-  user: "Пользователь",
   llm_model_selection: "LLM-модель",
   integration_keys: "Ключи интеграций",
 };
@@ -31,8 +30,6 @@ const ACTION_LABELS = {
   deleted: "удалено",
   failed: "ошибка",
   needs_review: "нужна проверка",
-  password_changed: "смена пароля",
-  password_reset_by_admin: "сброс пароля админом",
   selected: "выбрана",
   labor_matching_failed: "ошибка сопоставления работ",
   nomenclature_enrichment_failed: "ошибка обогащения номенклатурой",
@@ -41,7 +38,6 @@ const ACTION_LABELS = {
 const EMPTY_FILTERS = {
   entity_type: "",
   action: "",
-  actor_id: "",
   start_from: "",
   start_to: "",
   only_current: false,
@@ -52,14 +48,12 @@ export default function History() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [entityTypes, setEntityTypes] = useState([]);
-  const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
   useEffect(() => {
     api.listHistoryEntityTypes().then(setEntityTypes).catch(() => {});
-    api.listUsers().then(setUsers).catch(() => {});
   }, []);
 
   const load = (activeFilters, p = 1) => {
@@ -104,7 +98,7 @@ export default function History() {
         <div>
           <h2>История</h2>
           <p>
-            Журнал действий и изменений состояния — кто, когда и что сделал. Каждое изменение
+            Журнал действий и изменений состояния — когда и что сделано. Каждое изменение
             закрывает предыдущую запись и открывает новую, ничего не перезаписывается.
           </p>
         </div>
@@ -136,22 +130,6 @@ export default function History() {
               value={filters.action}
               onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
             />
-          </div>
-
-          <div className="field">
-            <label htmlFor="actor_id">Кто сделал</label>
-            <select
-              id="actor_id"
-              value={filters.actor_id}
-              onChange={(e) => setFilters((f) => ({ ...f, actor_id: e.target.value }))}
-            >
-              <option value="">Все</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.email}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="field">
@@ -206,7 +184,6 @@ export default function History() {
             <thead>
               <tr>
                 <th>Когда</th>
-                <th>Кто</th>
                 <th>Тип</th>
                 <th>ID</th>
                 <th>Действие</th>
@@ -218,7 +195,6 @@ export default function History() {
               {entries.map((e) => (
                 <tr key={e.id}>
                   <td className="text-muted">{new Date(e.start_day).toLocaleString("ru-RU")}</td>
-                  <td>{e.actor_email || "система"}</td>
                   <td>{ENTITY_LABELS[e.entity_type] || e.entity_type}</td>
                   <td className="text-muted">#{e.entity_id}</td>
                   <td>

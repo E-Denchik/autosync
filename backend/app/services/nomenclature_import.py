@@ -16,6 +16,7 @@ import pandas as pd
 
 from app.extensions import db
 from app.models import NomenclatureEntry
+from app.services.document_parser import _CATALOG_TITLE_MARKER
 
 CODE_ALIASES = ["код товара", "код", "артикул"]
 CAT_NUMBER_ALIASES = ["№ кат", "номер кат", "каталожный номер", "кат. номер", "cat number", "cat_number"]
@@ -73,6 +74,12 @@ def _dataframe_to_rows(df: pd.DataFrame) -> list[dict]:
         "price": _match_column(columns, PRICE_ALIASES),
     }
     if col["name"] is None:
+        if any(_CATALOG_TITLE_MARKER in str(c) for c in columns):
+            raise NomenclatureImportError(
+                "Это похоже на каталог запчастей по маркам (с фиксированным списком по контракту) — "
+                "такой файл нужно загружать в «Каталоги контрактов», а не в «Номенклатура/остатки» "
+                "(это разные вещи: контрактный список и собственный склад заказчика)."
+            )
         raise NomenclatureImportError(f"Не удалось найти колонку с наименованием среди {columns}")
 
     rows = []

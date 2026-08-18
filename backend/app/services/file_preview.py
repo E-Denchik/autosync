@@ -22,11 +22,25 @@ def _rows_from_dataframe(df: pd.DataFrame) -> dict:
     return {"rows": rows, "truncated": total > MAX_PREVIEW_ROWS}
 
 
+def _rows_from_worksheet(ws) -> dict:
+    rows = []
+    truncated = False
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i >= MAX_PREVIEW_ROWS + 1:
+            truncated = True
+            break
+        rows.append(["" if v is None else str(v) for v in row])
+    return {"rows": rows, "truncated": truncated}
+
+
 def preview_table(file_path: str) -> dict:
     ext = os.path.splitext(file_path)[1].lower()
     try:
         if ext in (".xlsx", ".xlsm"):
-            df = pd.read_excel(file_path, engine="openpyxl", dtype=str)
+            import openpyxl
+
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            return _rows_from_worksheet(wb.worksheets[0])
         elif ext == ".xls":
             df = pd.read_excel(file_path, engine="xlrd", dtype=str)
         elif ext == ".ods":
