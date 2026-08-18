@@ -15,6 +15,11 @@ build/
 .env.*
 !.env.example
 
+# Сгенерированные в CI из GitHub Secrets ключи, вшиваемые в сборку для
+# заказчика (см. app/services/settings_store.py: seed_baked_defaults) —
+# никогда не должны попасть в git.
+backend/app/_baked_integration_keys.py
+
 # Данные приложения (БД, загрузки, логи) — см. AUTOSYNC_DATA_DIR /
 # backend/app/config.py: _default_data_dir()
 backend/uploads/

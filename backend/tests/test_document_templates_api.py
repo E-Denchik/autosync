@@ -1,6 +1,7 @@
 import io
 
 import openpyxl
+import pytest
 
 
 def _xlsx_bytes():
@@ -59,3 +60,79 @@ def test_download_starter_template(client, operator_headers):
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/octet-stream",
     )
+
+
+@pytest.fixture
+def repair_order(app):
+    from app.extensions import db
+    from app.models import Contract, Contragent, DocumentProcessingStatus, RepairOrder, RepairOrderStatus
+
+    with app.app_context():
+        contract = Contract(
+            original_filename="contract.xlsx",
+            storage_path="/tmp/contract.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        contragent = Contragent(name="СТО Восток", hourly_rate=1500)
+        db.session.add_all([contract, contragent])
+        db.session.flush()
+
+        order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="order.xlsx",
+            storage_path="/tmp/order.xlsx",
+            status=RepairOrderStatus.NEEDS_REVIEW,
+            vehicle_make="ВАЗ",
+            vehicle_model="Granta",
+        )
+        db.session.add(order)
+        db.session.commit()
+        return order.id
+
+
+def test_preview_rendered_requires_a_repair_order(client, admin_headers):
+    resp = client.post(
+        "/api/document-templates/preview-rendered",
+        headers=admin_headers,
+        data={"file": (_xlsx_bytes(), "act.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+
+
+def test_preview_rendered_substitutes_real_data_for_uploaded_file(client, admin_headers, repair_order):
+    resp = client.post(
+        "/api/document-templates/preview-rendered",
+        headers=admin_headers,
+        data={"file": (_xlsx_bytes(), "act.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["repair_order_id"] == repair_order
+    flat = [cell for row in body["rows"] for cell in row]
+    assert str(repair_order) in flat
+    assert not any("{{" in cell for cell in flat)
+
+
+def test_preview_rendered_substitutes_real_data_for_saved_template(client, admin_headers, repair_order):
+    upload_resp = client.post(
+        "/api/document-templates",
+        headers=admin_headers,
+        data={"name": "Акт", "file": (_xlsx_bytes(), "act.xlsx")},
+        content_type="multipart/form-data",
+    )
+    template_id = upload_resp.get_json()["id"]
+
+    resp = client.post(
+        "/api/document-templates/preview-rendered",
+        headers=admin_headers,
+        data={"template_id": template_id},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    flat = [cell for row in body["rows"] for cell in row]
+    assert str(repair_order) in flat
+    assert not any("{{" in cell for cell in flat)

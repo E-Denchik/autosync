@@ -1,16 +1,34 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import Spinner from "./Spinner.jsx";
+import { InfoIcon } from "./icons.jsx";
 
 const TABLE_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"];
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+const NUMERIC_CELL = /^-?[\d\s]+([.,]\d+)?%?$/;
 
 function extOf(name) {
   const i = (name || "").lastIndexOf(".");
   return i === -1 ? "" : name.slice(i).toLowerCase();
 }
 
-export default function FilePreviewModal({ blob, fileName, onClose }) {
+function columnLetter(index) {
+  let n = index + 1;
+  let letters = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+function isNumericCell(value) {
+  const trimmed = (value || "").trim();
+  return trimmed !== "" && NUMERIC_CELL.test(trimmed);
+}
+
+export default function FilePreviewModal({ blob, fileName, onClose, loader, subtitle }) {
   const [rows, setRows] = useState(null);
   const [truncated, setTruncated] = useState(false);
   const [objectUrl, setObjectUrl] = useState(null);
@@ -27,6 +45,20 @@ export default function FilePreviewModal({ blob, fileName, onClose }) {
     setError(null);
     setRows(null);
     setObjectUrl(null);
+
+    if (loader) {
+      loader()
+        .then((res) => {
+          if (cancelled) return;
+          setRows(res.rows);
+          setTruncated(res.truncated);
+        })
+        .catch((e) => !cancelled && setError(e.message))
+        .finally(() => !cancelled && setLoading(false));
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (!blob) return undefined;
 
@@ -63,7 +95,7 @@ export default function FilePreviewModal({ blob, fileName, onClose }) {
     setError("Предпросмотр не поддерживается для этого формата файла — скачайте и откройте локально.");
     setLoading(false);
     return undefined;
-  }, [blob, fileName, ext, showAsImage, showAsPdf]);
+  }, [blob, fileName, ext, showAsImage, showAsPdf, loader]);
 
   return (
     <div
@@ -81,11 +113,23 @@ export default function FilePreviewModal({ blob, fileName, onClose }) {
     >
       <div
         className="panel"
-        style={{ width: "min(960px, 100%)", maxHeight: "85vh", display: "flex", flexDirection: "column" }}
+        style={{
+          width: rows ? "min(1200px, 100%)" : "min(960px, 100%)",
+          maxHeight: "85vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontWeight: 650, fontSize: 14.5, wordBreak: "break-all" }}>{fileName}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 650, fontSize: 14.5, wordBreak: "break-all" }}>{fileName}</div>
+            {subtitle && (
+              <div className="text-muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+                {subtitle}
+              </div>
+            )}
+          </div>
           <button className="btn btn-secondary btn-sm" onClick={onClose} style={{ flexShrink: 0, marginLeft: 12 }}>
             Закрыть
           </button>
@@ -113,35 +157,46 @@ export default function FilePreviewModal({ blob, fileName, onClose }) {
             <img src={objectUrl} alt={fileName} style={{ maxWidth: "100%", display: "block" }} />
           )}
           {!loading && !error && rows && (
-            <div style={{ overflow: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
-              <table>
-                <thead>
-                  <tr>
-                    {rows[0].map((cell, i) => (
-                      <th key={i} style={{ whiteSpace: "nowrap" }}>
-                        {cell || `Кол. ${i + 1}`}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.slice(1).map((row, i) => (
-                    <tr key={i}>
-                      {row.map((cell, j) => (
-                        <td key={j} style={{ whiteSpace: "nowrap" }}>
-                          {cell}
-                        </td>
+            <>
+              <div className="preview-table-wrap">
+                <table className="preview-table">
+                  <thead>
+                    <tr>
+                      <th className="preview-row-gutter" />
+                      {rows[0].map((_, i) => (
+                        <th key={i} className="preview-col-letter">
+                          {columnLetter(i)}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                    <tr>
+                      <th className="preview-row-gutter">1</th>
+                      {rows[0].map((cell, i) => (
+                        <th key={i}>{cell || `Кол. ${i + 1}`}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(1).map((row, i) => (
+                      <tr key={i}>
+                        <td className="preview-row-gutter">{i + 2}</td>
+                        {row.map((cell, j) => (
+                          <td key={j} className={isNumericCell(cell) ? "preview-cell-numeric" : undefined}>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {truncated && (
-                <div className="text-muted" style={{ padding: 12, fontSize: 12.5 }}>
-                  Показаны первые {rows.length - 1} строк — в файле их больше.
+                <div className="hint-banner" style={{ marginTop: 12 }}>
+                  <InfoIcon />
+                  <span>Показаны первые {rows.length - 1} строк — в файле их больше.</span>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>

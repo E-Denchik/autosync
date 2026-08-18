@@ -120,19 +120,14 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
     return output_path
 
 
-def generate_repair_order_document_from_template(repair_order: RepairOrder, template: DocumentTemplate) -> str:
-    part_matches = (
-        PartMatch.query.filter_by(repair_order_id=repair_order.id)
-        .filter(PartMatch.review_status == ReviewStatus.APPROVED)
-        .order_by(PartMatch.id)
-        .all()
-    )
-    labor_lines = (
-        LaborLine.query.filter_by(repair_order_id=repair_order.id)
-        .filter(LaborLine.review_status == ReviewStatus.APPROVED)
-        .order_by(LaborLine.id)
-        .all()
-    )
+def build_template_context(repair_order: RepairOrder, *, approved_only: bool = True) -> tuple[dict, list[dict], list[dict]]:
+    part_query = PartMatch.query.filter_by(repair_order_id=repair_order.id)
+    labor_query = LaborLine.query.filter_by(repair_order_id=repair_order.id)
+    if approved_only:
+        part_query = part_query.filter(PartMatch.review_status == ReviewStatus.APPROVED)
+        labor_query = labor_query.filter(LaborLine.review_status == ReviewStatus.APPROVED)
+    part_matches = part_query.order_by(PartMatch.id).all()
+    labor_lines = labor_query.order_by(LaborLine.id).all()
     profile = company_profile.load()
 
     parts_total = sum(float(m.matched_price) if m.matched_price is not None else 0.0 for m in part_matches)
@@ -176,7 +171,11 @@ def generate_repair_order_document_from_template(repair_order: RepairOrder, temp
         }
         for l in labor_lines
     ]
+    return context, part_items, labor_items
 
+
+def generate_repair_order_document_from_template(repair_order: RepairOrder, template: DocumentTemplate) -> str:
+    context, part_items, labor_items = build_template_context(repair_order)
     output_dir = os.path.dirname(repair_order.storage_path)
     output_path = os.path.join(output_dir, f"repair_order_{repair_order.id}_final_{template.id}.xlsx")
     return document_template_engine.render_template(

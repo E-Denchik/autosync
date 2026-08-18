@@ -185,7 +185,12 @@ export const api = {
   },
   deleteDocumentTemplate: (id) => request(`/document-templates/${id}`, { method: "DELETE" }),
   downloadStarterTemplate: () => request("/document-templates/starter"),
-  getDocumentTemplateFile: (id) => request(`/document-templates/${id}/file`),
+  previewRenderedTemplate: ({ templateId, file }) => {
+    const formData = new FormData();
+    if (templateId) formData.append("template_id", templateId);
+    if (file) formData.append("file", file);
+    return request("/document-templates/preview-rendered", { method: "POST", body: formData });
+  },
 
   previewFile: (file) => {
     const formData = new FormData();

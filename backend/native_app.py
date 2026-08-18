@@ -261,14 +261,10 @@ def run_window(url: str) -> None:
     try:
         # private_mode=False — по умолчанию pywebview открывает окно как
         # приватную/инкогнито-сессию: WebKitGTK создаёт эфемерный контекст
-        # и явно выключает HTML5 localStorage (см. platforms/gtk.py). Наш
-        # AuthContext хранит JWT в localStorage и трогает его на каждом
-        # старте, если пользователь уже создан — с private_mode по
-        # умолчанию это падает необработанным исключением ДО того, как
-        # выставляется loading=false, и окно виснет на "Загрузка..."
-        # навсегда при каждом запуске после первого /setup. Обнаружено
-        # только сквозным ручным тестированием окна — с пустой БД (мастер
-        # /setup, localStorage ещё не трогали) баг незаметен.
+        # и явно выключает HTML5 localStorage/persistent storage (см.
+        # platforms/gtk.py). Фронт сейчас localStorage не использует, но
+        # обычный (не приватный) контекст — более безопасный дефолт для
+        # окна приложения в целом.
         webview.start(private_mode=False, icon=get_icon_path())
     except Exception:
         logger.error("Не удалось открыть системное окно webview.", exc_info=True)
@@ -314,6 +310,8 @@ def main() -> None:
         # окружения (если её всё-таки задали в терминале — например, для
         # локального мока Ozon API) остаётся приоритетнее сохранённого в БД.
         from app.services import settings_store
+
+        settings_store.seed_baked_defaults()
 
         for key, value in settings_store.load_all().items():
             os.environ.setdefault(key, value)
