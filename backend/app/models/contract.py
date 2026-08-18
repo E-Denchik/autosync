@@ -23,6 +23,7 @@ class Contract(db.Model):
         db.Enum(DocumentProcessingStatus), default=DocumentProcessingStatus.UPLOADED, nullable=False
     )
     error_message = db.Column(db.Text)
+    active = db.Column(db.Boolean, default=True, nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -32,6 +33,7 @@ class Contract(db.Model):
     extra_files = db.relationship("ContractFile", back_populates="contract", cascade="all, delete-orphan")
     parts = db.relationship("ContractPart", back_populates="contract", cascade="all, delete-orphan")
     labor_norms = db.relationship("ContractLaborNorm", back_populates="contract", cascade="all, delete-orphan")
+    hourly_rates = db.relationship("ContractHourlyRate", back_populates="contract", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Contract {self.name or self.original_filename} status={self.status}>"
@@ -67,3 +69,17 @@ class ContractLaborNorm(db.Model):
 
     def __repr__(self):
         return f"<ContractLaborNorm {self.operation_name} {self.norm_hours}h>"
+
+
+class ContractHourlyRate(db.Model):
+    __tablename__ = "contract_hourly_rates"
+
+    id = db.Column(db.Integer, primary_key=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
+    vehicle_make = db.Column(db.String(128), nullable=False, index=True)
+    hourly_rate = db.Column(db.Numeric(10, 2), nullable=False)
+
+    contract = db.relationship("Contract", back_populates="hourly_rates")
+
+    def __repr__(self):
+        return f"<ContractHourlyRate {self.vehicle_make} {self.hourly_rate}>"

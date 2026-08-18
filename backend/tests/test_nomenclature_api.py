@@ -13,11 +13,6 @@ def _xlsx_bytes(rows):
     return buffer
 
 
-def test_list_requires_auth(client):
-    resp = client.get("/api/nomenclature")
-    assert resp.status_code == 401
-
-
 def test_create_list_update_delete_entry(client, admin_headers):
     create_resp = client.post(
         "/api/nomenclature",

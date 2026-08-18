@@ -42,6 +42,72 @@ def test_exact_operation_name_match(app):
         assert result["norm_hours"] == 1.3
 
 
+def test_ambiguous_operation_name_across_makes_does_not_auto_resolve_when_make_unknown(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Развал-схождение", vehicle_make="TOYOTA", norm_hours=1.0
+            )
+        )
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Развал-схождение", vehicle_make="KIA", norm_hours=2.5
+            )
+        )
+        db.session.commit()
+
+        llm_client = MagicMock()
+        llm_client.match_labor_by_name.return_value = {"matched_index": None, "confidence": 0.0}
+
+        result = match_labor_line_against_contract("Развал-схождение", contract_id, None, None, llm_client)
+
+        assert result["confidence_level"] != ConfidenceLevel.EXACT
+        llm_client.match_labor_by_name.assert_called_once()
+
+
+def test_ambiguous_operation_name_resolves_exact_once_make_is_known(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Развал-схождение", vehicle_make="TOYOTA", norm_hours=1.0
+            )
+        )
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Развал-схождение", vehicle_make="KIA", norm_hours=2.5
+            )
+        )
+        db.session.commit()
+
+        result = match_labor_line_against_contract("Развал-схождение", contract_id, "KIA", None, MagicMock())
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["norm_hours"] == 2.5
+
+
+def test_same_hours_across_makes_still_resolves_exact_without_make(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Замена масла", vehicle_make="TOYOTA", norm_hours=0.5
+            )
+        )
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Замена масла", vehicle_make="KIA", norm_hours=0.5
+            )
+        )
+        db.session.commit()
+
+        result = match_labor_line_against_contract("Замена масла", contract_id, None, None, MagicMock())
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["norm_hours"] == 0.5
+
+
 def test_does_not_use_global_labor_catalog_only_contract(app):
     from app.models import LaborCatalogEntry
 

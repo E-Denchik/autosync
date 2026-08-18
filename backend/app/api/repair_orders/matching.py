@@ -4,13 +4,11 @@ from datetime import datetime
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
-from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import DocumentTemplate, LaborLine, PartMatch, RepairOrder, RepairOrderStatus, ReviewStatus
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 def _serialize(match: PartMatch) -> dict:
@@ -106,7 +104,6 @@ def edit_match(match_id: int):
         "part_match",
         match.id,
         "edited",
-        actor=get_current_user(),
         details={
             "matched_article": match.matched_article,
             "matched_name": match.matched_name,
@@ -122,7 +119,7 @@ def approve_match(match_id: int):
     match = db.get_or_404(PartMatch, match_id)
     match.review_status = ReviewStatus.APPROVED
     match.reviewed_at = datetime.utcnow()
-    log_change("part_match", match.id, "approved", actor=get_current_user())
+    log_change("part_match", match.id, "approved")
     db.session.commit()
     return jsonify(_serialize(match))
 
@@ -132,7 +129,7 @@ def reject_match(match_id: int):
     match = db.get_or_404(PartMatch, match_id)
     match.review_status = ReviewStatus.REJECTED
     match.reviewed_at = datetime.utcnow()
-    log_change("part_match", match.id, "rejected", actor=get_current_user())
+    log_change("part_match", match.id, "rejected")
     db.session.commit()
     return jsonify(_serialize(match))
 
@@ -150,12 +147,11 @@ def bulk_review():
         return jsonify(error="'ids' не может быть пустым"), 400
 
     status = ReviewStatus.APPROVED if action == "approve" else ReviewStatus.REJECTED
-    actor = get_current_user()
     matches = PartMatch.query.filter(PartMatch.id.in_(ids)).all()
     for match in matches:
         match.review_status = status
         match.reviewed_at = datetime.utcnow()
-        log_change("part_match", match.id, status.value, actor=actor)
+        log_change("part_match", match.id, status.value)
     db.session.commit()
 
     return jsonify([_serialize(m) for m in matches])
@@ -258,7 +254,7 @@ def generate_document(repair_order_id: int):
         output_path = generate_repair_order_document(repair_order)
     repair_order.generated_document_path = output_path
     repair_order.status = RepairOrderStatus.REVIEWED
-    log_change("repair_order", repair_order.id, "reviewed", actor=get_current_user())
+    log_change("repair_order", repair_order.id, "reviewed")
     db.session.commit()
 
     return send_file(output_path, as_attachment=True)

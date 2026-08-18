@@ -15,6 +15,7 @@ from flask import current_app
 from app.extensions import db
 from app.models import (
     Contract,
+    ContractHourlyRate,
     ContractLaborNorm,
     DocumentProcessingStatus,
     LaborLine,
@@ -119,6 +120,16 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
             db.session.commit()
             return {"status": "failed", "error": message}
+        except Exception as exc:
+            logger.exception("import_contract_files упал для contract_id=%s", contract.id)
+            message = f"Не удалось разобрать договор: {exc}"
+            contract.status = DocumentProcessingStatus.FAILED
+            contract.error_message = message
+            repair_order.status = RepairOrderStatus.FAILED
+            repair_order.error_message = message
+            log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
+            db.session.commit()
+            return {"status": "failed", "error": message}
         contract.status = DocumentProcessingStatus.PARSED
         contract.error_message = None
 
@@ -162,7 +173,15 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             details={"confidence_level": match.confidence_level.value, "source": "auto-match"},
         )
 
-    hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
+    contract_rate = None
+    if repair_order.vehicle_make:
+        contract_rate = ContractHourlyRate.query.filter_by(
+            contract_id=contract.id, vehicle_make=repair_order.vehicle_make
+        ).first()
+    if contract_rate is not None:
+        hourly_rate = float(contract_rate.hourly_rate)
+    else:
+        hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
     has_contract_labor_norms = ContractLaborNorm.query.filter_by(contract_id=contract.id).first() is not None
     descriptions = [line["name"] for line in labor_lines_raw]
 

@@ -1,9 +1,7 @@
 """Статус и проверка подключения внешних API: Ozon Seller/Performance
-и сторонний аналитический сервис по конкурентам.
-
-Только администратор — здесь видно, какие интеграции настроены (без
-раскрытия самих секретов), и можно запустить тестовый запрос к реальному
-внешнему сервису (см. app/api/llm.py — тот же admin_required-паттерн).
+и сторонний аналитический сервис по конкурентам — видно, какие интеграции
+настроены (без раскрытия самих секретов), и можно запустить тестовый
+запрос к реальному внешнему сервису.
 """
 
 from __future__ import annotations
@@ -12,7 +10,6 @@ import os
 
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import admin_required, get_current_user
 from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.history import log_change
@@ -25,7 +22,6 @@ from app.services.ozon_client import (
 )
 
 bp = Blueprint("integrations", __name__)
-bp.before_request(admin_required(lambda: None))
 
 SETTINGS_ENTITY_ID = 1  # синглтон — одна запись настроек на всё приложение
 
@@ -149,7 +145,6 @@ def save_keys():
         "integration_keys",
         SETTINGS_ENTITY_ID,
         "updated",
-        actor=get_current_user(),
         details={"keys": sorted(updates.keys())},
     )
     return jsonify(ok=True, updated=sorted(updates.keys()))

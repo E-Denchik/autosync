@@ -14,10 +14,6 @@ from app.models import (
 )
 
 
-def test_dashboard_requires_auth(client):
-    assert client.get("/api/dashboard/summary").status_code == 401
-
-
 def test_dashboard_summary_empty_state(client, admin_headers):
     resp = client.get("/api/dashboard/summary", headers=admin_headers)
     assert resp.status_code == 200

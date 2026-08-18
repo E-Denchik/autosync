@@ -1,28 +1,12 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-let authToken = null;
-let onUnauthorized = null;
-
-export function setAuthToken(token) {
-  authToken = token;
-}
-
-export function setUnauthorizedHandler(fn) {
-  onUnauthorized = fn;
-}
-
 async function request(path, options = {}) {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
-  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   const resp = await fetch(`${API_BASE_URL}${path}`, {
     headers,
     ...options,
   });
-
-  if (resp.status === 401 && onUnauthorized) {
-    onUnauthorized();
-  }
 
   if (!resp.ok) {
     const text = await resp.text();
@@ -58,16 +42,6 @@ function withPaging(params = {}) {
 }
 
 export const api = {
-  // Авторизация
-  setupRequired: () => request("/auth/setup-required"),
-  setup: (email) => request("/auth/setup", { method: "POST", body: JSON.stringify({ email }) }),
-  loginOptions: () => request("/auth/login-options"),
-  login: (userId) => request("/auth/login", { method: "POST", body: JSON.stringify({ user_id: userId }) }),
-  me: () => request("/auth/me"),
-  listUsers: () => request("/auth/users"),
-  createUser: (data) => request("/auth/users", { method: "POST", body: JSON.stringify(data) }),
-  deleteUser: (id) => request(`/auth/users/${id}`, { method: "DELETE" }),
-
   // Настройки LLM
   listLlmModels: () => request("/llm/models"),
   selectLlmModel: (provider, model) =>
@@ -136,6 +110,13 @@ export const api = {
   listContractParts: (id, params = {}) => request(`/contracts/${id}/parts${withPaging(params)}`),
   listContractLaborNorms: (id, params = {}) => request(`/contracts/${id}/labor-norms${withPaging(params)}`),
   deleteContract: (id) => request(`/contracts/${id}`, { method: "DELETE" }),
+  archiveContract: (id) => request(`/contracts/${id}/archive`, { method: "POST" }),
+  unarchiveContract: (id) => request(`/contracts/${id}/unarchive`, { method: "POST" }),
+  listContractHourlyRates: (id) => request(`/contracts/${id}/hourly-rates`),
+  createContractHourlyRate: (id, data) =>
+    request(`/contracts/${id}/hourly-rates`, { method: "POST", body: JSON.stringify(data) }),
+  deleteContractHourlyRate: (id, rateId) =>
+    request(`/contracts/${id}/hourly-rates/${rateId}`, { method: "DELETE" }),
 
   // Заказ-наряды: сопоставление
   listMatches: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}`),

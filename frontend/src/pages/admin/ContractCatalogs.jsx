@@ -22,6 +22,7 @@ export default function ContractCatalogs() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [previewTarget, setPreviewTarget] = useState(null);
+  const [archivingId, setArchivingId] = useState(null);
   const toast = useToast();
 
   const load = () => {
@@ -69,6 +70,21 @@ export default function ContractCatalogs() {
       toast.error(e2.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleArchiveToggle = async (contract) => {
+    setArchivingId(contract.id);
+    try {
+      const updated = contract.active
+        ? await api.archiveContract(contract.id)
+        : await api.unarchiveContract(contract.id);
+      setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      toast.success(contract.active ? "Договор архивирован" : "Договор снова активен");
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setArchivingId(null);
     }
   };
 
@@ -195,8 +211,15 @@ export default function ContractCatalogs() {
             </thead>
             <tbody>
               {contracts.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.name || c.original_filename}</td>
+                <tr key={c.id} style={{ opacity: c.active ? 1 : 0.6 }}>
+                  <td>
+                    {c.name || c.original_filename}
+                    {!c.active && (
+                      <span className="status-pill" style={{ marginLeft: 6 }}>
+                        архив
+                      </span>
+                    )}
+                  </td>
                   <td className="text-muted">{c.contragent_name || "—"}</td>
                   <td>{c.parts_count}</td>
                   <td>{c.labor_norms_count}</td>
@@ -215,9 +238,16 @@ export default function ContractCatalogs() {
                         Открыть <ChevronRightIcon />
                       </Link>
                       <button
+                        className="btn btn-secondary btn-sm"
+                        disabled={archivingId === c.id}
+                        onClick={() => handleArchiveToggle(c)}
+                      >
+                        {c.active ? "Архивировать" : "Активировать"}
+                      </button>
+                      <button
                         className="btn btn-reject btn-sm"
                         disabled={c.repair_orders_count > 0}
-                        title={c.repair_orders_count > 0 ? "Используется в заказ-нарядах" : ""}
+                        title={c.repair_orders_count > 0 ? "Используется в заказ-нарядах — архивируйте вместо удаления" : ""}
                         onClick={() => setDeleteTarget(c)}
                       >
                         Удалить

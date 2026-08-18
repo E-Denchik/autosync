@@ -140,8 +140,3 @@ def test_analyze_product_returns_502_when_llm_unavailable(client, admin_headers,
     monkeypatch.setattr(LLMClient, "suggest_price", _raise)
     resp = client.post(f"/api/ozon/pricing/analyze/{product}", headers=admin_headers)
     assert resp.status_code == 502
-
-
-def test_pricing_requires_auth(client, snapshot):
-    resp = client.get("/api/ozon/pricing")
-    assert resp.status_code == 401

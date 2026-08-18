@@ -7,14 +7,12 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from app.auth import admin_required
 from app.extensions import db
 from app.models import RecordHistory
 from app.services.history import count_history, query_history
 from app.services.pagination import DEFAULT_PER_PAGE, MAX_PER_PAGE, paginated_response, parse_positive_int
 
 bp = Blueprint("history", __name__)
-bp.before_request(admin_required(lambda: None))
 
 
 def _serialize(entry: RecordHistory) -> dict:
@@ -23,7 +21,6 @@ def _serialize(entry: RecordHistory) -> dict:
         "entity_type": entry.entity_type,
         "entity_id": entry.entity_id,
         "action": entry.action,
-        "actor_email": entry.actor_email,
         "details": entry.details,
         "start_day": entry.start_day.isoformat(),
         "end_day": entry.end_day.isoformat() if entry.end_day else None,
@@ -53,7 +50,6 @@ def list_history():
         entity_type=args.get("entity_type") or None,
         entity_id=_parse_int(args.get("entity_id")),
         action=args.get("action") or None,
-        actor_id=_parse_int(args.get("actor_id")),
         start_from=_parse_date(args.get("start_from")),
         start_to=_parse_date(args.get("start_to")),
         only_current=args.get("only_current") == "true",

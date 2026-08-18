@@ -35,7 +35,6 @@ def test_update_cost_price_logs_history(client, admin_headers, product):
     entries = history_resp.get_json()
     assert len(entries) == 1
     assert entries[0]["action"] == "edited"
-    assert entries[0]["actor_email"] == "admin@test.local"
 
 
 def test_update_cost_price_accepts_null_to_clear(client, admin_headers, product):
@@ -65,11 +64,6 @@ def test_update_cost_price_rejects_other_fields(client, admin_headers, product):
 def test_update_cost_price_requires_field(client, admin_headers, product):
     resp = client.patch(f"/api/ozon/cards/{product}", headers=admin_headers, json={})
     assert resp.status_code == 400
-
-
-def test_update_cost_price_requires_auth(client, product):
-    resp = client.patch(f"/api/ozon/cards/{product}", json={"cost_price": 100})
-    assert resp.status_code == 401
 
 
 def test_update_cost_price_unknown_product_404(client, admin_headers):
@@ -243,11 +237,6 @@ def test_generate_card_returns_502_when_llm_unavailable(client, admin_headers, p
     monkeypatch.setattr(LLMClient, "generate_card_content", _raise)
     resp = client.post(f"/api/ozon/cards/{product}/generate", headers=admin_headers)
     assert resp.status_code == 502
-
-
-def test_cards_require_auth(client):
-    resp = client.get("/api/ozon/cards")
-    assert resp.status_code == 401
 
 
 @pytest.fixture

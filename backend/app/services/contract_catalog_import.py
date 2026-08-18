@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from app.extensions import db
 from app.models import Contract, ContractLaborNorm, ContractPart, DocumentProcessingStatus
 from app.services.document_parser import (
@@ -9,6 +11,8 @@ from app.services.document_parser import (
     parse_repair_order_export,
 )
 from app.services.history import log_change
+
+logger = logging.getLogger(__name__)
 
 DOCUMENT_LINE_FIELDS = ["article", "name", "qty", "price"]
 BATCH_SIZE = 2000
@@ -92,6 +96,13 @@ def import_contract_job(contract_id: int, paths: list[str], vehicle_make: str | 
     except DocumentParseError as exc:
         contract.status = DocumentProcessingStatus.FAILED
         contract.error_message = str(exc)
+        log_change("contract", contract.id, "import_failed", details={"error": str(exc)})
+        db.session.commit()
+        return {"status": "failed", "error": str(exc)}
+    except Exception as exc:
+        logger.exception("import_contract_files упал для contract_id=%s", contract.id)
+        contract.status = DocumentProcessingStatus.FAILED
+        contract.error_message = f"Не удалось разобрать договор: {exc}"
         log_change("contract", contract.id, "import_failed", details={"error": str(exc)})
         db.session.commit()
         return {"status": "failed", "error": str(exc)}

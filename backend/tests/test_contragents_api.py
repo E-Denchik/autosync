@@ -1,7 +1,3 @@
-def test_list_requires_auth(client):
-    assert client.get("/api/contragents").status_code == 401
-
-
 def test_create_list_update_delete(client, admin_headers):
     create_resp = client.post(
         "/api/contragents",

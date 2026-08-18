@@ -16,9 +16,6 @@ Description: AutoSync — internal auto-service platform (desktop app, no Docker
  and rejects any request without the window's own per-launch token, so
  it is not reachable from a browser on this machine or from the network.
  .
- First launch walks you through creating an administrator account
- directly in the app window — no command line needed.
- .
  Requires a local Ollama installation (https://ollama.com) for
  LLM-powered features (price suggestions, catalog matching fallback,
  SEO card generation); everything else works without it.

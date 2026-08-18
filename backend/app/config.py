@@ -46,10 +46,6 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
-    # Подписывает JWT — обязательно переопределить в проде через .env.
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
-    JWT_EXPIRES_HOURS = int(os.environ.get("JWT_EXPIRES_HOURS", "168"))  # 7 дней
-
     # Одноразовый токен на процесс — единственное, что реально не даёт
     # открыть AutoSync обычным браузером по адресу 127.0.0.1 (см.
     # app/__init__.py: _require_local_session_token). Генерируется заново в

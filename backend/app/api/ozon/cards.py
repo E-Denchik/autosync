@@ -1,6 +1,5 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from app.auth import get_current_user, login_required
 from app.extensions import db
 from app.models import Product
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
@@ -10,7 +9,6 @@ from app.services.llm_client import LLMClient, LLMClientError
 from app.services.pagination import paginate, paginated_response
 
 bp = Blueprint("ozon_cards", __name__)
-bp.before_request(login_required(lambda: None))
 
 
 def _serialize_product(p: Product) -> dict:
@@ -121,7 +119,6 @@ def update_product(product_id: int):
         "product",
         product.id,
         "edited",
-        actor=get_current_user(),
         details={"cost_price": cost_price},
     )
     db.session.commit()

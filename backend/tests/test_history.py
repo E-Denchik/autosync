@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 from app.extensions import db
-from app.models import User, UserRole
 from app.services.history import log_change, query_history
 
 
@@ -44,22 +43,15 @@ def test_log_change_is_scoped_per_entity(app):
         assert entity_ids == {1, 2}
 
 
-def test_query_history_filters_by_action_and_actor(app):
+def test_query_history_filters_by_action(app):
     with app.app_context():
-        admin = User(email="actor@test.local", role=UserRole.ADMIN)
-        db.session.add(admin)
-        db.session.flush()
-
-        log_change("widget", 1, "created", actor=admin)
-        log_change("widget", 1, "approved", actor=admin)
+        log_change("widget", 1, "created")
+        log_change("widget", 1, "approved")
         db.session.commit()
 
         approved_only = query_history(entity_type="widget", action="approved")
         assert len(approved_only) == 1
         assert approved_only[0].action == "approved"
-
-        by_actor = query_history(actor_id=admin.id)
-        assert len(by_actor) == 2
 
 
 def test_query_history_filters_by_date_range(app):
@@ -74,24 +66,3 @@ def test_query_history_filters_by_date_range(app):
 
         older = query_history(entity_type="widget", start_to=datetime.utcnow() - timedelta(days=1))
         assert len(older) == 1
-
-
-def test_actor_email_survives_actor_deletion(app):
-    # actor_email — собственный снимок на уровне приложения, не зависит от
-    # того, жив ли ещё сам пользователь или включено ли принудительное
-    # соблюдение внешних ключей в конкретной СУБД (у SQLite в тестах оно
-    # выключено, ondelete="SET NULL" в модели реально применяет только
-    # Postgres — но actor_email переживает удаление в любом случае).
-    with app.app_context():
-        user = User(email="disappearing@test.local", role=UserRole.OPERATOR)
-        db.session.add(user)
-        db.session.flush()
-
-        log_change("widget", 1, "created", actor=user)
-        db.session.commit()
-
-        db.session.delete(user)
-        db.session.commit()
-
-        entries = query_history(entity_type="widget")
-        assert entries[0].actor_email == "disappearing@test.local"

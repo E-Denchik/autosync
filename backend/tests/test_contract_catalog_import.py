@@ -2,7 +2,7 @@ import os
 
 from app.extensions import db
 from app.models import Contract, ContractLaborNorm, ContractPart, DocumentProcessingStatus
-from app.services.contract_catalog_import import import_contract_files
+from app.services.contract_catalog_import import import_contract_files, import_contract_job
 
 TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
 
@@ -63,3 +63,21 @@ def test_import_accumulates_across_multiple_files(app):
         second_count = ContractPart.query.filter_by(contract_id=contract_id).count()
 
         assert second_count == first_count * 2
+
+
+def test_import_contract_job_marks_failed_on_unexpected_error_instead_of_hanging(app, monkeypatch):
+    path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("неожиданная ошибка парсинга")
+
+        monkeypatch.setattr("app.services.contract_catalog_import._bulk_insert_parts", _boom)
+
+        result = import_contract_job(contract_id, [path], None)
+
+        assert result["status"] == "failed"
+        contract = db.session.get(Contract, contract_id)
+        assert contract.status == DocumentProcessingStatus.FAILED
+        assert contract.error_message is not None

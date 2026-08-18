@@ -20,12 +20,22 @@ export default function ContractCatalogDetail() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [hourlyRates, setHourlyRates] = useState([]);
+  const [rateForm, setRateForm] = useState({ vehicle_make: "", hourly_rate: "" });
+  const [savingRate, setSavingRate] = useState(false);
   const toast = useToast();
 
   const loadContract = () => {
     api
       .getContract(contractId)
       .then(setContract)
+      .catch((e) => toast.error(e.message));
+  };
+
+  const loadHourlyRates = () => {
+    api
+      .listContractHourlyRates(contractId)
+      .then(setHourlyRates)
       .catch((e) => toast.error(e.message));
   };
 
@@ -43,6 +53,7 @@ export default function ContractCatalogDetail() {
 
   useEffect(() => {
     loadContract();
+    loadHourlyRates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractId]);
 
@@ -62,6 +73,30 @@ export default function ContractCatalogDetail() {
   const handlePageChange = (p) => {
     setPage(p);
     loadRows(tab, query, p);
+  };
+
+  const handleAddRate = async (e) => {
+    e.preventDefault();
+    setSavingRate(true);
+    try {
+      await api.createContractHourlyRate(contractId, rateForm);
+      toast.success("Ставка добавлена");
+      setRateForm({ vehicle_make: "", hourly_rate: "" });
+      loadHourlyRates();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingRate(false);
+    }
+  };
+
+  const handleDeleteRate = async (rateId) => {
+    try {
+      await api.deleteContractHourlyRate(contractId, rateId);
+      setHourlyRates((prev) => prev.filter((r) => r.id !== rateId));
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleUpload = async (e) => {
@@ -128,75 +163,146 @@ export default function ContractCatalogDetail() {
         >
           Нормо-часы ({contract.labor_norms_count})
         </button>
+        <button
+          className={tab === "rates" ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+          onClick={() => setTab("rates")}
+        >
+          Ставки по маркам ({hourlyRates.length})
+        </button>
       </div>
 
-      <form onSubmit={handleSearch} style={{ marginBottom: 16, maxWidth: 360 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={tab === "parts" ? "Поиск по артикулу/названию" : "Поиск по операции"}
-          />
-          <button className="btn btn-secondary" type="submit">
-            <SearchIcon />
-          </button>
-        </div>
-      </form>
+      {tab === "rates" ? (
+        <div className="panel" style={{ maxWidth: 520 }}>
+          <p className="text-muted" style={{ marginTop: 0, fontSize: 12.5 }}>
+            Цена нормо-часа для этого контракта по маркам ТС — если для марки заказ-наряда задана ставка
+            здесь, она используется вместо общей ставки контрагента.
+          </p>
+          <form onSubmit={handleAddRate} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 16 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="rate-make">Марка</label>
+              <input
+                id="rate-make"
+                required
+                value={rateForm.vehicle_make}
+                onChange={(e) => setRateForm((f) => ({ ...f, vehicle_make: e.target.value }))}
+                placeholder="Например, HYUNDAI"
+              />
+            </div>
+            <div className="field" style={{ width: 140 }}>
+              <label htmlFor="rate-value">Ставка, ₽/ч</label>
+              <input
+                id="rate-value"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={rateForm.hourly_rate}
+                onChange={(e) => setRateForm((f) => ({ ...f, hourly_rate: e.target.value }))}
+              />
+            </div>
+            <button className="btn btn-primary" disabled={savingRate} type="submit">
+              {savingRate ? "…" : "Добавить"}
+            </button>
+          </form>
 
-      {loading ? (
-        <Spinner label="Загрузка…" />
-      ) : rows.length === 0 ? (
-        <div className="table-wrap">
-          <EmptyState title="Ничего не найдено" hint="Попробуйте другой запрос или загрузите файл выше." />
-        </div>
-      ) : tab === "parts" ? (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Артикул</th>
-                <th>Наименование</th>
-                <th>Кол-во</th>
-                <th>Цена</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.article || "—"}</td>
-                  <td>{p.name}</td>
-                  <td className="text-muted">{p.qty ?? "—"}</td>
-                  <td className="text-muted">{p.price ?? "—"}</td>
+          {hourlyRates.length === 0 ? (
+            <p className="text-muted">Ставок пока нет — используется общая ставка контрагента.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Марка</th>
+                  <th>Ставка, ₽/ч</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
+              </thead>
+              <tbody>
+                {hourlyRates.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.vehicle_make}</td>
+                    <td>{r.hourly_rate}</td>
+                    <td>
+                      <button className="btn btn-reject btn-sm" onClick={() => handleDeleteRate(r.id)}>
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Операция</th>
-                <th>Марка</th>
-                <th>Модель</th>
-                <th>Норма, ч</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((n) => (
-                <tr key={n.id}>
-                  <td>{n.operation_name}</td>
-                  <td className="text-muted">{n.vehicle_make || "—"}</td>
-                  <td className="text-muted">{n.vehicle_model || "—"}</td>
-                  <td className="text-muted">{n.norm_hours}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
-        </div>
+        <>
+          <form onSubmit={handleSearch} style={{ marginBottom: 16, maxWidth: 360 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={tab === "parts" ? "Поиск по артикулу/названию" : "Поиск по операции"}
+              />
+              <button className="btn btn-secondary" type="submit">
+                <SearchIcon />
+              </button>
+            </div>
+          </form>
+
+          {loading ? (
+            <Spinner label="Загрузка…" />
+          ) : rows.length === 0 ? (
+            <div className="table-wrap">
+              <EmptyState title="Ничего не найдено" hint="Попробуйте другой запрос или загрузите файл выше." />
+            </div>
+          ) : tab === "parts" ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th>Кол-во</th>
+                    <th>Цена</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.article || "—"}</td>
+                      <td>{p.name}</td>
+                      <td className="text-muted">{p.qty ?? "—"}</td>
+                      <td className="text-muted">{p.price ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Операция</th>
+                    <th>Марка</th>
+                    <th>Модель</th>
+                    <th>Норма, ч</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((n) => (
+                    <tr key={n.id}>
+                      <td>{n.operation_name}</td>
+                      <td className="text-muted">{n.vehicle_make || "—"}</td>
+                      <td className="text-muted">{n.vehicle_model || "—"}</td>
+                      <td className="text-muted">{n.norm_hours}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination page={page} perPage={PER_PAGE} total={total} onPageChange={handlePageChange} />
+            </div>
+          )}
+        </>
       )}
 
       {contract.repair_orders_count > 0 && (

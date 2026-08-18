@@ -15,18 +15,6 @@ def _mock_discovery(monkeypatch, discovery=DISCOVERY):
     monkeypatch.setattr(LLMClient, "list_models", lambda self: discovery)
 
 
-def test_llm_models_requires_admin(client, operator_headers, monkeypatch):
-    _mock_discovery(monkeypatch)
-    resp = client.get("/api/llm/models", headers=operator_headers)
-    assert resp.status_code == 403
-
-
-def test_llm_models_requires_auth(client, monkeypatch):
-    _mock_discovery(monkeypatch)
-    resp = client.get("/api/llm/models")
-    assert resp.status_code == 401
-
-
 def test_llm_models_no_selection_initially(client, admin_headers, monkeypatch):
     _mock_discovery(monkeypatch)
     resp = client.get("/api/llm/models", headers=admin_headers)

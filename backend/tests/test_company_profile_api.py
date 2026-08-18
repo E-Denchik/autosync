@@ -10,16 +10,6 @@ def test_get_profile_defaults_to_empty(client, operator_headers):
     }
 
 
-def test_get_profile_requires_auth(client):
-    resp = client.get("/api/company-profile")
-    assert resp.status_code == 401
-
-
-def test_update_profile_requires_admin(client, operator_headers):
-    resp = client.put("/api/company-profile", headers=operator_headers, json={"COMPANY_NAME": "x"})
-    assert resp.status_code == 403
-
-
 def test_update_profile_persists_values(client, admin_headers):
     resp = client.put(
         "/api/company-profile",
