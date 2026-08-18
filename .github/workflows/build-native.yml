@@ -43,7 +43,7 @@ jobs:
           OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
           OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
           OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
-        run: python3 scripts/bake_integration_keys.py
+        run: python scripts/bake_integration_keys.py
 
       - name: Install system webview dependencies
         # pywebview на Linux использует системный WebKitGTK через PyGObject
@@ -89,7 +89,7 @@ jobs:
           OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
           OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
           OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
-        run: python3 scripts/bake_integration_keys.py
+        run: python scripts/bake_integration_keys.py
 
       - name: Install Tesseract OCR + Russian language data
         shell: pwsh
