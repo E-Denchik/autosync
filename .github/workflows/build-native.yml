@@ -22,9 +22,19 @@ on:
 permissions:
   contents: write
 
+# Гарантирует, что "latest" всегда отражает САМЫЙ последний коммит в main:
+# если пуш B приходит, пока ещё собирается пуш A (тот же ref), недособранный
+# прогон A отменяется — иначе A мог бы финишировать позже B и переписать
+# "latest" более старой сборкой. Тег vX.Y.Z — свой ref, под свой прогон,
+# друг друга не отменяют.
+concurrency:
+  group: build-native-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -35,15 +45,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - name: Bake Ozon keys into build (from repo secrets)
-        shell: bash
-        env:
-          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
-          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-          OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
-          OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
-        run: python scripts/bake_integration_keys.py
 
       - name: Install system webview dependencies
         # pywebview на Linux использует системный WebKitGTK через PyGObject
@@ -56,6 +57,11 @@ jobs:
           sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
       - name: Build native Linux binary
+        env:
+          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+          OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
+          OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
         run: ./scripts/build-native-linux.sh
 
       - name: Build native .deb
@@ -71,6 +77,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -82,28 +89,57 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Bake Ozon keys into build (from repo secrets)
-        shell: bash
+      - name: Install Tesseract OCR + Russian language data
+        shell: pwsh
+        # choco/GitHub-скачивание изредка отваливается по сети на раннере —
+        # без ретрая такой разовый сбой проваливал бы всю сборку впустую.
+        run: |
+          $ErrorActionPreference = "Stop"
+          for ($i = 1; $i -le 3; $i++) {
+            try {
+              choco install tesseract -y --no-progress
+              break
+            } catch {
+              if ($i -eq 3) { throw }
+              Write-Warning "choco install tesseract не удался (попытка $i/3): $_"
+              Start-Sleep -Seconds (10 * $i)
+            }
+          }
+          $tessDir = "C:\Program Files\Tesseract-OCR"
+          for ($i = 1; $i -le 3; $i++) {
+            try {
+              Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/rus.traineddata" -OutFile "$tessDir\tessdata\rus.traineddata"
+              break
+            } catch {
+              if ($i -eq 3) { throw }
+              Write-Warning "Загрузка rus.traineddata не удалась (попытка $i/3): $_"
+              Start-Sleep -Seconds (10 * $i)
+            }
+          }
+          echo "TESSERACT_DIR=$tessDir" >> $env:GITHUB_ENV
+
+      - name: Build native Windows exe
         env:
           OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
           OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
           OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
           OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
-        run: python scripts/bake_integration_keys.py
-
-      - name: Install Tesseract OCR + Russian language data
-        shell: pwsh
-        run: |
-          choco install tesseract -y --no-progress
-          $tessDir = "C:\Program Files\Tesseract-OCR"
-          Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/rus.traineddata" -OutFile "$tessDir\tessdata\rus.traineddata"
-          echo "TESSERACT_DIR=$tessDir" >> $env:GITHUB_ENV
-
-      - name: Build native Windows exe
         run: pwsh -File scripts\build-native-windows.ps1
 
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          for ($i = 1; $i -le 3; $i++) {
+            try {
+              choco install innosetup -y --no-progress
+              break
+            } catch {
+              if ($i -eq 3) { throw }
+              Write-Warning "choco install innosetup не удался (попытка $i/3): $_"
+              Start-Sleep -Seconds (10 * $i)
+            }
+          }
 
       - name: Determine version and repo root for Inno Setup
         shell: pwsh

@@ -73,6 +73,9 @@ if ($TesseractDir -and (Test-Path "$TesseractDir\tesseract.exe")) {
     Write-Warning "Tesseract OCR не найден (проверьте TESSERACT_DIR) — сборка соберётся, но загрузка сканов/фото работать не будет."
 }
 
+Write-Host "==> Готовлю ключи интеграций для вшивания в сборку" -ForegroundColor Cyan
+python "$RepoRoot\scripts\bake_integration_keys.py"
+
 Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 $BuildWork = "$RepoRoot\build\native-windows"
 $OutDir = "$RepoRoot\dist\native-windows"
@@ -93,6 +96,7 @@ pyinstaller `
   --add-data "$RepoRoot\llm-service;llm_service_src" `
   --add-data "$RepoRoot\backend\migrations;migrations" `
   --add-data "$RepoRoot\packaging\icon;icon" `
+  --add-data "$RepoRoot\backend\app\_baked_integration_keys.json;app" `
   @TesseractDataArg `
   --icon "$RepoRoot\packaging\icon\icon.ico" `
   --hidden-import=waitress `
