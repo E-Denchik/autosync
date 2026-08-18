@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import Spinner from "./Spinner.jsx";
-import { InfoIcon } from "./icons.jsx";
+import { AlertCircleIcon, InfoIcon } from "./icons.jsx";
 
 const TABLE_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"];
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
@@ -31,6 +31,7 @@ function isNumericCell(value) {
 export default function FilePreviewModal({ blob, fileName, onClose, loader, subtitle }) {
   const [rows, setRows] = useState(null);
   const [truncated, setTruncated] = useState(false);
+  const [unresolvedTokens, setUnresolvedTokens] = useState([]);
   const [objectUrl, setObjectUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,6 +45,7 @@ export default function FilePreviewModal({ blob, fileName, onClose, loader, subt
     setLoading(true);
     setError(null);
     setRows(null);
+    setUnresolvedTokens([]);
     setObjectUrl(null);
 
     if (loader) {
@@ -52,6 +54,7 @@ export default function FilePreviewModal({ blob, fileName, onClose, loader, subt
           if (cancelled) return;
           setRows(res.rows);
           setTruncated(res.truncated);
+          setUnresolvedTokens(res.unresolved_tokens || []);
         })
         .catch((e) => !cancelled && setError(e.message))
         .finally(() => !cancelled && setLoading(false));
@@ -158,6 +161,15 @@ export default function FilePreviewModal({ blob, fileName, onClose, loader, subt
           )}
           {!loading && !error && rows && (
             <>
+              {unresolvedTokens.length > 0 && (
+                <div className="hint-banner hint-warning" style={{ marginBottom: 12 }}>
+                  <AlertCircleIcon />
+                  <span>
+                    Эти плейсхолдеры не распознаны и остались как есть: {unresolvedTokens.join(", ")}. Проверьте
+                    написание — допустимы только латинские буквы, цифры, {"_"} и {"."}, без пробелов и дефисов.
+                  </span>
+                </div>
+              )}
               <div className="preview-table-wrap">
                 <table className="preview-table">
                   <thead>

@@ -8,6 +8,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import MatchEditModal from "../../components/MatchEditModal.jsx";
 import LaborEditModal from "../../components/LaborEditModal.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { CheckCircleIcon, DownloadIcon, EditIcon } from "../../components/icons.jsx";
 
@@ -258,6 +259,11 @@ export default function ReviewMatches() {
       a.click();
       window.URL.revokeObjectURL(url);
       toast.success("Итоговый документ сформирован и скачан");
+      if (blob.unresolvedTokens?.length) {
+        toast.error(
+          `В документе остались нераспознанные плейсхолдеры: ${blob.unresolvedTokens.join(", ")} — проверьте шаблон.`
+        );
+      }
       setGeneratedPreview({ blob, fileName });
     } catch (e) {
       toast.error(e.message);
@@ -292,6 +298,15 @@ export default function ReviewMatches() {
           </button>
         )}
       </div>
+
+      <HowToUse
+        steps={[
+          "Каждую позицию и работу нужно принять или отклонить — по одной или выделите чекбоксами и обработайте пачкой кнопками «Принять/Отклонить выбранные».",
+          "Если сопоставление неверное, нажмите «Изменить» и подберите нужную позицию или операцию вручную через поиск.",
+          "Кнопка «Сгенерировать итоговый документ» станет активной, только когда не останется непроверенных позиций и работ.",
+          "Перед генерацией можно выбрать свой шаблон документа (Администрирование → Шаблоны документов) вместо встроенного формата.",
+        ]}
+      />
 
       <StatusStepper status={status} />
 

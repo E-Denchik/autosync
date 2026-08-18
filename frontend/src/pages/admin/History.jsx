@@ -3,6 +3,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { ListIcon, SearchIcon } from "../../components/icons.jsx";
 
@@ -103,6 +104,14 @@ export default function History() {
           </p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Здесь журнал изменений состояния по всем разделам сразу — что изменилось и когда.",
+          "Отфильтруйте по типу записи, действию или периоду дат, чтобы найти конкретное изменение.",
+          "«Только текущее состояние» скрывает историю и показывает только последнее действие по каждой записи.",
+        ]}
+      />
 
       <form className="panel" style={{ marginBottom: 20 }} onSubmit={handleSearch}>
         <div className="filter-row">

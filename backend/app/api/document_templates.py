@@ -78,7 +78,9 @@ def preview_rendered():
 
     rendered_path = os.path.join(upload_dir, f"preview-rendered-{uuid.uuid4().hex}.xlsx")
     try:
-        document_template_engine.render_template(template_path, rendered_path, context, part_items, labor_items)
+        _, unresolved_tokens = document_template_engine.render_template(
+            template_path, rendered_path, context, part_items, labor_items
+        )
     except DocumentTemplateError as exc:
         return jsonify(error=str(exc)), 400
     finally:
@@ -93,6 +95,7 @@ def preview_rendered():
         os.remove(rendered_path)
 
     result["repair_order_id"] = repair_order.id
+    result["unresolved_tokens"] = unresolved_tokens
     return jsonify(result)
 
 

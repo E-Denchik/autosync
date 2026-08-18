@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon } from "../../components/icons.jsx";
 
@@ -74,6 +75,14 @@ export default function LaborCatalog() {
           <PlusIcon /> Добавить операцию
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Здесь справочник операций и норм времени по маркам/моделям — он используется, чтобы автоматически подставлять нормо-часы в загруженные заказ-наряды.",
+          "Модель можно не указывать — тогда запись будет действовать для всех моделей этой марки.",
+          "Пополняйте справочник вручную по мере необходимости — если для операции записи нет, соответствующая работа в заказ-наряде уйдёт на ручную проверку.",
+        ]}
+      />
 
       {showForm && (
         <form className="panel" style={{ marginBottom: 20, maxWidth: 480 }} onSubmit={handleCreate}>

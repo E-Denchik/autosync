@@ -1213,6 +1213,67 @@ a.stat-card:hover {
   text-decoration: underline;
 }
 
+.how-to-use {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-radius: var(--radius-md);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+
+.how-to-use summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.how-to-use summary::-webkit-details-marker {
+  display: none;
+}
+
+.how-to-use summary svg:first-child {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.how-to-use summary span {
+  flex: 1;
+}
+
+.how-to-use-chevron {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  transition: transform 0.15s var(--ease);
+}
+
+.how-to-use[open] .how-to-use-chevron {
+  transform: rotate(90deg);
+}
+
+.how-to-use ol {
+  margin: 0;
+  padding: 0 16px 14px 34px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.how-to-use ol li {
+  margin-bottom: 4px;
+}
+
+.how-to-use ol li:last-child {
+  margin-bottom: 0;
+}
+
 .progress-fade-enter {
   animation: fade-in 0.2s var(--ease);
 }

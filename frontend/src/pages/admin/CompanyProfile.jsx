@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 
 const EMPTY = { COMPANY_NAME: "", COMPANY_INN: "", COMPANY_ADDRESS: "", COMPANY_PHONE: "" };
@@ -44,6 +45,13 @@ export default function CompanyProfile() {
           <p>Попадают в шапку сформированных документов (заказ-наряд/акт) — как встроенного формата, так и загруженных шаблонов (токены {"{{company_name}}"}, {"{{company_inn}}"}, {"{{company_address}}"}, {"{{company_phone}}"}).</p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Заполните данные один раз — они автоматически подставляются в шапку каждого сформированного документа (заказ-наряда/акта).",
+          "Если используете свой шаблон (Администрирование → Шаблоны документов), добавьте в него плейсхолдеры {{company_name}}, {{company_inn}} и т.д. — значения возьмутся отсюда.",
+        ]}
+      />
 
       <form className="panel" style={{ maxWidth: 520 }} onSubmit={handleSubmit}>
         <div className="field">

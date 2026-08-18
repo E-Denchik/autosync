@@ -13,6 +13,17 @@ def _xlsx_bytes():
     return buf
 
 
+def _xlsx_bytes_with_malformed_token():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["{{order_number}}"])
+    ws.append(["{{order date}}"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def test_list_templates_empty_by_default(client, operator_headers):
     resp = client.get("/api/document-templates", headers=operator_headers)
     assert resp.status_code == 200
@@ -111,9 +122,22 @@ def test_preview_rendered_substitutes_real_data_for_uploaded_file(client, admin_
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["repair_order_id"] == repair_order
+    assert body["unresolved_tokens"] == []
     flat = [cell for row in body["rows"] for cell in row]
     assert str(repair_order) in flat
     assert not any("{{" in cell for cell in flat)
+
+
+def test_preview_rendered_reports_unresolved_tokens(client, admin_headers, repair_order):
+    resp = client.post(
+        "/api/document-templates/preview-rendered",
+        headers=admin_headers,
+        data={"file": (_xlsx_bytes_with_malformed_token(), "act.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["unresolved_tokens"] == ["{{order date}}"]
 
 
 def test_preview_rendered_substitutes_real_data_for_saved_template(client, admin_headers, repair_order):

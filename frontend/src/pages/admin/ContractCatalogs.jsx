@@ -6,6 +6,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, ChevronRightIcon, EyeIcon, FileTextIcon } from "../../components/icons.jsx";
 
@@ -118,6 +119,14 @@ export default function ContractCatalogs() {
           <PlusIcon /> Загрузить новый контракт
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Загружайте сюда только фиксированные списки запчастей/нормо-часов по гос. контракту или тендеру — обычный склад заказчика ведётся в разделе «Номенклатура», это разные вещи.",
+          "Контракт загружается один раз и переиспользуется для всех заказ-нарядов по нему — повторно загружать тот же файл не нужно.",
+          "Откройте контракт («Открыть»), чтобы посмотреть его состав, дозагрузить файлы или задать отдельные ставки нормо-часа по маркам.",
+        ]}
+      />
 
       {showForm && (
         <form className="panel" style={{ marginBottom: 20, maxWidth: 520 }} onSubmit={handleCreate}>

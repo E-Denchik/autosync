@@ -4,6 +4,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import StatCard from "../../components/StatCard.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { TrendingUpIcon, TagIcon, AlertCircleIcon, SparklesIcon } from "../../components/icons.jsx";
 
@@ -183,6 +184,14 @@ export default function Stats() {
           <p>Динамика собственной цены относительно конкурентов на Ozon и распределение позиций по рынку.</p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Данные появляются, только когда для товаров запущен анализ цены на странице «Карточки» (кнопка «Цена») — чем чаще анализ, тем точнее график.",
+          "Верхний график показывает, как ваша цена соотносилась с ценами конкурентов по датам анализа.",
+          "Нижняя полоса — сколько товаров сейчас дешевле всех конкурентов, в рыночном диапазоне или дороже среднего.",
+        ]}
+      />
 
       <div className="stat-grid" style={{ marginBottom: 20 }}>
         <StatCard icon={TagIcon} label="Товаров с историей цен" value={summary.products_tracked} />

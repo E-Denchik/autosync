@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import { useToast } from "../../context/ToastContext.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon } from "../../components/icons.jsx";
 
 const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
@@ -202,6 +203,14 @@ export default function UploadPage() {
           </p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Загрузите файл договора/прайса (или выберите уже загруженный контракт) и файл заказ-наряда — можно перетащить, добавить сразу несколько файлов или загрузить фото/сканы страниц вместо таблицы.",
+          "Марка, модель и VIN нужны, чтобы автоматически подтянуть нормо-часы; контрагент — чтобы посчитать стоимость работ по его ставке. Все поля можно оставить пустыми и заполнить позже.",
+          "После нажатия «Загрузить и сопоставить» вы попадёте на страницу проверки — там нужно будет подтвердить или поправить каждую найденную позицию.",
+        ]}
+      />
 
       {!llmConfigured && (
         <div className="hint-banner hint-warning">

@@ -9,6 +9,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+
+from app.config import _bundled_resource
 from app.extensions import db
 from app.models import IntegrationSetting
 
@@ -32,10 +36,11 @@ def load_all() -> dict[str, str]:
 def seed_baked_defaults() -> None:
     if IntegrationSetting.query.count() > 0:
         return
-    try:
-        from app._baked_integration_keys import BAKED_INTEGRATION_KEYS as defaults
-    except ImportError:
+    baked_path = _bundled_resource("app", "_baked_integration_keys.json")
+    if not os.path.isfile(baked_path):
         return
+    with open(baked_path, "r", encoding="utf-8") as f:
+        defaults = json.load(f)
     save_keys(defaults)
 
 

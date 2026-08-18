@@ -6,6 +6,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { FileTextIcon, UploadIcon, ChevronRightIcon, EyeIcon } from "../../components/icons.jsx";
 
@@ -61,6 +62,14 @@ export default function RepairOrdersList() {
           <UploadIcon /> Загрузить новый
         </Link>
       </div>
+
+      <HowToUse
+        steps={[
+          "Здесь все загруженные заказ-наряды и статус их обработки/проверки.",
+          "Нажмите «Открыть» у нужной строки, чтобы проверить сопоставленные позиции и работы.",
+          "Значок с глазом рядом с именем файла открывает быстрый просмотр исходного документа без скачивания.",
+        ]}
+      />
 
       {loading ? (
         <Spinner label="Загрузка…" />
