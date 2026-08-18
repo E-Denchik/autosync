@@ -92,7 +92,7 @@ while ($VersionParts.Count -lt 4) { $VersionParts += '0' }
 $VersionTuple = ($VersionParts[0..3] -join ', ')
 $VersionDotted = ($VersionParts[0..3] -join '.')
 $VersionInfoPath = "$BuildWork\version_info.txt"
-@"
+$VersionInfoContent = @"
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=($VersionTuple),
@@ -120,7 +120,11 @@ VSVersionInfo(
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]
 )
-"@ | Set-Content -Path $VersionInfoPath -Encoding UTF8
+"@
+# Set-Content -Encoding UTF8 добавляет BOM в Windows PowerShell 5.1 — PyInstaller
+# читает --version-file как Python-синтаксис и падает на лишних байтах в начале
+# файла. UTF8Encoding($false) пишет без BOM независимо от версии PowerShell.
+[System.IO.File]::WriteAllText($VersionInfoPath, $VersionInfoContent, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 Set-Location "$RepoRoot\backend"
