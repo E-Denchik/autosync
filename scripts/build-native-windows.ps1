@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Собирает AutoSync для Windows (PyInstaller) — аналог
+    Собирает AutoSync в один .exe для Windows (PyInstaller) — аналог
     scripts/build-native-linux.sh, только PyInstaller не кросс-компилирует,
     поэтому этот скрипт обязательно запускать НА Windows.
 
@@ -12,16 +12,8 @@
     динамическую загрузку Alembic-миграций и numpy C-расширений, см.
     комментарии в build-native-linux.sh).
 
-    --onedir (папка), не --onefile: self-extracting однофайловые сборки
-    PyInstaller Windows Defender/антивирусы чаще ошибочно помечают как
-    троян (паттерн поведения похож на дроппер) — папку с exe и рядом
-    лежащими файлами так не флагает. Пользователю разницы не видно: Inno
-    Setup (autosync.iss) всё равно упаковывает всё в один установщик.
-    Плюс --version-file — метаданные (издатель/описание/версия) в
-    свойствах .exe, тоже снижает подозрительность у SmartScreen.
-
-    Результат: dist/native-windows/autosync/autosync.exe — используется
-    дальше packaging/native-windows/autosync.iss (Inno Setup) для сборки
+    Результат: dist/native-windows/autosync.exe — используется дальше
+    packaging/native-windows/autosync.iss (Inno Setup) для сборки
     полноценного установщика.
 
 .EXAMPLE
@@ -81,62 +73,22 @@ if ($TesseractDir -and (Test-Path "$TesseractDir\tesseract.exe")) {
     Write-Warning "Tesseract OCR не найден (проверьте TESSERACT_DIR) — сборка соберётся, но загрузка сканов/фото работать не будет."
 }
 
-Write-Host "==> Готовлю метаданные версии для .exe" -ForegroundColor Cyan
+Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 $BuildWork = "$RepoRoot\build\native-windows"
 $OutDir = "$RepoRoot\dist\native-windows"
 Remove-Item -Recurse -Force $BuildWork, $OutDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $BuildWork, $OutDir | Out-Null
 
-$VersionParts = @((Get-Content "$RepoRoot\VERSION" -Raw).Trim() -split '\.')
-while ($VersionParts.Count -lt 4) { $VersionParts += '0' }
-$VersionTuple = ($VersionParts[0..3] -join ', ')
-$VersionDotted = ($VersionParts[0..3] -join '.')
-$VersionInfoPath = "$BuildWork\version_info.txt"
-$VersionInfoContent = @"
-VSVersionInfo(
-  ffi=FixedFileInfo(
-    filevers=($VersionTuple),
-    prodvers=($VersionTuple),
-    mask=0x3f,
-    flags=0x0,
-    OS=0x40004,
-    fileType=0x1,
-    subtype=0x0,
-    date=(0, 0)
-  ),
-  kids=[
-    StringFileInfo(
-      [
-      StringTable(
-        u'040904B0',
-        [StringStruct(u'CompanyName', u'AutoSync Internal'),
-        StringStruct(u'FileDescription', u'AutoSync - internal auto-service platform'),
-        StringStruct(u'FileVersion', u'$VersionDotted'),
-        StringStruct(u'InternalName', u'autosync'),
-        StringStruct(u'OriginalFilename', u'autosync.exe'),
-        StringStruct(u'ProductName', u'AutoSync'),
-        StringStruct(u'ProductVersion', u'$VersionDotted')])
-      ]),
-    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
-  ]
-)
-"@
-# Set-Content -Encoding UTF8 добавляет BOM в Windows PowerShell 5.1 — PyInstaller
-# читает --version-file как Python-синтаксис и падает на лишних байтах в начале
-# файла. UTF8Encoding($false) пишет без BOM независимо от версии PowerShell.
-[System.IO.File]::WriteAllText($VersionInfoPath, $VersionInfoContent, (New-Object System.Text.UTF8Encoding($false)))
-
-Write-Host "==> Запускаю PyInstaller" -ForegroundColor Cyan
 Set-Location "$RepoRoot\backend"
 
 pyinstaller `
   --name autosync `
+  --onefile `
   --windowed `
   --noconfirm `
   --distpath $OutDir `
   --workpath "$BuildWork\work" `
   --specpath $BuildWork `
-  --version-file $VersionInfoPath `
   --add-data "$RepoRoot\frontend\dist;frontend_dist" `
   --add-data "$RepoRoot\llm-service;llm_service_src" `
   --add-data "$RepoRoot\backend\migrations;migrations" `
@@ -167,5 +119,5 @@ pyinstaller `
 deactivate
 
 Write-Host ""
-Write-Host "==> Готово: $OutDir\autosync\autosync.exe" -ForegroundColor Green
+Write-Host "==> Готово: $OutDir\autosync.exe" -ForegroundColor Green
 Write-Host "    Дальше: Inno Setup по packaging\native-windows\autosync.iss соберёт установщик."

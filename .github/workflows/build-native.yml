@@ -121,7 +121,7 @@ jobs:
         with:
           name: autosync-windows
           path: |
-            dist/native-windows/autosync/**
+            dist/native-windows/autosync.exe
             dist/native-windows-installer/*.exe
           if-no-files-found: error
 
@@ -143,6 +143,7 @@ jobs:
           files: |
             autosync-linux/native-linux/autosync
             autosync-linux/autosync-desktop_*_amd64.deb
+            autosync-windows/native-windows/autosync.exe
             autosync-windows/native-windows-installer/*.exe
 
   release:
@@ -158,4 +159,5 @@ jobs:
           files: |
             autosync-linux/native-linux/autosync
             autosync-linux/autosync-desktop_*_amd64.deb
+            autosync-windows/native-windows/autosync.exe
             autosync-windows/native-windows-installer/*.exe

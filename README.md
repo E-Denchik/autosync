@@ -46,10 +46,7 @@ Tesseract OCR) подтянутся сами. Дальше — запуск из
 `.exe` не подписан цифровой подписью (платный код-signing сертификат пока
 не куплен) — при первом запуске Windows SmartScreen покажет «Windows
 защитила ваш компьютер». Это ожидаемо: нажмите **«Подробнее» → «Выполнить
-в любом случае»**. Сборка сделана как папка (`--onedir`), а не один
-self-extracting exe, и несёт версионные метаданные (издатель/описание) —
-это снижает шанс, что антивирус ошибочно примет её за троян, но само окно
-SmartScreen про неизвестного издателя без покупки сертификата не убрать.
+в любом случае»**.
 
 **Требования:** локально установленный [Ollama](https://ollama.com) (или
 LM Studio) — нужен только для LLM-функций (предложения по цене, LLM-fallback
@@ -81,7 +78,7 @@ LM Studio) — нужен только для LLM-функций (предлож
 ./scripts/build-native-deb.sh     # -> dist/autosync-desktop_<версия>_amd64.deb
 
 # Windows — обязательно запускать НА Windows, PyInstaller не кросс-компилирует:
-.\scripts\build-native-windows.ps1        # -> dist\native-windows\autosync\autosync.exe
+.\scripts\build-native-windows.ps1        # -> dist\native-windows\autosync.exe
 # затем Inno Setup по packaging\native-windows\autosync.iss -> установщик .exe
 ```
 
