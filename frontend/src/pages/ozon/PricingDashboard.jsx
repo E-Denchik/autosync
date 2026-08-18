@@ -4,6 +4,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { TrendingUpIcon, SparklesIcon } from "../../components/icons.jsx";
 
@@ -68,6 +69,14 @@ export default function PricingDashboard() {
           </p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Предложения появляются сюда после того, как вы запустите анализ цены для товара на странице «Карточки» (кнопка «Цена»).",
+          "«Принять» — сразу отправляет предложенную цену в Ozon. «Отклонить» — просто убирает строку отсюда, на Ozon ничего не меняется.",
+          "Наведите на «Обоснование», чтобы увидеть, почему LLM предложила именно такую цену.",
+        ]}
+      />
 
       {loading ? (
         <Spinner label="Загрузка предложений…" />

@@ -5,6 +5,7 @@ import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { SearchIcon, UploadIcon, ChevronRightIcon } from "../../components/icons.jsx";
 
@@ -143,6 +144,14 @@ export default function ContractCatalogDetail() {
           />
         </label>
       </div>
+
+      <HowToUse
+        steps={[
+          "Вкладки переключают между списком запчастей, нормо-часов и ставок по маркам этого контракта.",
+          "«Добавить ещё файл(ы)» дозагружает данные в этот же контракт, не создавая новый.",
+          "Ставка на вкладке «Ставки по маркам» перекрывает общую ставку контрагента для заказ-нарядов этой марки — задавайте её, только если нужна цена нормо-часа, отличная от обычной.",
+        ]}
+      />
 
       {contract.error_message && (
         <div className="hint-banner hint-warning" style={{ marginBottom: 16 }}>

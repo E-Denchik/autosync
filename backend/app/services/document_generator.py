@@ -174,7 +174,9 @@ def build_template_context(repair_order: RepairOrder, *, approved_only: bool = T
     return context, part_items, labor_items
 
 
-def generate_repair_order_document_from_template(repair_order: RepairOrder, template: DocumentTemplate) -> str:
+def generate_repair_order_document_from_template(
+    repair_order: RepairOrder, template: DocumentTemplate
+) -> tuple[str, list[str]]:
     context, part_items, labor_items = build_template_context(repair_order)
     output_dir = os.path.dirname(repair_order.storage_path)
     output_path = os.path.join(output_dir, f"repair_order_{repair_order.id}_final_{template.id}.xlsx")

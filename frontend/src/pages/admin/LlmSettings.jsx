@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { RefreshIcon } from "../../components/icons.jsx";
 
@@ -69,6 +70,14 @@ export default function LlmSettings() {
           <RefreshIcon /> Обновить список
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Выберите одну модель из найденных на этой машине (Ollama или LM Studio) — она будет использоваться для предложений по цене, генерации карточек и сопоставления запчастей по названию.",
+          "Если списки пустые — убедитесь, что запущена Ollama (ollama serve) или включён Local Server в LM Studio, затем нажмите «Обновить список».",
+          "Без выбранной модели эти LLM-функции просто недоступны — остальная часть приложения продолжает работать как обычно.",
+        ]}
+      />
 
       {data.selected ? (
         <div className="panel" style={{ marginBottom: 20 }}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { RefreshIcon, AlertCircleIcon } from "../../components/icons.jsx";
 
@@ -112,6 +113,14 @@ export default function Integrations() {
           <RefreshIcon /> Обновить
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Нажмите «Задать ключи» у нужного сервиса (Ozon, аналитика цен конкурентов, 1С:Альфа-Авто), впишите значения и сохраните.",
+          "«Проверить подключение» сразу скажет, работают ли введённые ключи, не дожидаясь реального использования в других разделах.",
+          "Ключи сохраняются в базе и применяются сразу — перезапуск приложения не требуется; после сохранения значения обратно не показываются.",
+        ]}
+      />
 
       {integrations.map((it) => {
         const result = results[it.id];

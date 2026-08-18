@@ -5,6 +5,7 @@ import StatCard from "../components/StatCard.jsx";
 import Spinner from "../components/Spinner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import StatusPill from "../components/StatusPill.jsx";
+import HowToUse from "../components/HowToUse.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import {
   TagIcon,
@@ -43,6 +44,14 @@ export default function Dashboard() {
           <p>Что происходит в AutoSync прямо сейчас — цены, ожидающие решения, и заказ-наряды в обработке.</p>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Карточки сверху показывают, сколько цен, заказ-нарядов и позиций ждут вашего решения — нажмите на карточку, чтобы сразу перейти к нужному разделу.",
+          "Списки «Последние заказ-наряды» и «Предложения по цене» — быстрые ссылки на конкретные записи, без перехода по меню слева.",
+          "«Быстрые действия» внизу — самые частые операции в один клик: загрузить документы, сгенерировать карточку, выбрать LLM-модель.",
+        ]}
+      />
 
       {loading ? (
         <Spinner label="Загрузка сводки…" />

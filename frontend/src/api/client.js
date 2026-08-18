@@ -29,7 +29,10 @@ async function request(path, options = {}) {
     }
     return data;
   }
-  return resp.blob();
+  const blob = await resp.blob();
+  const unresolvedHeader = resp.headers.get("X-Unresolved-Tokens");
+  if (unresolvedHeader) blob.unresolvedTokens = unresolvedHeader.split(", ");
+  return blob;
 }
 
 function withPaging(params = {}) {

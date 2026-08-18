@@ -4,6 +4,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import {
   TagIcon,
@@ -159,6 +160,15 @@ export default function CardGenerator() {
           <RefreshIcon /> {syncing ? "Синхронизация…" : "Синхронизировать с Ozon"}
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Сначала нажмите «Синхронизировать с Ozon» — товары подтянутся из вашего кабинета Ozon Seller (ключи задаются в Администрирование → Интеграции).",
+          "У товара укажите закупочную цену (клик по значению в столбце «Закупочная цена») — без неё предложения по цене будут менее точными.",
+          "«Карточка» — сгенерирует SEO-текст и характеристики; «Цена» — создаст предложение по цене, которое нужно будет подтвердить на странице «Цены».",
+          "Ничего не публикуется в Ozon автоматически — сгенерированный текст нужно скопировать и вставить в карточку на Ozon самостоятельно.",
+        ]}
+      />
 
       {categories.length > 0 && (
         <div className="category-chips">

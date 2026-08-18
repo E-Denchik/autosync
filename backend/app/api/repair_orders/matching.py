@@ -244,10 +244,11 @@ def generate_document(repair_order_id: int):
     from app.services.document_template_engine import DocumentTemplateError
 
     template_id = request.args.get("template_id", type=int)
+    unresolved_tokens = []
     if template_id:
         template = db.get_or_404(DocumentTemplate, template_id)
         try:
-            output_path = generate_repair_order_document_from_template(repair_order, template)
+            output_path, unresolved_tokens = generate_repair_order_document_from_template(repair_order, template)
         except DocumentTemplateError as exc:
             return jsonify(error=str(exc)), 400
     else:
@@ -257,4 +258,7 @@ def generate_document(repair_order_id: int):
     log_change("repair_order", repair_order.id, "reviewed")
     db.session.commit()
 
-    return send_file(output_path, as_attachment=True)
+    response = send_file(output_path, as_attachment=True)
+    if unresolved_tokens:
+        response.headers["X-Unresolved-Tokens"] = ", ".join(unresolved_tokens)
+    return response

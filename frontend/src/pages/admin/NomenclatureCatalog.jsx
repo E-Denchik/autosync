@@ -5,6 +5,7 @@ import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
 
@@ -190,6 +191,14 @@ export default function NomenclatureCatalog() {
           </button>
         </div>
       </div>
+
+      <HowToUse
+        steps={[
+          "Это ваш собственный склад (код, № кат., производитель, остаток) — не путайте с «Каталогами контрактов», куда загружаются фиксированные списки запчастей по гос. контракту.",
+          "Нажмите «Скачать шаблон», заполните его в Excel и загрузите через «Загрузить файл(ы)», чтобы обновить остатки массово — либо добавляйте записи по одной кнопкой «Добавить вручную».",
+          "Эти данные автоматически подставляются в заказ-наряды при сопоставлении позиций: код, № кат., производитель, остаток и склад.",
+        ]}
+      />
 
       <form className="field-row" style={{ marginBottom: 16, maxWidth: 420 }} onSubmit={handleSearch}>
         <div className="field" style={{ flex: 1 }}>

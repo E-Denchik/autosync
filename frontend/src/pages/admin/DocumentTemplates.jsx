@@ -4,6 +4,7 @@ import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, DownloadIcon, EyeIcon, CopyIcon } from "../../components/icons.jsx";
 
@@ -161,6 +162,15 @@ export default function DocumentTemplates() {
           <DownloadIcon /> {downloadingStarter ? "Скачивание…" : "Скачать стартовый шаблон"}
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Скачайте «Стартовый шаблон», отредактируйте нужные ячейки в Excel и загрузите обратно — или используйте свой готовый файл с плейсхолдерами.",
+          "Нажмите на нужный плейсхолдер в списке ниже, чтобы скопировать его, и вставьте в ячейку шаблона.",
+          "Перед загрузкой нажмите «Просмотреть перед загрузкой» — вы увидите, как реальные данные подставятся вместо плейсхолдеров, и сразу заметите, если что-то написано неверно.",
+          "Без загруженного шаблона документ формируется во встроенном формате — свой шаблон не обязателен.",
+        ]}
+      />
 
       <div className="panel" style={{ marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Доступные плейсхолдеры</h3>

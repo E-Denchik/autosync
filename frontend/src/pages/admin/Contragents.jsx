@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
+import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, EditIcon } from "../../components/icons.jsx";
 
@@ -90,6 +91,13 @@ export default function Contragents() {
           <PlusIcon /> Добавить контрагента
         </button>
       </div>
+
+      <HowToUse
+        steps={[
+          "Добавьте контрагента (заказчика/организацию) с его ставкой за нормо-час — она подставится при загрузке заказ-наряда для расчёта стоимости работ.",
+          "Ставку можно изменить в любой момент — кликните по значению в столбце «Ставка, ₽/ч».",
+        ]}
+      />
 
       {showForm && (
         <form className="panel" style={{ marginBottom: 20, maxWidth: 420 }} onSubmit={handleCreate}>

@@ -86,6 +86,29 @@ def ws_rows(ws):
         yield list(row)
 
 
+def test_render_template_reports_malformed_tokens_left_unresolved(tmp_path):
+    template_path = tmp_path / "template.xlsx"
+    output_path = tmp_path / "output.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Заказ-наряд № {{order_number}}"])
+    ws.append(["Дата: {{order date}}"])
+    wb.save(template_path)
+
+    _, unresolved = render_template(
+        str(template_path),
+        str(output_path),
+        {"order_number": 42},
+        part_items=[],
+        labor_items=[],
+    )
+
+    assert unresolved == ["{{order date}}"]
+    wb_out = openpyxl.load_workbook(output_path)
+    assert wb_out.active["A1"].value == "Заказ-наряд № 42"
+    assert wb_out.active["A2"].value == "Дата: {{order date}}"
+
+
 def test_build_starter_template_has_no_leftover_placeholders_after_render(tmp_path):
     template_path = tmp_path / "starter.xlsx"
     output_path = tmp_path / "output.xlsx"

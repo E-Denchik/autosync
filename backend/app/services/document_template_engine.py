@@ -8,6 +8,7 @@ from openpyxl.styles import Font
 
 TOKEN_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
 FULL_TOKEN_RE = re.compile(r"^\{\{\s*([\w.]+)\s*\}\}$")
+LEFTOVER_TOKEN_RE = re.compile(r"\{\{[^{}]*\}\}")
 
 
 class DocumentTemplateError(RuntimeError):
@@ -79,7 +80,7 @@ def render_template(
     context: dict,
     part_items: list[dict],
     labor_items: list[dict],
-) -> str:
+) -> tuple[str, list[str]]:
     try:
         wb = openpyxl.load_workbook(template_path)
     except Exception as exc:
@@ -94,8 +95,14 @@ def render_template(
             if isinstance(cell.value, str) and "{{" in cell.value:
                 _substitute_cell(cell, context)
 
+    unresolved = set()
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                unresolved.update(LEFTOVER_TOKEN_RE.findall(cell.value))
+
     wb.save(output_path)
-    return output_path
+    return output_path, sorted(unresolved)
 
 
 def build_starter_template(output_path: str) -> str:
