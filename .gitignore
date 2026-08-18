@@ -20,6 +20,10 @@ build/
 # никогда не должны попасть в git.
 backend/app/_baked_integration_keys.json
 
+# commit SHA сборки, вшиваемый через --add-data (см. scripts/write_build_info.py,
+# app/services/update_checker.py) — генерируется заново при каждой сборке.
+backend/app/_build_info.json
+
 # Данные приложения (БД, загрузки, логи) — см. AUTOSYNC_DATA_DIR /
 # backend/app/config.py: _default_data_dir()
 backend/uploads/

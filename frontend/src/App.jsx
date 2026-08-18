@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import UpdateChecker from "./components/UpdateChecker.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import PricingDashboard from "./pages/ozon/PricingDashboard.jsx";
 import CardGenerator from "./pages/ozon/CardGenerator.jsx";
@@ -100,6 +101,10 @@ export default function App() {
             <HistoryIcon /> История
           </NavLink>
         </nav>
+
+        <div className="sidebar-footer">
+          <UpdateChecker />
+        </div>
       </aside>
 
       <div className="content">
