@@ -5,17 +5,63 @@ import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
+import { PlusIcon, DownloadIcon, EyeIcon, CopyIcon } from "../../components/icons.jsx";
 
-const TOKENS = [
-  ["{{order_number}}, {{order_date}}", "номер и дата заказ-наряда"],
-  ["{{client_name}}", "заказчик"],
-  ["{{vehicle_make}}, {{vehicle_model}}, {{vehicle_vin}}, {{vehicle_year}}", "автомобиль"],
-  ["{{company_name}}, {{company_inn}}, {{company_address}}, {{company_phone}}", "реквизиты (Администрирование → Реквизиты)"],
-  ["{{parts_total}}, {{labor_total}}, {{grand_total}}", "итоговые суммы"],
-  ["{{part.article}}, {{part.name}}, {{part.price}}, {{part.cat_number}}, {{part.manufacturer}}, {{part.unit}}, {{part.warehouse}}", "строка запчасти — повторяется на каждую позицию"],
-  ["{{labor.description}}, {{labor.norm_hours}}, {{labor.hourly_rate}}, {{labor.total}}", "строка работы — повторяется на каждую операцию"],
+const TOKEN_GROUPS = [
+  { hint: "номер и дата заказ-наряда", tokens: ["{{order_number}}", "{{order_date}}"] },
+  { hint: "заказчик", tokens: ["{{client_name}}"] },
+  { hint: "автомобиль", tokens: ["{{vehicle_make}}", "{{vehicle_model}}", "{{vehicle_vin}}", "{{vehicle_year}}"] },
+  {
+    hint: "реквизиты (Администрирование → Реквизиты)",
+    tokens: ["{{company_name}}", "{{company_inn}}", "{{company_address}}", "{{company_phone}}"],
+  },
+  { hint: "итоговые суммы", tokens: ["{{parts_total}}", "{{labor_total}}", "{{grand_total}}"] },
+  {
+    hint: "строка запчасти — повторяется на каждую позицию",
+    tokens: [
+      "{{part.article}}",
+      "{{part.name}}",
+      "{{part.price}}",
+      "{{part.cat_number}}",
+      "{{part.manufacturer}}",
+      "{{part.unit}}",
+      "{{part.warehouse}}",
+    ],
+  },
+  {
+    hint: "строка работы — повторяется на каждую операцию",
+    tokens: ["{{labor.description}}", "{{labor.norm_hours}}", "{{labor.hourly_rate}}", "{{labor.total}}"],
+  },
 ];
+
+function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
+function TokenChip({ token, onCopied }) {
+  return (
+    <button
+      type="button"
+      className="token-chip"
+      onClick={() => copyToClipboard(token).then(onCopied)}
+      title="Скопировать"
+    >
+      {token}
+      <CopyIcon />
+    </button>
+  );
+}
 
 export default function DocumentTemplates() {
   const [templates, setTemplates] = useState([]);
@@ -79,13 +125,11 @@ export default function DocumentTemplates() {
     }
   };
 
-  const handlePreview = async (template) => {
-    try {
-      const blob = await api.getDocumentTemplateFile(template.id);
-      setPreviewTarget({ blob, fileName: template.original_filename });
-    } catch (e) {
-      toast.error(e.message);
-    }
+  const handlePreview = (template) => {
+    setPreviewTarget({
+      fileName: template.original_filename,
+      loader: () => api.previewRenderedTemplate({ templateId: template.id }),
+    });
   };
 
   const handleDelete = async () => {
@@ -120,21 +164,19 @@ export default function DocumentTemplates() {
 
       <div className="panel" style={{ marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Доступные плейсхолдеры</h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {TOKENS.map(([tokens, hint]) => (
-            <div key={tokens} style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 12.5,
-                  wordBreak: "break-word",
-                  overflowWrap: "break-word",
-                }}
-              >
-                {tokens}
+        <p className="text-muted" style={{ fontSize: 12.5, marginTop: -6, marginBottom: 14 }}>
+          Нажмите на плейсхолдер, чтобы скопировать его — вставьте в нужную ячейку шаблона.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {TOKEN_GROUPS.map((group) => (
+            <div key={group.hint} style={{ minWidth: 0 }}>
+              <div className="text-muted" style={{ fontSize: 12.5, marginBottom: 6 }}>
+                {group.hint}
               </div>
-              <div className="text-muted" style={{ fontSize: 12.5 }}>
-                {hint}
+              <div className="token-chip-list">
+                {group.tokens.map((token) => (
+                  <TokenChip key={token} token={token} onCopied={() => toast.success(`Скопировано: ${token}`)} />
+                ))}
               </div>
             </div>
           ))}
@@ -160,7 +202,7 @@ export default function DocumentTemplates() {
               type="button"
               className="btn btn-secondary btn-sm"
               style={{ marginTop: 8, alignSelf: "flex-start" }}
-              onClick={() => setPreviewTarget({ blob: file, fileName: file.name })}
+              onClick={() => setPreviewTarget({ fileName: file.name, loader: () => api.previewRenderedTemplate({ file }) })}
             >
               <EyeIcon style={{ width: 13, height: 13 }} /> Просмотреть перед загрузкой
             </button>
@@ -229,8 +271,9 @@ export default function DocumentTemplates() {
 
       {previewTarget && (
         <FilePreviewModal
-          blob={previewTarget.blob}
           fileName={previewTarget.fileName}
+          loader={previewTarget.loader}
+          subtitle="Показаны реальные данные последнего заказ-наряда — не сырые {{плейсхолдеры}}."
           onClose={() => setPreviewTarget(null)}
         />
       )}

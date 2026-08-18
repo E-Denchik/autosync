@@ -297,6 +297,70 @@ tbody tr:hover {
   background: var(--bg-sunken);
 }
 
+/* ---------- spreadsheet preview ---------- */
+
+.preview-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 60vh;
+}
+
+.preview-table {
+  width: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.preview-table th,
+.preview-table td {
+  white-space: nowrap;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-table thead tr:first-child th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 22px;
+  padding: 0 10px;
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-table thead tr:last-child th {
+  position: sticky;
+  top: 22px;
+  z-index: 3;
+  background: var(--bg-sunken);
+}
+
+.preview-row-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 38px;
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+thead .preview-row-gutter {
+  z-index: 4;
+}
+
+.preview-cell-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- badges ---------- */
 
 .badge {
@@ -649,6 +713,39 @@ tbody tr:hover {
   color: var(--text-muted);
   border: 1px solid var(--border);
   letter-spacing: 0.02em;
+}
+
+.token-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+
+.token-chip:hover {
+  border-color: var(--accent);
+}
+
+.token-chip svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+  flex-shrink: 0;
 }
 
 /* ---------- stats ---------- */

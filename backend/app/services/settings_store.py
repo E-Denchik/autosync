@@ -29,6 +29,16 @@ def load_all() -> dict[str, str]:
     return {row.key: row.value for row in IntegrationSetting.query.all()}
 
 
+def seed_baked_defaults() -> None:
+    if IntegrationSetting.query.count() > 0:
+        return
+    try:
+        from app._baked_integration_keys import BAKED_INTEGRATION_KEYS as defaults
+    except ImportError:
+        return
+    save_keys(defaults)
+
+
 def save_keys(updates: dict) -> None:
     """Мержит updates (только ключи из ALLOWED_KEYS, непустые значения)
     поверх уже сохранённых записей."""

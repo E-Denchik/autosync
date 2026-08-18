@@ -1,5 +1,5 @@
 ; Inno Setup script — собирает автономный установщик AutoSync.exe вокруг
-; уже готового dist\native-windows\autosync.exe (см.
+; уже готовой сборки dist\native-windows\autosync\ (см.
 ; scripts\build-native-windows.ps1 — нужно запустить ДО этого скрипта).
 ;
 ; Компилируется через Inno Setup Compiler (ISCC.exe), см.
@@ -42,7 +42,9 @@ PrivilegesRequired=lowest
 ; per-user, поэтому системные права для установки не нужны.
 
 [Files]
-Source: "{#RepoRoot}\dist\native-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; --onedir сборка (см. scripts/build-native-windows.ps1) — папка целиком
+; (exe + рядом лежащие библиотеки), не один файл.
+Source: "{#RepoRoot}\dist\native-windows\autosync\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -57,6 +59,7 @@ Name: "startupicon"; Description: "Запускать AutoSync при входе
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить AutoSync"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; Бинарник и ярлыки убираем, данные пользователя (SQLite, загрузки в
-; %LOCALAPPDATA%\AutoSync) — нет, чтобы не потерять базу при переустановке.
-Type: files; Name: "{app}\{#MyAppExeName}"
+; Всю папку установки убираем целиком — данные пользователя (SQLite,
+; загрузки) живут отдельно, в %LOCALAPPDATA%\AutoSync, их это не касается,
+; база не теряется при удалении/переустановке.
+Type: filesandordirs; Name: "{app}"
