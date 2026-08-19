@@ -39,8 +39,8 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-pip install -q --upgrade pip
-pip install -q -r "$REPO_ROOT/backend/requirements.txt"
+python3 -m pip install -q --upgrade pip
+python3 -m pip install -q -r "$REPO_ROOT/backend/requirements.txt"
 
 echo "==> Готовлю ключи интеграций для вшивания в сборку"
 python3 "$REPO_ROOT/scripts/bake_integration_keys.py"
