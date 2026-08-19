@@ -24,6 +24,13 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+# Консоль раннера по умолчанию использует codepage вроде cp1252 — любой
+# print() с кириллицей (см. scripts/write_build_info.py) падает с
+# UnicodeEncodeError. PYTHONUTF8 — официальный Python UTF-8 mode (PEP 540),
+# переключает stdout/stderr всех дочерних python-процессов на UTF-8
+# независимо от локали консоли; на Linux это и так поведение по умолчанию.
+$env:PYTHONUTF8 = "1"
+
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
@@ -49,8 +56,10 @@ if (-not (Test-Path $VenvDir)) {
     python -m venv $VenvDir
 }
 & "$VenvDir\Scripts\Activate.ps1"
-pip install -q --upgrade pip
-pip install -q -r "$RepoRoot\backend\requirements.txt"
+# python -m pip, не голый pip: pip.exe не может заменить свой же запущенный
+# файл на Windows и отказывается с "ERROR: To modify pip, please run ...".
+python -m pip install -q --upgrade pip
+python -m pip install -q -r "$RepoRoot\backend\requirements.txt"
 
 Write-Host "==> Ищу Tesseract OCR для встраивания в сборку" -ForegroundColor Cyan
 $TesseractDir = $env:TESSERACT_DIR
