@@ -136,6 +136,12 @@ export const api = {
       `/repair-orders/matching/${repairOrderId}/generate-document${templateId ? `?template_id=${templateId}` : ""}`,
       { method: "POST" }
     ),
+  addPartFromSupplier: (repairOrderId, data) =>
+    request(`/repair-orders/matching/${repairOrderId}/parts`, { method: "POST", body: JSON.stringify(data) }),
+
+  // Поиск позиций у поставщиков запчастей (Rossco/АвтоЕвро/Москворечье)
+  searchSuppliers: (article, brand) =>
+    request(`/parts-suppliers/search${withPaging({ article, brand })}`),
 
   // Заказ-наряды: работы (нормо-часы)
   listLaborLines: (repairOrderId) => request(`/repair-orders/labor/${repairOrderId}`),
@@ -166,6 +172,7 @@ export const api = {
 
   // Ozon: статистика/инфографика
   ozonStatsSummary: () => request("/ozon/stats/summary"),
+  ozonStatsProducts: (sort, order) => request(`/ozon/stats/products${withPaging({ sort, order })}`),
   ozonProductPriceHistory: (productId) => request(`/ozon/stats/products/${productId}/history`),
 
   // Номенклатура/остатки (внутренний склад заказчика)

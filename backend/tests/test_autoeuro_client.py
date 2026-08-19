@@ -106,3 +106,64 @@ def test_find_cross_references_returns_empty_when_brand_not_found(monkeypatch):
 
     monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
     assert client.find_cross_references("unknown-article") == []
+
+
+def test_search_all_with_known_brand(monkeypatch):
+    client = AutoEuroClient(api_key="k")
+
+    def fake_get(url, params=None, timeout=None):
+        if "/get_deliveries/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"delivery_key": "dk-1"}]})
+        if "/search_items/" in url:
+            return _FakeResponse(
+                True,
+                {"META": {"client_state": "OK"}, "DATA": [{"brand": "KYB", "code": "333114", "price": 5399, "amount": 2}]},
+            )
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    items = client.search_all("333114", brand="KYB")
+
+    assert items == [{"supplier": "autoeuro", "article": "333114", "brand": "KYB", "name": None, "price": 5399, "amount": 2}]
+
+
+def test_search_all_without_brand_discovers_it(monkeypatch):
+    client = AutoEuroClient(api_key="k")
+
+    def fake_get(url, params=None, timeout=None):
+        if "/search_brands/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"brand": "KYB", "code": "333114"}]})
+        if "/get_deliveries/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"delivery_key": "dk-1"}]})
+        if "/search_items/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"brand": "KYB", "code": "333114", "price": 5399}]})
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    items = client.search_all("333114")
+
+    assert items[0]["brand"] == "KYB"
+
+
+def test_search_all_raises_when_search_brands_fails(monkeypatch):
+    client = AutoEuroClient(api_key="k")
+
+    def fake_get(url, params=None, timeout=None):
+        return _FakeResponse(True, {"META": {"client_state": "Клиент заблокирован"}, "DATA": []})
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    with pytest.raises(AutoEuroError, match="заблокирован"):
+        client.search_all("333114")
+
+
+def test_search_all_raises_when_every_candidate_brand_fails(monkeypatch):
+    client = AutoEuroClient(api_key="k")
+
+    def fake_get(url, params=None, timeout=None):
+        if "/search_brands/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"brand": "KYB", "code": "333114"}]})
+        return _FakeResponse(True, {"META": {"client_state": "Клиент заблокирован"}, "DATA": []})
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    with pytest.raises(AutoEuroError, match="заблокирован"):
+        client.search_all("333114")

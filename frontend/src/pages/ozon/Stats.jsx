@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
@@ -157,6 +157,175 @@ function PositionBar({ position, total }) {
   );
 }
 
+const SORTABLE_COLUMNS = [
+  { key: "name", label: "Товар" },
+  { key: "current_price", label: "Цена на Ozon" },
+  { key: "units_sold_7d", label: "Продажи, 7дн" },
+  { key: "revenue_7d", label: "Выручка, 7дн" },
+  { key: "competitor_min_price", label: "Мин. у конкурентов" },
+  { key: "competitor_avg_price", label: "Средняя у конкурентов" },
+];
+
+const POSITION_META = {
+  below_min: { label: "Дешевле всех конкурентов", color: "var(--success)", soft: "var(--success-soft)", text: "var(--success-text)" },
+  between: { label: "В рыночном диапазоне", color: "var(--accent)", soft: "var(--accent-soft)", text: "var(--accent-text)" },
+  above_avg: { label: "Дороже среднего по рынку", color: "var(--danger)", soft: "var(--danger-soft)", text: "var(--danger-text)" },
+  no_data: { label: "Нет данных по рынку", color: "var(--text-faint)", soft: "var(--bg-sunken)", text: "var(--text-muted)" },
+};
+
+function ProductsCompareTable() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState("current_price");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [expandedId, setExpandedId] = useState(null);
+  const [historyCache, setHistoryCache] = useState({});
+  const [historyLoading, setHistoryLoading] = useState(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .ozonStatsProducts(sortKey, sortOrder)
+      .then(setProducts)
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortKey, sortOrder]);
+
+  const handleSort = (key) => {
+    if (sortKey === key) {
+      setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortOrder("desc");
+    }
+  };
+
+  const toggleHistory = async (id) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(id);
+    if (!historyCache[id]) {
+      setHistoryLoading(id);
+      try {
+        const data = await api.ozonProductPriceHistory(id);
+        setHistoryCache((prev) => ({ ...prev, [id]: data }));
+      } catch (e) {
+        toast.error(e.message);
+      } finally {
+        setHistoryLoading(null);
+      }
+    }
+  };
+
+  if (loading && products.length === 0) return <Spinner label="Загружаем товары…" />;
+
+  if (products.length === 0) {
+    return (
+      <EmptyState
+        icon={TagIcon}
+        title="Пока нет товаров"
+        hint="Синхронизируйте каталог с Ozon на странице «Карточки»."
+        action={
+          <Link to="/ozon/cards" className="btn btn-primary">
+            <SparklesIcon /> Перейти к товарам
+          </Link>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {SORTABLE_COLUMNS.map((col) => (
+              <th key={col.key} onClick={() => handleSort(col.key)} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+                {col.label} {sortKey === col.key ? (sortOrder === "asc" ? "↑" : "↓") : ""}
+              </th>
+            ))}
+            <th>Позиция</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((p) => {
+            const pos = POSITION_META[p.price_position] || POSITION_META.no_data;
+            return (
+              <Fragment key={p.id}>
+                <tr>
+                  <td style={{ maxWidth: 280 }}>
+                    <div
+                      title={p.name}
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {p.name}
+                    </div>
+                    <div
+                      className="text-muted"
+                      style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {p.sku}
+                      {p.category ? ` · ${p.category}` : ""}
+                    </div>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>{p.current_price != null ? `${p.current_price} ₽` : "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{p.units_sold_7d ?? "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{p.revenue_7d != null ? `${p.revenue_7d} ₽` : "—"}</td>
+                  <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
+                    {p.competitor_min_price != null ? `${p.competitor_min_price} ₽` : "—"}
+                  </td>
+                  <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
+                    {p.competitor_avg_price != null ? `${p.competitor_avg_price} ₽` : "—"}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        background: pos.soft,
+                        color: pos.text,
+                      }}
+                    >
+                      {pos.label}
+                    </span>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => toggleHistory(p.id)}>
+                      {expandedId === p.id ? "Скрыть" : "История"}
+                    </button>
+                  </td>
+                </tr>
+                {expandedId === p.id && (
+                  <tr>
+                    <td colSpan={SORTABLE_COLUMNS.length + 2} style={{ background: "var(--bg-sunken)", padding: 16 }}>
+                      {historyLoading === p.id ? (
+                        <Spinner label="Загружаем историю…" />
+                      ) : historyCache[p.id]?.length > 0 ? (
+                        <LineChart history={historyCache[p.id]} />
+                      ) : (
+                        <div className="text-muted" style={{ fontSize: 12.5 }}>
+                          История цены пока не накопилась — запустите анализ цены для этого товара на странице «Карточки».
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Stats() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -181,17 +350,25 @@ export default function Stats() {
       <div className="page-header">
         <div>
           <h2>Статистика по ценам</h2>
-          <p>Динамика собственной цены относительно конкурентов на Ozon и распределение позиций по рынку.</p>
+          <p>Цена на Ozon рядом со статистикой продаж по каждому товару, динамика относительно конкурентов и распределение позиций по рынку.</p>
         </div>
       </div>
 
       <HowToUse
         steps={[
-          "Данные появляются, только когда для товаров запущен анализ цены на странице «Карточки» (кнопка «Цена») — чем чаще анализ, тем точнее график.",
-          "Верхний график показывает, как ваша цена соотносилась с ценами конкурентов по датам анализа.",
+          "Таблица «Цена и статистика по товарам» — по каждому товару цена на Ozon рядом с продажами и выручкой за 7 дней. Нажмите на заголовок столбца, чтобы отсортировать (например, дорогие товары с низкими продажами — по цене по убыванию).",
+          "Кнопка «История» в строке товара показывает, как менялась его цена относительно конкурентов во времени.",
+          "Данные по конкурентам и позиции появляются, только когда для товаров запущен анализ цены на странице «Карточки» (кнопка «Цена») — чем чаще анализ, тем точнее данные.",
           "Нижняя полоса — сколько товаров сейчас дешевле всех конкурентов, в рыночном диапазоне или дороже среднего.",
         ]}
       />
+
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-header">
+          <h3>Цена и статистика по товарам</h3>
+        </div>
+        <ProductsCompareTable />
+      </div>
 
       <div className="stat-grid" style={{ marginBottom: 20 }}>
         <StatCard icon={TagIcon} label="Товаров с историей цен" value={summary.products_tracked} />

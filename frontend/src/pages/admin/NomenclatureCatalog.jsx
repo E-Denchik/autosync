@@ -6,6 +6,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
+import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
 
@@ -38,6 +39,7 @@ export default function NomenclatureCatalog() {
   const [uploading, setUploading] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [previewTarget, setPreviewTarget] = useState(null);
+  const [showSupplierSearch, setShowSupplierSearch] = useState(false);
   const toast = useToast();
 
   const load = (q = query, p = page) => {
@@ -186,6 +188,9 @@ export default function NomenclatureCatalog() {
               style={{ display: "none" }}
             />
           </label>
+          <button className="btn btn-secondary" onClick={() => setShowSupplierSearch(true)}>
+            <SearchIcon /> Найти у поставщиков
+          </button>
           <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
             <PlusIcon /> Добавить вручную
           </button>
@@ -197,6 +202,7 @@ export default function NomenclatureCatalog() {
           "Это ваш собственный склад (код, № кат., производитель, остаток) — не путайте с «Каталогами контрактов», куда загружаются фиксированные списки запчастей по гос. контракту.",
           "Нажмите «Скачать шаблон», заполните его в Excel и загрузите через «Загрузить файл(ы)», чтобы обновить остатки массово — либо добавляйте записи по одной кнопкой «Добавить вручную».",
           "Эти данные автоматически подставляются в заказ-наряды при сопоставлении позиций: код, № кат., производитель, остаток и склад.",
+          "«Найти у поставщиков» ищет позицию сразу у всех подключённых поставщиков (Rossco/АвтоЕвро/Москворечье, см. Интеграции) — выбранную можно сразу добавить в номенклатуру.",
         ]}
       />
 
@@ -363,6 +369,25 @@ export default function NomenclatureCatalog() {
           blob={previewTarget}
           fileName={previewTarget.name}
           onClose={() => setPreviewTarget(null)}
+        />
+      )}
+
+      {showSupplierSearch && (
+        <SupplierSearchModal
+          title="Найти у поставщиков"
+          selectLabel="Добавить в номенклатуру"
+          onSelect={async (item) => {
+            await api.createNomenclatureEntry({
+              name: item.name || `${item.brand || ""} ${item.article || ""}`.trim() || item.article,
+              code: item.article,
+              manufacturer: item.brand,
+              price: item.price,
+              stock_qty: item.amount,
+              source: item.supplier,
+            });
+            load();
+          }}
+          onClose={() => setShowSupplierSearch(false)}
         />
       )}
     </div>

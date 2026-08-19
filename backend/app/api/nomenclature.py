@@ -22,6 +22,11 @@ bp = Blueprint("nomenclature", __name__)
 
 ALLOWED_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
+# "manual" — через форму на странице; остальные — сохранено из результата
+# поиска по поставщикам (см. app/api/parts_suppliers.py), source в теле
+# запроса ограничен этим списком, чтобы туда не попало что попало.
+ALLOWED_SOURCES = {"manual", "rossco", "autoeuro", "moskvorechye"}
+
 
 def _serialize(entry: NomenclatureEntry) -> dict:
     return {
@@ -78,7 +83,7 @@ def create_entry():
         reserved_qty=body.get("reserved_qty"),
         in_production_qty=body.get("in_production_qty"),
         price=body.get("price"),
-        source="manual",
+        source=body.get("source") if body.get("source") in ALLOWED_SOURCES else "manual",
     )
     db.session.add(entry)
     db.session.flush()

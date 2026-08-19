@@ -88,3 +88,47 @@ def test_test_connection_reports_company_name(monkeypatch):
 
     message = client.test_connection()
     assert "ИП Иванов" in message
+
+
+def test_search_all_includes_exact_match_and_crosses(monkeypatch):
+    client = RosscoClient(key1="k1", key2="k2")
+    response = {
+        "success": True,
+        "PartsList": {
+            "Part": {
+                "partnumber": "333114",
+                "brand": "KYB",
+                "name": "Стойка амортизационная",
+                "stocks": {"stock": [{"price": "5399", "count": 2}, {"price": "6829", "count": 1}]},
+                "crosses": {
+                    "Part": [
+                        {
+                            "partnumber": "290 074",
+                            "brand": "Sachs",
+                            "name": "Амортизатор",
+                            "stocks": {"stock": [{"price": "10920.33", "count": 3}]},
+                        }
+                    ]
+                },
+            }
+        },
+    }
+    monkeypatch.setattr(client, "_client", lambda method: _FakeZeepClient(response))
+
+    items = client.search_all("333114")
+
+    assert items == [
+        {"supplier": "rossco", "article": "333114", "brand": "KYB", "name": "Стойка амортизационная", "price": 5399.0, "amount": 3},
+        {"supplier": "rossco", "article": "290 074", "brand": "Sachs", "name": "Амортизатор", "price": 10920.33, "amount": 3},
+    ]
+
+
+def test_search_all_raises_on_error_unlike_find_cross_references(monkeypatch):
+    """search_all — для UI поиска по поставщикам — не должен молча
+    проглатывать ошибку, в отличие от find_cross_references (внутренний
+    фоллбэк для matcher.py, где отсутствие результата — нормальный исход)."""
+    client = RosscoClient(key1="k1", key2="k2")
+    monkeypatch.setattr(client, "_client", lambda method: _FakeZeepClient({"success": False, "message": "boom"}))
+
+    with pytest.raises(RosscoError, match="boom"):
+        client.search_all("333114")

@@ -230,3 +230,39 @@ def test_generate_document_with_template_uses_uploaded_template(
     values = [cell.value for row in output_wb.active.iter_rows() for cell in row if cell.value is not None]
     assert f"Заказ-наряд № {order_id}" in values
     assert "ABC-1" in values
+
+
+def test_add_part_creates_new_approved_match(client, admin_headers, repair_order_with_matches):
+    order_id = repair_order_with_matches["order_id"]
+    resp = client.post(
+        f"/api/repair-orders/matching/{order_id}/parts",
+        headers=admin_headers,
+        json={"matched_article": "290 074", "matched_name": "Амортизатор Sachs", "matched_price": 10920.33, "source": "rossco"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["matched_article"] == "290 074"
+    assert body["matched_price"] == 10920.33
+    assert body["review_status"] == "approved"
+    assert body["confidence_level"] == "exact"
+    assert body["manually_edited"] is True
+
+    listed = client.get(f"/api/repair-orders/matching/{order_id}", headers=admin_headers)
+    assert len(listed.get_json()) == 3
+
+
+def test_add_part_requires_matched_name(client, admin_headers, repair_order_with_matches):
+    order_id = repair_order_with_matches["order_id"]
+    resp = client.post(
+        f"/api/repair-orders/matching/{order_id}/parts",
+        headers=admin_headers,
+        json={"matched_article": "290 074"},
+    )
+    assert resp.status_code == 400
+
+
+def test_add_part_unknown_repair_order_404(client, admin_headers):
+    resp = client.post(
+        "/api/repair-orders/matching/99999/parts", headers=admin_headers, json={"matched_name": "x"}
+    )
+    assert resp.status_code == 404
