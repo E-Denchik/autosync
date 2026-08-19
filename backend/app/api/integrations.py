@@ -12,7 +12,9 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
+from app.services.autoeuro_client import AutoEuroClient, AutoEuroError
 from app.services.history import log_change
+from app.services.moskvorechye_client import MoskvorechyeClient, MoskvorechyeError
 from app.services.nomenclature_client import NomenclatureClient, NomenclatureClientError
 from app.services.ozon_client import (
     DEFAULT_PERFORMANCE_API_BASE,
@@ -20,6 +22,7 @@ from app.services.ozon_client import (
     OzonClient,
     OzonClientError,
 )
+from app.services.rossco_client import RosscoClient, RosscoError
 
 bp = Blueprint("integrations", __name__)
 
@@ -44,6 +47,20 @@ def _analytics_provider() -> AnalyticsProvider:
 def _alfaauto_client() -> NomenclatureClient:
     cfg = current_app.config
     return NomenclatureClient(cfg["ALFAAUTO_BASE_URL"], cfg["ALFAAUTO_LOGIN"], cfg["ALFAAUTO_PASSWORD"])
+
+
+def _rossco_client() -> RosscoClient:
+    cfg = current_app.config
+    return RosscoClient(cfg["ROSSCO_KEY1"], cfg["ROSSCO_KEY2"])
+
+
+def _autoeuro_client() -> AutoEuroClient:
+    return AutoEuroClient(current_app.config["AUTOEURO_API_KEY"])
+
+
+def _moskvorechye_client() -> MoskvorechyeClient:
+    cfg = current_app.config
+    return MoskvorechyeClient(cfg["MOSKVORECHYE_BASE_URL"], cfg["MOSKVORECHYE_API_KEY"])
 
 
 def _api_base_override(env_var: str, default: str) -> str | None:
@@ -90,6 +107,30 @@ def status():
             "configured": bool(cfg["ALFAAUTO_BASE_URL"]),
             "api_base_override": None,
         },
+        {
+            "id": "rossco",
+            "name": "Rossco",
+            "description": "Поставщик запчастей — цены/наличие/кросс-номера по артикулу (SOAP api.rossko.ru)",
+            "configured": bool(cfg["ROSSCO_KEY1"] and cfg["ROSSCO_KEY2"]),
+            "api_base_override": None,
+        },
+        {
+            "id": "autoeuro",
+            "name": "АвтоЕвро",
+            "description": "Поставщик запчастей — цены/наличие/кросс-номера по артикулу (REST api.autoeuro.ru)",
+            "configured": bool(cfg["AUTOEURO_API_KEY"]),
+            "api_base_override": None,
+        },
+        {
+            "id": "moskvorechye",
+            "name": "Москворечье",
+            "description": (
+                "Поставщик запчастей — цены/наличие/кросс-номера по артикулу (протокол ABCP). "
+                "Нужен ещё базовый URL веб-службы — уточните у менеджера Москворечье."
+            ),
+            "configured": bool(cfg["MOSKVORECHYE_BASE_URL"] and cfg["MOSKVORECHYE_API_KEY"]),
+            "api_base_override": None,
+        },
     ]
     return jsonify(integrations)
 
@@ -105,9 +146,22 @@ def test_connection(integration_id: str):
             message = _analytics_provider().test_connection()
         elif integration_id == "alfaauto":
             message = _alfaauto_client().test_connection()
+        elif integration_id == "rossco":
+            message = _rossco_client().test_connection()
+        elif integration_id == "autoeuro":
+            message = _autoeuro_client().test_connection()
+        elif integration_id == "moskvorechye":
+            message = _moskvorechye_client().test_connection()
         else:
             return jsonify(error=f"Неизвестная интеграция: {integration_id}"), 404
-    except (OzonClientError, AnalyticsProviderError, NomenclatureClientError) as exc:
+    except (
+        OzonClientError,
+        AnalyticsProviderError,
+        NomenclatureClientError,
+        RosscoError,
+        AutoEuroError,
+        MoskvorechyeError,
+    ) as exc:
         return jsonify(ok=False, message=str(exc))
     except Exception as exc:  # сеть/таймаут/и т.п. — тоже "не удалось", не 500
         current_app.logger.warning("test_connection(%s) failed: %s", integration_id, exc)

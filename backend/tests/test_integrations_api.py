@@ -1,5 +1,8 @@
 from app.services.analytics_provider import AnalyticsProvider
+from app.services.autoeuro_client import AutoEuroClient
+from app.services.moskvorechye_client import MoskvorechyeClient
 from app.services.ozon_client import OzonClient
+from app.services.rossco_client import RosscoClient
 
 
 def test_status_reports_not_configured_by_default(client, admin_headers):
@@ -12,6 +15,9 @@ def test_status_reports_not_configured_by_default(client, admin_headers):
         "ozon_performance": False,
         "analytics": False,
         "alfaauto": False,
+        "rossco": False,
+        "autoeuro": False,
+        "moskvorechye": False,
     }
     assert all(item["api_base_override"] is None for item in body)
 
@@ -65,6 +71,53 @@ def test_test_connection_unexpected_error_is_not_500(client, admin_headers, monk
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["ok"] is False
+
+
+def test_test_connection_rossco_not_configured(client, admin_headers):
+    resp = client.post("/api/integrations/test/rossco", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "ROSSCO_KEY1" in body["message"]
+
+
+def test_test_connection_rossco_success(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(RosscoClient, "test_connection", lambda self: "Подключение работает, клиент: ООО Ромашка")
+    client.post("/api/integrations/keys", headers=admin_headers, json={"ROSSCO_KEY1": "a", "ROSSCO_KEY2": "b"})
+    resp = client.post("/api/integrations/test/rossco", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert "ООО Ромашка" in body["message"]
+
+
+def test_test_connection_autoeuro_reports_inactive_account(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(
+        AutoEuroClient, "get_balance", lambda self: {"balance": -100.0, "active": 0}
+    )
+    client.post("/api/integrations/keys", headers=admin_headers, json={"AUTOEURO_API_KEY": "k"})
+    resp = client.post("/api/integrations/test/autoeuro", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert "НЕАКТИВЕН" in body["message"]
+
+
+def test_test_connection_moskvorechye_not_configured(client, admin_headers):
+    resp = client.post("/api/integrations/test/moskvorechye", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "MOSKVORECHYE_BASE_URL" in body["message"]
+
+
+def test_test_connection_moskvorechye_success(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(MoskvorechyeClient, "search_articles", lambda self, number, brand=None: [])
+    client.post(
+        "/api/integrations/keys",
+        headers=admin_headers,
+        json={"MOSKVORECHYE_BASE_URL": "https://example.abcp2b.ru", "MOSKVORECHYE_API_KEY": "login:pass"},
+    )
+    resp = client.post("/api/integrations/test/moskvorechye", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is True
 
 
 def test_save_keys_requires_at_least_one_value(client, admin_headers):

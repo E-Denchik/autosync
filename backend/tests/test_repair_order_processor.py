@@ -135,6 +135,55 @@ def test_process_upload_job_uses_contragent_rate_when_no_contract_rate_for_make(
         assert float(labor_match.hourly_rate) == 1000.0
 
 
+def test_process_upload_job_prefers_contragent_make_rate_over_flat_rate(app):
+    from app.models import Contragent, ContragentHourlyRate
+
+    with app.app_context():
+        contragent = Contragent(name="Заказчик В", hourly_rate=1000)
+        db.session.add(contragent)
+        db.session.flush()
+        db.session.add(ContragentHourlyRate(contragent_id=contragent.id, vehicle_make="HYUNDAI", hourly_rate=1350.0))
+
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract.id,
+                operation_name="ДВС снятие",
+                vehicle_make="HYUNDAI",
+                vehicle_model="IX35",
+                norm_hours=28.0,
+            )
+        )
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        labor_match = LaborLine.query.filter_by(
+            repair_order_id=repair_order_id, matched_operation_name="ДВС снятие"
+        ).first()
+        # HYUNDAI-специфичная ставка контрагента (1350) должна победить его же
+        # общую плоскую ставку (1000), но контрактная ставка по-прежнему в
+        # приоритете, если бы она была задана (см. предыдущий тест).
+        assert float(labor_match.hourly_rate) == 1350.0
+
+
 def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):
     with app.app_context():
         contract = Contract(

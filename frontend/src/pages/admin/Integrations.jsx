@@ -28,6 +28,24 @@ const KEY_FIELDS = {
     { key: "ALFAAUTO_LOGIN", label: "Логин пользователя 1С", type: "text", placeholder: "" },
     { key: "ALFAAUTO_PASSWORD", label: "Пароль", type: "password", placeholder: "" },
   ],
+  rossco: [
+    { key: "ROSSCO_KEY1", label: "Key1", type: "password", placeholder: "" },
+    { key: "ROSSCO_KEY2", label: "Key2", type: "password", placeholder: "" },
+  ],
+  autoeuro: [
+    { key: "AUTOEURO_LOGIN", label: "Логин (email)", type: "text", placeholder: "" },
+    { key: "AUTOEURO_ACCOUNT_ID", label: "Номер аккаунта", type: "text", placeholder: "" },
+    { key: "AUTOEURO_API_KEY", label: "API-ключ", type: "password", placeholder: "" },
+  ],
+  moskvorechye: [
+    {
+      key: "MOSKVORECHYE_BASE_URL",
+      label: "Базовый URL веб-службы",
+      type: "text",
+      placeholder: "https://<адрес>.abcp2b.ru (уточнить у менеджера)",
+    },
+    { key: "MOSKVORECHYE_API_KEY", label: "Ключ доступа (login:password)", type: "password", placeholder: "" },
+  ],
 };
 
 export default function Integrations() {

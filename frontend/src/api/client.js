@@ -151,6 +151,11 @@ export const api = {
   createContragent: (data) => request("/contragents", { method: "POST", body: JSON.stringify(data) }),
   updateContragent: (id, data) => request(`/contragents/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteContragent: (id) => request(`/contragents/${id}`, { method: "DELETE" }),
+  listContragentHourlyRates: (id) => request(`/contragents/${id}/hourly-rates`),
+  createContragentHourlyRate: (id, data) =>
+    request(`/contragents/${id}/hourly-rates`, { method: "POST", body: JSON.stringify(data) }),
+  deleteContragentHourlyRate: (id, rateId) =>
+    request(`/contragents/${id}/hourly-rates/${rateId}`, { method: "DELETE" }),
 
   // Справочник нормо-часов
   listLaborCatalog: () => request("/labor-catalog"),
