@@ -166,6 +166,23 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # softprops/action-gh-release создаёт git-тег `latest` САМ только один
+      # раз, при первом релизе — на всех следующих пушах он лишь заменяет
+      # файлы уже существующего релиза, а сам тег (и коммит, на который он
+      # указывает) не трогает. Из-за этого backend/app/services/
+      # update_checker.py (сравнивает вшитый в сборку commit SHA с тем,
+      # куда сейчас указывает тег `latest` через GitHub API) сравнивал бы
+      # актуальную сборку со всё тем же самым первым коммитом навсегда —
+      # проверка обновлений считала бы, что обновление есть, даже когда
+      # приложение уже самой последней версии. Поэтому двигаем тег на
+      # текущий коммит явно, перед тем как отдать его action'у.
+      - name: Move "latest" tag to this commit
+        run: |
+          git tag -f latest "$GITHUB_SHA"
+          git push origin refs/tags/latest --force
+
       - uses: actions/download-artifact@v4
 
       - name: Update "latest" pre-release
