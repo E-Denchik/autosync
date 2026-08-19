@@ -43,3 +43,54 @@ def test_create_rejects_duplicate_name(client, admin_headers):
 def test_update_unknown_contragent_404(client, admin_headers):
     resp = client.patch("/api/contragents/99999", headers=admin_headers, json={"hourly_rate": 100})
     assert resp.status_code == 404
+
+
+def test_hourly_rates_crud(client, admin_headers):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "СТО Восток", "hourly_rate": 1000}
+    ).get_json()["id"]
+
+    created = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "VOLKSWAGEN", "hourly_rate": 800},
+    )
+    assert created.status_code == 201
+    rate_id = created.get_json()["id"]
+
+    listed = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers)
+    assert listed.status_code == 200
+    assert len(listed.get_json()) == 1
+    assert listed.get_json()[0]["vehicle_make"] == "VOLKSWAGEN"
+    assert listed.get_json()[0]["hourly_rate"] == 800.0
+
+    invalid = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "", "hourly_rate": 800},
+    )
+    assert invalid.status_code == 400
+
+    deleted = client.delete(f"/api/contragents/{contragent_id}/hourly-rates/{rate_id}", headers=admin_headers)
+    assert deleted.status_code == 204
+
+    listed2 = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers)
+    assert listed2.get_json() == []
+
+
+def test_deleting_contragent_cascades_hourly_rates(app, admin_headers, client):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "СТО Запад", "hourly_rate": 1000}
+    ).get_json()["id"]
+    client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "TOYOTA", "hourly_rate": 1200},
+    )
+
+    client.delete(f"/api/contragents/{contragent_id}", headers=admin_headers)
+
+    with app.app_context():
+        from app.models import ContragentHourlyRate
+
+        assert ContragentHourlyRate.query.filter_by(contragent_id=contragent_id).count() == 0

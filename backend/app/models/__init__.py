@@ -1,7 +1,7 @@
 from app.models.product import Product
 from app.models.price_snapshot import PriceSnapshot, PriceSuggestionStatus
 from app.models.contract import Contract, ContractHourlyRate, ContractLaborNorm, ContractPart, DocumentProcessingStatus
-from app.models.contragent import Contragent
+from app.models.contragent import Contragent, ContragentHourlyRate
 from app.models.repair_order import RepairOrder, RepairOrderStatus
 from app.models.part_match import PartMatch, ConfidenceLevel, ReviewStatus
 from app.models.labor_catalog import LaborCatalogEntry
@@ -23,6 +23,7 @@ __all__ = [
     "ContractHourlyRate",
     "DocumentProcessingStatus",
     "Contragent",
+    "ContragentHourlyRate",
     "RepairOrder",
     "RepairOrderStatus",
     "PartMatch",

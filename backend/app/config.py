@@ -70,6 +70,20 @@ class Config:
     PARTS_SUPPLIER_BASE_URL = os.environ.get("PARTS_SUPPLIER_BASE_URL", "")
     PARTS_SUPPLIER_API_KEY = os.environ.get("PARTS_SUPPLIER_API_KEY", "")
 
+    # Поставщики запчастей (кросс-номера/цены/наличие) — ключи получены от
+    # заказчика, схема API каждого пока не задокументирована (см.
+    # app/api/integrations.py: test_connection честно об этом сообщает,
+    # реальных запросов пока не делает).
+    ROSSCO_KEY1 = os.environ.get("ROSSCO_KEY1", "")
+    ROSSCO_KEY2 = os.environ.get("ROSSCO_KEY2", "")
+
+    AUTOEURO_LOGIN = os.environ.get("AUTOEURO_LOGIN", "")
+    AUTOEURO_ACCOUNT_ID = os.environ.get("AUTOEURO_ACCOUNT_ID", "")
+    AUTOEURO_API_KEY = os.environ.get("AUTOEURO_API_KEY", "")
+
+    MOSKVORECHYE_BASE_URL = os.environ.get("MOSKVORECHYE_BASE_URL", "")
+    MOSKVORECHYE_API_KEY = os.environ.get("MOSKVORECHYE_API_KEY", "")
+
     ALFAAUTO_BASE_URL = os.environ.get("ALFAAUTO_BASE_URL", "")
     ALFAAUTO_LOGIN = os.environ.get("ALFAAUTO_LOGIN", "")
     ALFAAUTO_PASSWORD = os.environ.get("ALFAAUTO_PASSWORD", "")

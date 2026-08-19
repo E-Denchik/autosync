@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
+import ContragentRatesModal from "../../components/ContragentRatesModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, EditIcon } from "../../components/icons.jsx";
+import { PlusIcon, EditIcon, ClockIcon } from "../../components/icons.jsx";
 
 const EMPTY_FORM = { name: "", hourly_rate: "", notes: "" };
 
@@ -16,6 +17,7 @@ export default function Contragents() {
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [ratesTarget, setRatesTarget] = useState(null);
   const [editingRateId, setEditingRateId] = useState(null);
   const [rateInput, setRateInput] = useState("");
   const [savingRate, setSavingRate] = useState(false);
@@ -85,7 +87,10 @@ export default function Contragents() {
       <div className="page-header">
         <div>
           <h2>Контрагенты</h2>
-          <p>Договорная ставка за нормо-час — используется при расчёте стоимости работ в заказ-нарядах.</p>
+          <p>
+            Договорная ставка за нормо-час — используется при расчёте стоимости работ в заказ-нарядах. Можно
+            задать общую ставку и отдельные ставки по маркам ТС (кнопка «Ставки по маркам»).
+          </p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
           <PlusIcon /> Добавить контрагента
@@ -94,8 +99,9 @@ export default function Contragents() {
 
       <HowToUse
         steps={[
-          "Добавьте контрагента (заказчика/организацию) с его ставкой за нормо-час — она подставится при загрузке заказ-наряда для расчёта стоимости работ.",
+          "Добавьте контрагента (заказчика/организацию) с его общей ставкой за нормо-час — она подставится при загрузке заказ-наряда для расчёта стоимости работ.",
           "Ставку можно изменить в любой момент — кликните по значению в столбце «Ставка, ₽/ч».",
+          "Если у контрагента разные ставки по маркам (например, Volkswagen — 800 ₽/ч, Toyota — 1200 ₽/ч), задайте их через «Ставки по маркам» — при загрузке заказ-наряда система сама подставит ставку по марке автомобиля, а не общую.",
         ]}
       />
 
@@ -202,7 +208,10 @@ export default function Contragents() {
                   </td>
                   <td className="text-muted">{c.notes || "—"}</td>
                   <td>
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setRatesTarget(c)}>
+                        <ClockIcon style={{ width: 13, height: 13 }} /> Ставки по маркам
+                      </button>
                       <button className="btn btn-reject btn-sm" onClick={() => setDeleteTarget(c)}>
                         Удалить
                       </button>
@@ -230,6 +239,8 @@ export default function Contragents() {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
+
+      {ratesTarget && <ContragentRatesModal contragent={ratesTarget} onClose={() => setRatesTarget(null)} />}
     </div>
   );
 }

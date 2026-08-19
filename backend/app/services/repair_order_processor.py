@@ -17,6 +17,7 @@ from app.models import (
     Contract,
     ContractHourlyRate,
     ContractLaborNorm,
+    ContragentHourlyRate,
     DocumentProcessingStatus,
     LaborLine,
     PartMatch,
@@ -37,7 +38,7 @@ from app.services.llm_client import LLMClient
 from app.services.matcher import match_all_against_contract
 from app.services.nomenclature_client import NomenclatureClient
 from app.services.nomenclature_matcher import enrich_all
-from app.services.parts_supplier_client import PartsSupplierClient
+from app.services.parts_supplier_client import build_configured_supplier_client
 
 logger = logging.getLogger(__name__)
 
@@ -136,10 +137,7 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     repair_order.status = RepairOrderStatus.MATCHING
     db.session.commit()
 
-    supplier_client = PartsSupplierClient(
-        current_app.config["PARTS_SUPPLIER_BASE_URL"],
-        current_app.config["PARTS_SUPPLIER_API_KEY"],
-    )
+    supplier_client = build_configured_supplier_client(current_app.config)
 
     try:
         results = match_all_against_contract(part_lines, contract.id, supplier_client, llm_client)
@@ -174,12 +172,19 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         )
 
     contract_rate = None
+    contragent_make_rate = None
     if repair_order.vehicle_make:
         contract_rate = ContractHourlyRate.query.filter_by(
             contract_id=contract.id, vehicle_make=repair_order.vehicle_make
         ).first()
+        if contract_rate is None and repair_order.contragent:
+            contragent_make_rate = ContragentHourlyRate.query.filter_by(
+                contragent_id=repair_order.contragent.id, vehicle_make=repair_order.vehicle_make
+            ).first()
     if contract_rate is not None:
         hourly_rate = float(contract_rate.hourly_rate)
+    elif contragent_make_rate is not None:
+        hourly_rate = float(contragent_make_rate.hourly_rate)
     else:
         hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
     has_contract_labor_norms = ContractLaborNorm.query.filter_by(contract_id=contract.id).first() is not None
