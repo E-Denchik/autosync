@@ -5,7 +5,15 @@ from datetime import datetime
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 from app.extensions import db
-from app.models import DocumentTemplate, LaborLine, PartMatch, RepairOrder, RepairOrderStatus, ReviewStatus
+from app.models import (
+    ConfidenceLevel,
+    DocumentTemplate,
+    LaborLine,
+    PartMatch,
+    RepairOrder,
+    RepairOrderStatus,
+    ReviewStatus,
+)
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
@@ -77,6 +85,46 @@ def list_candidates(repair_order_id: int):
     сопоставления на фронте (поиск по названию вместо слепого accept/reject)."""
     repair_order = db.get_or_404(RepairOrder, repair_order_id)
     return jsonify(repair_order.parsed_lines or [])
+
+
+@bp.post("/<int:repair_order_id>/parts")
+def add_part(repair_order_id: int):
+    """Добавляет НОВУЮ позицию в заказ-наряд вручную — например, найденную
+    оператором через поиск по поставщикам (Rossco/АвтоЕвро/Москворечье,
+    см. app/api/parts_suppliers.py), которой не было в исходном файле.
+    Сразу approved: раз оператор осознанно выбрал позицию, дальнейшего
+    подтверждения не нужно (тот же принцип, что и в edit_match)."""
+    db.get_or_404(RepairOrder, repair_order_id)
+    body = request.get_json(force=True) or {}
+
+    matched_name = (body.get("matched_name") or "").strip()
+    if not matched_name:
+        return jsonify(error="'matched_name' обязателен"), 400
+
+    match = PartMatch(
+        repair_order_id=repair_order_id,
+        contract_article=body.get("matched_article"),
+        contract_name=matched_name,
+        matched_article=body.get("matched_article"),
+        matched_name=matched_name,
+        matched_price=body.get("matched_price"),
+        confidence_level=ConfidenceLevel.EXACT,
+        confidence_score=1.0,
+        review_status=ReviewStatus.APPROVED,
+        manually_edited=True,
+        reviewed_at=datetime.utcnow(),
+        raw_match_data={"source": body.get("source") or "manual_add"},
+    )
+    db.session.add(match)
+    db.session.flush()
+    log_change(
+        "part_match",
+        match.id,
+        "created",
+        details={"matched_article": match.matched_article, "matched_name": match.matched_name, "source": "manual_add"},
+    )
+    db.session.commit()
+    return jsonify(_serialize(match)), 201
 
 
 @bp.patch("/<int:match_id>")

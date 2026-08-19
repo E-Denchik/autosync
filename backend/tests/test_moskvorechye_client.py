@@ -68,3 +68,28 @@ def test_find_cross_references_returns_empty_on_error(monkeypatch):
 
     monkeypatch.setattr("app.services.moskvorechye_client.requests.get", fake_get)
     assert client.find_cross_references("333114") == []
+
+
+def test_search_all_normalizes_fields(monkeypatch):
+    client = MoskvorechyeClient(base_url="https://example.abcp2b.ru", api_key="login:pass")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        return _FakeResponse(
+            True,
+            [{"articleCodeFix": "333114", "brand": "KYB", "description": "Стойка амортизационная", "price": 5399, "availability": 3}],
+        )
+
+    monkeypatch.setattr("app.services.moskvorechye_client.requests.get", fake_get)
+    items = client.search_all("333114")
+
+    assert items == [
+        {"supplier": "moskvorechye", "article": "333114", "brand": "KYB", "name": "Стойка амортизационная", "price": 5399, "amount": 3}
+    ]
+
+
+def test_search_all_raises_on_error_unlike_find_cross_references():
+    """search_all — для UI поиска по поставщикам — не должен молча
+    проглатывать ошибку, в отличие от find_cross_references."""
+    client = MoskvorechyeClient(base_url="", api_key="login:pass")
+    with pytest.raises(MoskvorechyeError, match="MOSKVORECHYE_BASE_URL"):
+        client.search_all("333114")

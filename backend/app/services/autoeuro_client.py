@@ -77,6 +77,43 @@ class AutoEuroClient:
             with_crosses=1 if with_crosses else 0,
         )
 
+    def search_all(self, article: str, brand: str | None = None) -> list[dict]:
+        """Полный список найденного (искомая позиция + аналоги) в едином
+        нормализованном виде — для UI поиска по поставщикам.
+
+        В отличие от find_cross_references, ошибку НЕ проглатываем — UI
+        поиска по поставщикам должен показать пользователю, что именно
+        пошло не так (см. app/services/supplier_search.py)."""
+        if brand:
+            return [self._normalize(item) for item in self.search_items(brand, article)]
+
+        brands = self.search_brands(article)
+        results = []
+        last_error: AutoEuroError | None = None
+        for candidate in brands[:3]:
+            try:
+                items = self.search_items(candidate["brand"], candidate.get("code") or article)
+            except AutoEuroError as exc:
+                last_error = exc
+                continue
+            results.extend(self._normalize(item) for item in items)
+        if not results and not brands:
+            return []
+        if not results and last_error is not None:
+            raise last_error
+        return results
+
+    @staticmethod
+    def _normalize(item: dict) -> dict:
+        return {
+            "supplier": "autoeuro",
+            "article": item.get("code"),
+            "brand": item.get("brand"),
+            "name": item.get("name"),
+            "price": item.get("price"),
+            "amount": item.get("amount"),
+        }
+
     def find_cross_references(self, article: str) -> list[dict]:
         """Кросс-номера (аналоги) для артикула — по контракту, которого ждёт
         matcher.py: список {"article": ..., "name": ..., "brand": ..., "price": ...}.

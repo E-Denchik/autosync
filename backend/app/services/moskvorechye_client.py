@@ -59,6 +59,26 @@ class MoskvorechyeClient:
         result = self._get("search/articles", number=number, brand=brand)
         return result if isinstance(result, list) else []
 
+    def search_all(self, article: str, brand: str | None = None) -> list[dict]:
+        """Полный список найденного в едином нормализованном виде — для UI
+        поиска по поставщикам.
+
+        В отличие от find_cross_references, ошибку НЕ проглатываем — UI
+        поиска по поставщикам должен показать пользователю, что именно
+        пошло не так (см. app/services/supplier_search.py)."""
+        return [self._normalize(item) for item in self.search_articles(article, brand=brand)]
+
+    @staticmethod
+    def _normalize(item: dict) -> dict:
+        return {
+            "supplier": "moskvorechye",
+            "article": item.get("articleCodeFix") or item.get("articleCode"),
+            "brand": item.get("brand"),
+            "name": item.get("description"),
+            "price": item.get("price"),
+            "amount": item.get("availability"),
+        }
+
     def find_cross_references(self, article: str) -> list[dict]:
         """Кандидаты по артикулу (без фильтра по бренду ABCP обычно возвращает
         совпадения по нескольким брендам сразу — этим и пользуемся как

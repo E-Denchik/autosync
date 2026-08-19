@@ -1,10 +1,19 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 
 from app.extensions import db
-from app.models import PriceSnapshot
+from app.models import PriceSnapshot, Product
 
 bp = Blueprint("ozon_stats", __name__)
+
+PRODUCT_SORT_FIELDS = {
+    "name",
+    "current_price",
+    "units_sold_7d",
+    "revenue_7d",
+    "competitor_min_price",
+    "competitor_avg_price",
+}
 
 
 @bp.get("/summary")
@@ -67,6 +76,77 @@ def summary():
             for row in history_rows
         ],
     )
+
+
+@bp.get("/products")
+def products():
+    """Цена на Ozon рядом с продажами/выручкой за 7 дней и рыночной позицией
+    по каждому товару, чтобы сравнить цену со статистикой продаж в одной таблице.
+    Каталог у продавца небольшой, поэтому сортировка и позиционирование
+    считаются в Python, без пагинации."""
+    latest_ids_subq = (
+        db.session.query(
+            PriceSnapshot.product_id,
+            func.max(PriceSnapshot.id).label("max_id"),
+        )
+        .group_by(PriceSnapshot.product_id)
+        .subquery()
+    )
+    latest_by_product = {
+        s.product_id: s
+        for s in db.session.query(PriceSnapshot)
+        .join(latest_ids_subq, PriceSnapshot.id == latest_ids_subq.c.max_id)
+        .all()
+    }
+
+    rows = []
+    for p in Product.query.all():
+        snap = latest_by_product.get(p.id)
+        current_price = float(p.current_price) if p.current_price is not None else None
+        competitor_min = (
+            float(snap.competitor_min_price) if snap and snap.competitor_min_price is not None else None
+        )
+        competitor_avg = (
+            float(snap.competitor_avg_price) if snap and snap.competitor_avg_price is not None else None
+        )
+
+        if current_price is None or (competitor_min is None and competitor_avg is None):
+            position = "no_data"
+        elif competitor_min is not None and current_price < competitor_min:
+            position = "below_min"
+        elif competitor_avg is not None and current_price > competitor_avg:
+            position = "above_avg"
+        else:
+            position = "between"
+
+        rows.append(
+            {
+                "id": p.id,
+                "sku": p.sku,
+                "name": p.name,
+                "category": p.category,
+                "current_price": current_price,
+                "units_sold_7d": p.units_sold_7d,
+                "revenue_7d": float(p.revenue_7d) if p.revenue_7d is not None else None,
+                "competitor_min_price": competitor_min,
+                "competitor_avg_price": competitor_avg,
+                "suggested_price": float(snap.suggested_price) if snap and snap.suggested_price is not None else None,
+                "price_position": position,
+                "snapshot_date": snap.created_at.isoformat() if snap else None,
+            }
+        )
+
+    sort = request.args.get("sort")
+    if sort not in PRODUCT_SORT_FIELDS:
+        sort = "current_price"
+    order = request.args.get("order")
+    reverse = order != "asc"
+
+    non_null = [r for r in rows if r[sort] is not None]
+    null_rows = [r for r in rows if r[sort] is None]
+    non_null.sort(key=lambda r: r[sort], reverse=reverse)
+
+    return jsonify(non_null + null_rows)
 
 
 @bp.get("/products/<int:product_id>/history")

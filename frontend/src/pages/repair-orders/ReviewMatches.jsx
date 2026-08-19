@@ -9,8 +9,9 @@ import MatchEditModal from "../../components/MatchEditModal.jsx";
 import LaborEditModal from "../../components/LaborEditModal.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
+import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { CheckCircleIcon, DownloadIcon, EditIcon } from "../../components/icons.jsx";
+import { CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon } from "../../components/icons.jsx";
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
 
@@ -37,6 +38,7 @@ export default function ReviewMatches() {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [generatedPreview, setGeneratedPreview] = useState(null);
+  const [showSupplierSearch, setShowSupplierSearch] = useState(false);
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -292,10 +294,17 @@ export default function ReviewMatches() {
             поиск.
           </p>
         </div>
-        {!isProcessing && matches.length > 0 && (
-          <button className="btn btn-secondary" disabled={exporting} onClick={handleExportCsv}>
-            <DownloadIcon /> {exporting ? "Экспорт…" : "Экспорт CSV"}
-          </button>
+        {!isProcessing && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setShowSupplierSearch(true)}>
+              <SearchIcon /> Добавить запчасть у поставщика
+            </button>
+            {matches.length > 0 && (
+              <button className="btn btn-secondary" disabled={exporting} onClick={handleExportCsv}>
+                <DownloadIcon /> {exporting ? "Экспорт…" : "Экспорт CSV"}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -305,6 +314,7 @@ export default function ReviewMatches() {
           "Если сопоставление неверное, нажмите «Изменить» и подберите нужную позицию или операцию вручную через поиск.",
           "Кнопка «Сгенерировать итоговый документ» станет активной, только когда не останется непроверенных позиций и работ.",
           "Перед генерацией можно выбрать свой шаблон документа (Администрирование → Шаблоны документов) вместо встроенного формата.",
+          "Если нужной запчасти нет в заказ-наряде вовсе, нажмите «Добавить запчасть у поставщика» — найдёт её у Rossco/АвтоЕвро/Москворечье и добавит уже подтверждённой строкой, которая попадёт в итоговый документ.",
         ]}
       />
 
@@ -696,6 +706,24 @@ export default function ReviewMatches() {
           blob={generatedPreview.blob}
           fileName={generatedPreview.fileName}
           onClose={() => setGeneratedPreview(null)}
+        />
+      )}
+
+      {showSupplierSearch && (
+        <SupplierSearchModal
+          title="Добавить запчасть у поставщика"
+          selectLabel="Добавить в заказ-наряд"
+          onSelect={async (item) => {
+            await api.addPartFromSupplier(repairOrderId, {
+              matched_article: item.article,
+              matched_name: item.name || `${item.brand || ""} ${item.article || ""}`.trim() || item.article,
+              matched_price: item.price,
+              source: item.supplier,
+            });
+            loadMatches();
+            toast.success("Позиция добавлена в заказ-наряд");
+          }}
+          onClose={() => setShowSupplierSearch(false)}
         />
       )}
     </div>

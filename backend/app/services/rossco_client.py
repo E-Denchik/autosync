@@ -73,6 +73,47 @@ class RosscoClient:
             raise RosscoError(result.get("message") or f"Rossco: ничего не найдено по {text!r}")
         return result
 
+    def search_all(self, article: str, brand: str | None = None) -> list[dict]:
+        """Полный список найденного (искомая позиция + аналоги) в едином
+        нормализованном виде — для UI поиска по поставщикам (в отличие от
+        find_cross_references ниже, который отдаёт только аналоги для
+        внутреннего сопоставления в matcher.py).
+
+        В отличие от find_cross_references, ошибку НЕ проглатываем — UI
+        поиска по поставщикам должен показать пользователю, что именно
+        пошло не так (см. app/services/supplier_search.py)."""
+        text = f"{brand} {article}" if brand else article
+        result = self.search(text)
+        parts = (result.get("PartsList") or {}).get("Part") or []
+        if isinstance(parts, dict):
+            parts = [parts]
+
+        items = []
+        for part in parts:
+            items.append(self._normalize(part))
+            crosses = (part.get("crosses") or {}).get("Part") or []
+            if isinstance(crosses, dict):
+                crosses = [crosses]
+            for cross in crosses:
+                items.append(self._normalize(cross))
+        return items
+
+    @staticmethod
+    def _normalize(part: dict) -> dict:
+        stocks = (part.get("stocks") or {}).get("stock") or []
+        if isinstance(stocks, dict):
+            stocks = [stocks]
+        price = float(stocks[0]["price"]) if stocks else None
+        amount = sum(s.get("count") or 0 for s in stocks) or None
+        return {
+            "supplier": "rossco",
+            "article": part.get("partnumber"),
+            "brand": part.get("brand"),
+            "name": part.get("name"),
+            "price": price,
+            "amount": amount,
+        }
+
     def find_cross_references(self, article: str) -> list[dict]:
         """Кросс-номера (аналоги) для артикула — по контракту, которого ждёт
         matcher.py: список {"article": ..., "name": ..., "brand": ..., "price": ...}."""

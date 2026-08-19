@@ -44,6 +44,27 @@ def test_create_requires_name(client, admin_headers):
     assert resp.status_code == 400
 
 
+def test_create_defaults_source_to_manual(client, admin_headers):
+    resp = client.post("/api/nomenclature", headers=admin_headers, json={"name": "Деталь"})
+    assert resp.get_json()["source"] == "manual"
+
+
+def test_create_accepts_supplier_source(client, admin_headers):
+    resp = client.post(
+        "/api/nomenclature",
+        headers=admin_headers,
+        json={"name": "Амортизатор Sachs", "code": "290 074", "price": 10920.33, "source": "rossco"},
+    )
+    assert resp.get_json()["source"] == "rossco"
+
+
+def test_create_rejects_unknown_source(client, admin_headers):
+    resp = client.post(
+        "/api/nomenclature", headers=admin_headers, json={"name": "Деталь", "source": "hijack"}
+    )
+    assert resp.get_json()["source"] == "manual"
+
+
 def test_upload_rejects_unsupported_extension(client, admin_headers):
     resp = client.post(
         "/api/nomenclature/upload",
