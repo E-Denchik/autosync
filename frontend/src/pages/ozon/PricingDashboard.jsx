@@ -6,7 +6,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { TrendingUpIcon, SparklesIcon } from "../../components/icons.jsx";
+import { TrendingUpIcon, SparklesIcon, InfoIcon } from "../../components/icons.jsx";
 
 const PER_PAGE = 50;
 
@@ -16,7 +16,18 @@ export default function PricingDashboard() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [analyticsConfigured, setAnalyticsConfigured] = useState(null);
   const toast = useToast();
+
+  useEffect(() => {
+    api
+      .listIntegrations()
+      .then((list) => {
+        const analytics = list.find((i) => i.id === "analytics");
+        setAnalyticsConfigured(analytics ? analytics.configured : true);
+      })
+      .catch(() => {});
+  }, []);
 
   const load = (p = page) => {
     setLoading(true);
@@ -75,8 +86,21 @@ export default function PricingDashboard() {
           "Предложения появляются сюда после того, как вы запустите анализ цены для товара на странице «Карточки» (кнопка «Цена»).",
           "«Принять» — сразу отправляет предложенную цену в Ozon. «Отклонить» — просто убирает строку отсюда, на Ozon ничего не меняется.",
           "Наведите на «Обоснование», чтобы увидеть, почему LLM предложила именно такую цену.",
+          "«Мин. у конкурентов» и «Предложение» останутся пустыми, пока не подключён сервис аналитики конкурентов (Администрирование → Интеграции) — до этого LLM предлагает цену только по себестоимости, без учёта рынка.",
         ]}
       />
+
+      {analyticsConfigured === false && (
+        <div className="hint-banner" style={{ marginBottom: 14 }}>
+          <InfoIcon />
+          <span>
+            Аналитика конкурентов не подключена — колонка «Мин. у конкурентов» пустая для всех товаров, а
+            предложение по цене учитывает только себестоимость. Настройте сервис на странице{" "}
+            <Link to="/admin/integrations">Администрирование → Интеграции</Link>, чтобы предложения
+            учитывали цены конкурентов.
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <Spinner label="Загрузка предложений…" />
@@ -110,7 +134,14 @@ export default function PricingDashboard() {
             <tbody>
               {snapshots.map((s) => (
                 <tr key={s.id}>
-                  <td style={{ maxWidth: 220 }}>{s.product_name}</td>
+                  <td style={{ maxWidth: 220 }}>
+                    <div
+                      title={s.product_name}
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {s.product_name}
+                    </div>
+                  </td>
                   <td className="text-muted">{s.product_category || "—"}</td>
                   <td>{s.own_price != null ? `${s.own_price} ₽` : "—"}</td>
                   <td>

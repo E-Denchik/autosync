@@ -1134,3 +1134,18 @@ ModuleNotFoundError: No module named 'webview'
 2026-08-19 13:16:36,570 INFO autosync.native: backend слушает на 127.0.0.1:5000
 2026-08-19 13:16:36,577 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
 2026-08-19 13:17:50,387 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-19 18:58:15,373 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-19 18:58:15,792 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-19 18:58:16,138 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-19 18:58:16,608 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-19 18:58:16,627 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-19 18:58:16,627 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-19 18:58:16,627 INFO apscheduler.scheduler: Scheduler started
+2026-08-19 18:58:16,628 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-19 18:58:16,635 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-19 19:05:46,722 INFO autosync.native: Окно закрыто — завершение работы AutoSync
