@@ -6,7 +6,7 @@ import StatCard from "../../components/StatCard.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { TrendingUpIcon, TagIcon, AlertCircleIcon, SparklesIcon } from "../../components/icons.jsx";
+import { TrendingUpIcon, TagIcon, AlertCircleIcon, SparklesIcon, InfoIcon } from "../../components/icons.jsx";
 
 const CHART_WIDTH = 720;
 const CHART_HEIGHT = 240;
@@ -162,8 +162,6 @@ const SORTABLE_COLUMNS = [
   { key: "current_price", label: "Цена на Ozon" },
   { key: "units_sold_7d", label: "Продажи, 7дн" },
   { key: "revenue_7d", label: "Выручка, 7дн" },
-  { key: "competitor_min_price", label: "Мин. у конкурентов" },
-  { key: "competitor_avg_price", label: "Средняя у конкурентов" },
 ];
 
 const POSITION_META = {
@@ -181,6 +179,7 @@ function ProductsCompareTable() {
   const [expandedId, setExpandedId] = useState(null);
   const [historyCache, setHistoryCache] = useState({});
   const [historyLoading, setHistoryLoading] = useState(null);
+  const [analyticsConfigured, setAnalyticsConfigured] = useState(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -192,6 +191,16 @@ function ProductsCompareTable() {
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKey, sortOrder]);
+
+  useEffect(() => {
+    api
+      .listIntegrations()
+      .then((list) => {
+        const analytics = list.find((i) => i.id === "analytics");
+        setAnalyticsConfigured(analytics ? analytics.configured : true);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSort = (key) => {
     if (sortKey === key) {
@@ -239,89 +248,103 @@ function ProductsCompareTable() {
   }
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.key} onClick={() => handleSort(col.key)} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
-                {col.label} {sortKey === col.key ? (sortOrder === "asc" ? "↑" : "↓") : ""}
-              </th>
-            ))}
-            <th>Позиция</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((p) => {
-            const pos = POSITION_META[p.price_position] || POSITION_META.no_data;
-            return (
-              <Fragment key={p.id}>
-                <tr>
-                  <td style={{ maxWidth: 280 }}>
-                    <div
-                      title={p.name}
-                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {p.name}
-                    </div>
-                    <div
-                      className="text-muted"
-                      style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {p.sku}
-                      {p.category ? ` · ${p.category}` : ""}
-                    </div>
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>{p.current_price != null ? `${p.current_price} ₽` : "—"}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>{p.units_sold_7d ?? "—"}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>{p.revenue_7d != null ? `${p.revenue_7d} ₽` : "—"}</td>
-                  <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
-                    {p.competitor_min_price != null ? `${p.competitor_min_price} ₽` : "—"}
-                  </td>
-                  <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
-                    {p.competitor_avg_price != null ? `${p.competitor_avg_price} ₽` : "—"}
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        background: pos.soft,
-                        color: pos.text,
-                      }}
-                    >
-                      {pos.label}
-                    </span>
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => toggleHistory(p.id)}>
-                      {expandedId === p.id ? "Скрыть" : "История"}
-                    </button>
-                  </td>
-                </tr>
-                {expandedId === p.id && (
+    <div>
+      {analyticsConfigured === false && (
+        <div className="hint-banner" style={{ marginBottom: 14 }}>
+          <InfoIcon />
+          <span>
+            Аналитика конкурентов не подключена — столбец «Рынок» будет пустым для всех товаров. Настройте
+            сервис на странице <Link to="/admin/integrations">Администрирование → Интеграции</Link>, чтобы
+            видеть сравнение цены с конкурентами.
+          </span>
+        </div>
+      )}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.key} onClick={() => handleSort(col.key)} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {col.label} {sortKey === col.key ? (sortOrder === "asc" ? "↑" : "↓") : ""}
+                </th>
+              ))}
+              <th>Рынок</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => {
+              const pos = POSITION_META[p.price_position] || POSITION_META.no_data;
+              const hasMarketPrices = p.competitor_min_price != null || p.competitor_avg_price != null;
+              return (
+                <Fragment key={p.id}>
                   <tr>
-                    <td colSpan={SORTABLE_COLUMNS.length + 2} style={{ background: "var(--bg-sunken)", padding: 16 }}>
-                      {historyLoading === p.id ? (
-                        <Spinner label="Загружаем историю…" />
-                      ) : historyCache[p.id]?.length > 0 ? (
-                        <LineChart history={historyCache[p.id]} />
-                      ) : (
-                        <div className="text-muted" style={{ fontSize: 12.5 }}>
-                          История цены пока не накопилась — запустите анализ цены для этого товара на странице «Карточки».
+                    <td style={{ maxWidth: 240 }}>
+                      <div
+                        title={p.name}
+                        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {p.name}
+                      </div>
+                      <div
+                        className="text-muted"
+                        style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {p.sku}
+                        {p.category ? ` · ${p.category}` : ""}
+                      </div>
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>{p.current_price != null ? `${p.current_price} ₽` : "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{p.units_sold_7d ?? "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{p.revenue_7d != null ? `${p.revenue_7d} ₽` : "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          background: pos.soft,
+                          color: pos.text,
+                        }}
+                      >
+                        {pos.label}
+                      </span>
+                      {hasMarketPrices && (
+                        <div className="text-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                          {p.competitor_min_price != null ? `мин ${p.competitor_min_price} ₽` : null}
+                          {p.competitor_min_price != null && p.competitor_avg_price != null ? " · " : null}
+                          {p.competitor_avg_price != null ? `сред ${p.competitor_avg_price} ₽` : null}
                         </div>
                       )}
                     </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => toggleHistory(p.id)}>
+                        {expandedId === p.id ? "Скрыть" : "История"}
+                      </button>
+                    </td>
                   </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+                  {expandedId === p.id && (
+                    <tr>
+                      <td colSpan={SORTABLE_COLUMNS.length + 2} style={{ background: "var(--bg-sunken)", padding: 16 }}>
+                        {historyLoading === p.id ? (
+                          <Spinner label="Загружаем историю…" />
+                        ) : historyCache[p.id]?.length > 0 ? (
+                          <LineChart history={historyCache[p.id]} />
+                        ) : (
+                          <div className="text-muted" style={{ fontSize: 12.5 }}>
+                            История цены пока не накопилась — запустите анализ цены для этого товара на странице «Карточки».
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
