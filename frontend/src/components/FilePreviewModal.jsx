@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import Spinner from "./Spinner.jsx";
-import { AlertCircleIcon, InfoIcon } from "./icons.jsx";
+import { AlertCircleIcon, DownloadIcon, InfoIcon } from "./icons.jsx";
 
 const TABLE_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"];
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
@@ -28,7 +28,7 @@ function isNumericCell(value) {
   return trimmed !== "" && NUMERIC_CELL.test(trimmed);
 }
 
-export default function FilePreviewModal({ blob, fileName, onClose, loader, subtitle }) {
+export default function FilePreviewModal({ blob, fileName, onClose, loader, subtitle, onDownload }) {
   const [rows, setRows] = useState(null);
   const [truncated, setTruncated] = useState(false);
   const [unresolvedTokens, setUnresolvedTokens] = useState([]);
@@ -132,10 +132,24 @@ export default function FilePreviewModal({ blob, fileName, onClose, loader, subt
                 {subtitle}
               </div>
             )}
+            {onDownload && (
+              <div className="text-muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+                Файл уже сохранён в папку загрузок вашей системы (обычно «Загрузки»/Downloads) — это
+                стандартное поведение окна приложения, не отдельная настройка AutoSync. Если хотите
+                сохранить копию ещё раз (например, в другую папку), нажмите «Скачать».
+              </div>
+            )}
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={onClose} style={{ flexShrink: 0, marginLeft: 12 }}>
-            Закрыть
-          </button>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12 }}>
+            {onDownload && (
+              <button className="btn btn-secondary btn-sm" onClick={onDownload}>
+                <DownloadIcon /> Скачать
+              </button>
+            )}
+            <button className="btn btn-secondary btn-sm" onClick={onClose}>
+              Закрыть
+            </button>
+          </div>
         </div>
 
         <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../api/client.js";
 import ConfidenceBadge from "../../components/ConfidenceBadge.jsx";
 import StatusStepper from "../../components/StatusStepper.jsx";
@@ -11,7 +11,7 @@ import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon } from "../../components/icons.jsx";
+import { AlertCircleIcon, CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon } from "../../components/icons.jsx";
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
 
@@ -39,6 +39,7 @@ export default function ReviewMatches() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [generatedPreview, setGeneratedPreview] = useState(null);
   const [showSupplierSearch, setShowSupplierSearch] = useState(false);
+  const [suppliersConfigured, setSuppliersConfigured] = useState(true); // оптимистично, пока не пришёл ответ
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -65,6 +66,13 @@ export default function ReviewMatches() {
     api
       .listDocumentTemplates()
       .then(setTemplates)
+      .catch(() => {});
+    api
+      .listIntegrations()
+      .then((list) => {
+        const supplierIds = new Set(["rossco", "autoeuro", "moskvorechye"]);
+        setSuppliersConfigured(list.some((it) => supplierIds.has(it.id) && it.configured));
+      })
       .catch(() => {});
   }, []);
 
@@ -249,18 +257,22 @@ export default function ReviewMatches() {
     }
   };
 
+  const triggerBrowserDownload = (blob, fileName) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleGenerateDocument = async () => {
     setGenerating(true);
     try {
       const fileName = `repair_order_${repairOrderId}_final.xlsx`;
       const blob = await api.generateDocument(repairOrderId, selectedTemplateId || undefined);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      window.URL.revokeObjectURL(url);
-      toast.success("Итоговый документ сформирован и скачан");
+      triggerBrowserDownload(blob, fileName);
+      toast.success("Итоговый документ сформирован и скачан — обычно в папку «Загрузки» вашей системы");
       if (blob.unresolvedTokens?.length) {
         toast.error(
           `В документе остались нераспознанные плейсхолдеры: ${blob.unresolvedTokens.join(", ")} — проверьте шаблон.`
@@ -317,6 +329,18 @@ export default function ReviewMatches() {
           "Если нужной запчасти нет в заказ-наряде вовсе, нажмите «Добавить запчасть у поставщика» — найдёт её у Rossco/АвтоЕвро/Москворечье и добавит уже подтверждённой строкой, которая попадёт в итоговый документ.",
         ]}
       />
+
+      {!suppliersConfigured && !isProcessing && matches.length > 0 && (
+        <div className="hint-banner hint-warning">
+          <AlertCircleIcon />
+          <span>
+            Ни один поставщик кросс-номеров (Rossco, АвтоЕвро, Москворечье) не настроен — если много
+            позиций ниже «не найдено» с догадкой LLM 0%, скорее всего дело в этом, а не в самих
+            запчастях. <Link to="/admin/integrations">Настроить ключи →</Link>, затем загрузите
+            заказ-наряд заново.
+          </span>
+        </div>
+      )}
 
       <StatusStepper status={status} />
 
@@ -706,6 +730,7 @@ export default function ReviewMatches() {
           blob={generatedPreview.blob}
           fileName={generatedPreview.fileName}
           onClose={() => setGeneratedPreview(null)}
+          onDownload={() => triggerBrowserDownload(generatedPreview.blob, generatedPreview.fileName)}
         />
       )}
 

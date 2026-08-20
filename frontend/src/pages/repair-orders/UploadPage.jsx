@@ -135,6 +135,7 @@ export default function UploadPage() {
   const [orderFiles, setOrderFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [llmConfigured, setLlmConfigured] = useState(true); // оптимистично, пока не пришёл ответ
+  const [suppliersConfigured, setSuppliersConfigured] = useState(true); // оптимистично, пока не пришёл ответ
   const [contragents, setContragents] = useState([]);
   const [contragentId, setContragentId] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
@@ -151,6 +152,13 @@ export default function UploadPage() {
       .catch(() => {});
     api.listContragents().then(setContragents).catch(() => {});
     api.listContracts().then(setContracts).catch(() => {});
+    api
+      .listIntegrations()
+      .then((list) => {
+        const supplierIds = new Set(["rossco", "autoeuro", "moskvorechye"]);
+        setSuppliersConfigured(list.some((it) => supplierIds.has(it.id) && it.configured));
+      })
+      .catch(() => {});
   }, []);
 
   const parsedContracts = contracts.filter((c) => c.status === "parsed" && c.active);
@@ -218,6 +226,18 @@ export default function UploadPage() {
           <span>
             LLM-модель не выбрана — шаг сопоставления по названию будет недоступен, такие позиции
             уйдут на ручную проверку. <Link to="/admin/llm">Выбрать модель →</Link>
+          </span>
+        </div>
+      )}
+
+      {!suppliersConfigured && (
+        <div className="hint-banner hint-warning">
+          <AlertCircleIcon />
+          <span>
+            Ни один поставщик кросс-номеров (Rossco, АвтоЕвро, Москворечье) не настроен — шаг 2
+            (поиск аналогов по артикулу) будет пропущен, сопоставление пойдёт сразу к LLM-догадке по
+            названию, и найдётся заметно меньше позиций.{" "}
+            <Link to="/admin/integrations">Настроить ключи →</Link>
           </span>
         </div>
       )}
