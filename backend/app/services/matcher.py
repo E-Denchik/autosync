@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 
 from app.models import ConfidenceLevel, ContractPart
 from app.services.llm_client import LLMClient
@@ -23,6 +24,26 @@ logger = logging.getLogger(__name__)
 
 LLM_CANDIDATE_LIMIT = 20
 CONTRACT_CANDIDATE_POOL_LIMIT = 500
+
+# Некоторые источники (замечено в выгрузке 1С заказ-наряда) кладут бренд
+# прямо в поле артикула вида "PN32661 [AUTOWELT]" — для точного совпадения
+# с договором и для запросов к поставщикам (Rossco/АвтоЕвро/Москворечье)
+# нужен голый код, иначе искать "PN32661 [AUTOWELT]" как есть — почти
+# гарантированно ничего не найти: точное совпадение по артикулу сравнивает
+# строки буквально, а часть поставщиков принимает код как строгий параметр
+# (не полнотекстовый поиск), где лишние символы обнуляют результат.
+_ARTICLE_BRAND_RE = re.compile(r"^(.*\S)\s*\[([^\[\]]+)\]\s*$")
+
+
+def split_article_brand(raw_article: str | None) -> tuple[str | None, str | None]:
+    """Возвращает (голый_артикул, бренд_из_скобок). Если скобок нет —
+    (raw_article, None) без изменений."""
+    if not raw_article:
+        return raw_article, None
+    match = _ARTICLE_BRAND_RE.match(raw_article.strip())
+    if not match:
+        return raw_article, None
+    return match.group(1).strip(), match.group(2).strip()
 
 
 def _shortlist_candidates(name: str | None, order_lines: list[dict]) -> list[dict]:
@@ -160,9 +181,14 @@ def match_line_against_contract(
 ) -> dict:
     article = order_line.get("article")
     name = order_line.get("name")
+    clean_article, brand_hint = split_article_brand(article)
 
-    if article:
-        exact = ContractPart.query.filter_by(contract_id=contract_id, article=article).first()
+    if clean_article:
+        exact = ContractPart.query.filter_by(contract_id=contract_id, article=clean_article).first()
+        if exact is None and clean_article != article:
+            # На случай, если в самом договоре артикулы записаны в том же
+            # "код [бренд]" виде — сравниваем и с исходной строкой как есть.
+            exact = ContractPart.query.filter_by(contract_id=contract_id, article=article).first()
         if exact:
             return {
                 "contract_article": article,
@@ -175,9 +201,9 @@ def match_line_against_contract(
                 "raw_match_data": {"source": "exact_article_match"},
             }
 
-    if article:
+    if clean_article:
         try:
-            cross_refs = supplier_client.find_cross_references(article)
+            cross_refs = supplier_client.find_cross_references(clean_article, brand=brand_hint)
         except Exception:
             cross_refs = []
         for ref in cross_refs:

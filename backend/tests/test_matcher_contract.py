@@ -33,6 +33,38 @@ def test_exact_article_match_uses_contract_price_not_order_price(app):
         assert result["contract_name"] == "диск тормоз задний"
 
 
+def test_exact_match_strips_bracketed_brand_from_article(app):
+    """Регрессия: выгрузка заказ-наряда из 1С кладёт бренд прямо в артикул
+    ("PN32661 [AUTOWELT]") — раньше это сравнивалось с ContractPart.article
+    буквально и почти никогда не совпадало, хотя чистый код в договоре есть."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="PN32661", name="Поршень", price=2500.0))
+        db.session.commit()
+
+        order_line = {"article": "PN32661 [AUTOWELT]", "name": "PN32661 поршень с кольцами"}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["matched_article"] == "PN32661"
+        # Отображаемое поле — оригинальная строка из документа, не обрезанная.
+        assert result["contract_article"] == "PN32661 [AUTOWELT]"
+
+
+def test_cross_reference_lookup_uses_clean_article_and_extracted_brand(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = []
+        llm_client = MagicMock()
+        llm_client.match_part_by_name.return_value = None
+
+        order_line = {"article": "141038301 [REINZ]", "name": "Комплект болтов головки цилиндра"}
+        match_line_against_contract(order_line, contract_id, supplier_client, llm_client)
+
+        supplier_client.find_cross_references.assert_called_once_with("141038301", brand="REINZ")
+
+
 def test_no_article_match_falls_back_to_cross_reference(app):
     with app.app_context():
         contract_id = _make_contract(app)

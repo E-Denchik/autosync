@@ -11,10 +11,11 @@ from app.models import (
     ContractPart,
     DocumentProcessingStatus,
 )
+from app.services.contract_catalog_import import ContractMergeError, merge_contracts
 from app.services.history import log_change
 from app.services.job_queue import enqueue_import_contract
 from app.services.pagination import paginate, paginated_response
-from app.services.upload_helpers import display_filename, save_upload
+from app.services.upload_helpers import compute_files_hash, display_filename, save_upload
 
 bp = Blueprint("contracts", __name__)
 
@@ -67,11 +68,30 @@ def create_contract():
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
+    # Тот же набор файлов уже когда-то загружали как каталог контракта —
+    # переиспользуем существующий разобранный договор вместо создания
+    # задвоенной копии (см. PROJECT.md: жалоба заказчика на дублирующиеся
+    # договоры при повторной загрузке).
+    content_hash = compute_files_hash(paths)
+    existing = (
+        Contract.query.filter_by(content_hash=content_hash, active=True, status=DocumentProcessingStatus.PARSED)
+        .order_by(Contract.created_at.desc())
+        .first()
+    )
+    if existing is not None:
+        for path in paths:
+            if os.path.isfile(path):
+                os.remove(path)
+        body = _serialize(existing)
+        body["reused_existing_contract"] = True
+        return jsonify(body), 200
+
     contract = Contract(
         name=name,
         contragent_id=int(contragent_id) if contragent_id else None,
         original_filename=display_filename(files[0].filename),
         storage_path=paths[0],
+        content_hash=content_hash,
         status=DocumentProcessingStatus.UPLOADED,
     )
     db.session.add(contract)
@@ -85,7 +105,9 @@ def create_contract():
     db.session.commit()
 
     enqueue_import_contract(contract.id, paths, vehicle_make)
-    return jsonify(_serialize(contract)), 202
+    body = _serialize(contract)
+    body["reused_existing_contract"] = False
+    return jsonify(body), 202
 
 
 @bp.post("/<int:contract_id>/import")
@@ -237,3 +259,16 @@ def delete_contract(contract_id: int):
     db.session.delete(contract)
     db.session.commit()
     return "", 204
+
+
+@bp.post("/<int:source_id>/merge-into/<int:target_id>")
+def merge_contract(source_id: int, target_id: int):
+    """Уборка уже накопившихся дубликатов (см. create_contract — новые
+    больше не плодятся): переносит заказ-наряды и уникальные позиции с
+    source на target, затем удаляет опустевший source."""
+    try:
+        result = merge_contracts(source_id, target_id)
+    except ContractMergeError as exc:
+        return jsonify(error=str(exc)), 400
+    target = db.get_or_404(Contract, target_id)
+    return jsonify(contract=_serialize(target), **result)

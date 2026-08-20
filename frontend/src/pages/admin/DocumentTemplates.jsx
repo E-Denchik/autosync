@@ -7,6 +7,7 @@ import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, DownloadIcon, EyeIcon, CopyIcon } from "../../components/icons.jsx";
+import { saveFile, XLSX_FILE_TYPES } from "../../utils/saveFile.js";
 
 const TOKEN_GROUPS = [
   { hint: "номер и дата заказ-наряда", tokens: ["{{order_number}}", "{{order_date}}"] },
@@ -91,13 +92,12 @@ export default function DocumentTemplates() {
     setDownloadingStarter(true);
     try {
       const blob = await api.downloadStarterTemplate();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "autosync-starter-shablon.xlsx";
-      a.click();
-      window.URL.revokeObjectURL(url);
-      toast.success("Стартовый шаблон скачан");
+      const result = await saveFile(blob, "autosync-starter-shablon.xlsx", XLSX_FILE_TYPES);
+      if (result.ok) {
+        toast.success(result.native ? `Стартовый шаблон сохранён: ${result.path}` : "Стартовый шаблон скачан");
+      } else if (!result.canceled) {
+        toast.error(result.error || "Не удалось сохранить файл");
+      }
     } catch (e) {
       toast.error(e.message);
     } finally {

@@ -114,12 +114,31 @@ class AutoEuroClient:
             "amount": item.get("amount"),
         }
 
-    def find_cross_references(self, article: str) -> list[dict]:
+    def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
         """Кросс-номера (аналоги) для артикула — по контракту, которого ждёт
         matcher.py: список {"article": ..., "name": ..., "brand": ..., "price": ...}.
 
-        Бренд неизвестен — уточняем через search_brands и опрашиваем найденные
-        варианты по очереди, пока не наберём результат (обычно первого хватает)."""
+        Если бренд известен (см. matcher.split_article_brand) — сразу идём в
+        search_items(brand, code), без похода в search_brands: search_items
+        требует ОБЕ пары brand+code как строгий параметр, и без явного
+        бренда article с посторонними символами (например, "PN32661
+        [AUTOWELT]" из выгрузки 1С) обычно не находит вообще ничего."""
+        if brand:
+            try:
+                items = self.search_items(brand, article)
+            except AutoEuroError:
+                items = []
+            return [
+                {
+                    "article": item.get("code"),
+                    "brand": item.get("brand"),
+                    "name": item.get("name"),
+                    "price": item.get("price"),
+                }
+                for item in items
+                if item.get("cross") is not None
+            ]
+
         try:
             brands = self.search_brands(article)
         except AutoEuroError:

@@ -79,12 +79,15 @@ class MoskvorechyeClient:
             "amount": item.get("availability"),
         }
 
-    def find_cross_references(self, article: str) -> list[dict]:
+    def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
         """Кандидаты по артикулу (без фильтра по бренду ABCP обычно возвращает
         совпадения по нескольким брендам сразу — этим и пользуемся как
-        источником кросс-номеров), по контракту, которого ждёт matcher.py."""
+        источником кросс-номеров), по контракту, которого ждёт matcher.py.
+
+        brand, если известен (см. matcher.split_article_brand), передаётся
+        как есть — ABCP использует его как доп. фильтр, не обязательный."""
         try:
-            items = self.search_articles(article)
+            items = self.search_articles(article, brand=brand)
         except MoskvorechyeError:
             return []
         return [

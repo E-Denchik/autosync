@@ -19,6 +19,10 @@ class Contract(db.Model):
     contragent_id = db.Column(db.Integer, db.ForeignKey("contragents.id"), index=True)
     original_filename = db.Column(db.String(512), nullable=False)
     storage_path = db.Column(db.String(1024), nullable=False)
+    # Хэш содержимого загруженного файла(ов) — чтобы при повторной загрузке
+    # того же файла (частая причина задвоенных договоров, см. PROJECT.md)
+    # переиспользовать уже существующий договор вместо создания копии.
+    content_hash = db.Column(db.String(64), index=True)
     status = db.Column(
         db.Enum(DocumentProcessingStatus), default=DocumentProcessingStatus.UPLOADED, nullable=False
     )

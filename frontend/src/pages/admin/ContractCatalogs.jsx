@@ -24,6 +24,9 @@ export default function ContractCatalogs() {
   const [deleting, setDeleting] = useState(false);
   const [previewTarget, setPreviewTarget] = useState(null);
   const [archivingId, setArchivingId] = useState(null);
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [merging, setMerging] = useState(false);
   const toast = useToast();
 
   const load = () => {
@@ -61,8 +64,12 @@ export default function ContractCatalogs() {
     }
     setCreating(true);
     try {
-      await api.createContract(files, form);
-      toast.success("Договор загружен — идёт разбор файла(ов)");
+      const result = await api.createContract(files, form);
+      toast.success(
+        result.reused_existing_contract
+          ? `Такой файл уже загружен — переиспользован договор «${result.name || result.original_filename}»`
+          : "Договор загружен — идёт разбор файла(ов)"
+      );
       setForm(EMPTY_FORM);
       setFiles([]);
       setShowForm(false);
@@ -71,6 +78,28 @@ export default function ContractCatalogs() {
       toast.error(e2.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleMerge = async () => {
+    if (!mergeTargetId) {
+      toast.error("Выберите договор, с которым объединить");
+      return;
+    }
+    setMerging(true);
+    try {
+      const result = await api.mergeContract(mergeSource.id, Number(mergeTargetId));
+      toast.success(
+        `Договор «${mergeSource.name || mergeSource.original_filename}» объединён с «${result.contract.name || result.contract.original_filename}»: ` +
+          `заказ-нарядов перенесено ${result.repair_orders_moved}, запчастей ${result.parts_moved}, нормо-часов ${result.labor_norms_moved}`
+      );
+      setMergeSource(null);
+      setMergeTargetId("");
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -253,6 +282,18 @@ export default function ContractCatalogs() {
                       >
                         {c.active ? "Архивировать" : "Активировать"}
                       </button>
+                      {contracts.length > 1 && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          title="Перенести заказ-наряды и уникальные позиции в другой договор, затем удалить этот"
+                          onClick={() => {
+                            setMergeSource(c);
+                            setMergeTargetId("");
+                          }}
+                        >
+                          Объединить с…
+                        </button>
+                      )}
                       <button
                         className="btn btn-reject btn-sm"
                         disabled={c.repair_orders_count > 0}
@@ -292,6 +333,46 @@ export default function ContractCatalogs() {
           blob={previewTarget}
           fileName={previewTarget.name}
           onClose={() => setPreviewTarget(null)}
+        />
+      )}
+
+      {mergeSource && (
+        <ConfirmDialog
+          title="Объединить договор?"
+          message={
+            <>
+              <p style={{ marginTop: 0 }}>
+                Заказ-наряды и позиции, которых нет в выбранном договоре, переедут туда. Позиции с уже
+                существующими там артикулами останутся у него. Договор{" "}
+                <strong>{mergeSource.name || mergeSource.original_filename}</strong> будет удалён.
+              </p>
+              <div className="field">
+                <label htmlFor="merge-target">Объединить с</label>
+                <select
+                  id="merge-target"
+                  value={mergeTargetId}
+                  onChange={(e) => setMergeTargetId(e.target.value)}
+                >
+                  <option value="">— выберите договор —</option>
+                  {contracts
+                    .filter((c) => c.id !== mergeSource.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.original_filename}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </>
+          }
+          confirmLabel="Объединить"
+          danger
+          busy={merging}
+          onConfirm={handleMerge}
+          onCancel={() => {
+            setMergeSource(null);
+            setMergeTargetId("");
+          }}
         />
       )}
     </div>
