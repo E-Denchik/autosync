@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 
@@ -24,3 +25,21 @@ def save_upload(file_storage, allowed_extensions: set[str] = ALLOWED_DOCUMENT_EX
     path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{ext}")
     file_storage.save(path)
     return path
+
+
+def compute_files_hash(paths: list[str]) -> str:
+    """Хэш содержимого набора файлов — определяет "тот же самый файл(ы)
+    загрузили ещё раз" независимо от нового случайного имени на диске
+    (см. save_upload) или порядка байт: каждый файл хэшируется отдельно,
+    итоговые хэши сортируются (порядок выбора файлов в форме не должен
+    менять результат) и хэшируются вместе с их количеством."""
+    def _hash_file(path: str) -> str:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+
+    per_file = sorted(_hash_file(p) for p in paths)
+    combined = hashlib.sha256()
+    combined.update(str(len(paths)).encode())
+    for digest in per_file:
+        combined.update(digest.encode())
+    return combined.hexdigest()

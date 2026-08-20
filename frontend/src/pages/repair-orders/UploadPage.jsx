@@ -4,7 +4,7 @@ import { api } from "../../api/client.js";
 import { useToast } from "../../context/ToastContext.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
-import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon } from "../../components/icons.jsx";
+import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon, CloseIcon, InfoIcon, PlusIcon } from "../../components/icons.jsx";
 
 const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
 const MAX_SIZE_BYTES = 25 * 1024 * 1024; // см. backend/app/config.py: MAX_CONTENT_LENGTH
@@ -138,10 +138,15 @@ export default function UploadPage() {
   const [suppliersConfigured, setSuppliersConfigured] = useState(true); // оптимистично, пока не пришёл ответ
   const [contragents, setContragents] = useState([]);
   const [contragentId, setContragentId] = useState("");
+  const [showNewContragentForm, setShowNewContragentForm] = useState(false);
+  const [newContragentName, setNewContragentName] = useState("");
+  const [newContragentRate, setNewContragentRate] = useState("");
+  const [creatingContragent, setCreatingContragent] = useState(false);
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleVin, setVehicleVin] = useState("");
+  const [showMatchingInfo, setShowMatchingInfo] = useState(true);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -179,7 +184,7 @@ export default function UploadPage() {
     }
     setSubmitting(true);
     try {
-      const { repair_order_id } = await api.uploadDocuments(
+      const { repair_order_id, reused_existing_contract, reused_contract_name } = await api.uploadDocuments(
         contractMode === "new" ? contractFiles : [],
         orderFiles,
         {
@@ -191,12 +196,41 @@ export default function UploadPage() {
           vehicle_vin: vehicleVin,
         }
       );
-      toast.success("Файлы загружены, сопоставление запущено");
+      toast.success(
+        reused_existing_contract
+          ? `Файлы загружены — такой договор уже был, переиспользован «${reused_contract_name}»`
+          : "Файлы загружены, сопоставление запущено"
+      );
       navigate(`/repair-orders/${repair_order_id}/review`);
     } catch (e2) {
       toast.error(e2.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreateContragent = async (e) => {
+    e.preventDefault();
+    if (!newContragentName.trim() || newContragentRate === "") {
+      toast.error("Укажите название и ставку за нормо-час");
+      return;
+    }
+    setCreatingContragent(true);
+    try {
+      const created = await api.createContragent({
+        name: newContragentName.trim(),
+        hourly_rate: Number(newContragentRate),
+      });
+      setContragents((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setContragentId(String(created.id));
+      setShowNewContragentForm(false);
+      setNewContragentName("");
+      setNewContragentRate("");
+      toast.success(`Контрагент «${created.name}» добавлен и выбран`);
+    } catch (e2) {
+      toast.error(e2.message);
+    } finally {
+      setCreatingContragent(false);
     }
   };
 
@@ -210,6 +244,11 @@ export default function UploadPage() {
             затем через кросс-номера поставщика, и только в крайнем случае — LLM по названию.
           </p>
         </div>
+        {!showMatchingInfo && (
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowMatchingInfo(true)}>
+            <InfoIcon style={{ width: 13, height: 13 }} /> Как проходит сопоставление
+          </button>
+        )}
       </div>
 
       <HowToUse
@@ -242,7 +281,7 @@ export default function UploadPage() {
         </div>
       )}
 
-      <div className="two-col-grid">
+      <div className={showMatchingInfo ? "two-col-grid" : ""}>
         <form className="panel" onSubmit={handleSubmit}>
           <div className="dropzone-row">
             <div className="field">
@@ -310,14 +349,29 @@ export default function UploadPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
             <div className="field">
               <label htmlFor="contragent">Контрагент</label>
-              <select id="contragent" value={contragentId} onChange={(e) => setContragentId(e.target.value)}>
-                <option value="">— не выбран —</option>
-                {contragents.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.hourly_rate} ₽/ч)
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: 6 }}>
+                <select
+                  id="contragent"
+                  value={contragentId}
+                  onChange={(e) => setContragentId(e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">— не выбран —</option>
+                  {contragents.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.hourly_rate} ₽/ч)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  title="Добавить нового контрагента"
+                  onClick={() => setShowNewContragentForm((v) => !v)}
+                >
+                  <PlusIcon style={{ width: 13, height: 13 }} />
+                </button>
+              </div>
             </div>
             <div className="field">
               <label htmlFor="vehicle_vin">VIN</label>
@@ -351,6 +405,50 @@ export default function UploadPage() {
               />
             </div>
           </div>
+
+          {showNewContragentForm && (
+            <div className="panel" style={{ marginBottom: 18, background: "var(--bg-sunken)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto auto", gap: 8, alignItems: "end" }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label htmlFor="new-contragent-name">Название нового контрагента</label>
+                  <input
+                    id="new-contragent-name"
+                    autoFocus
+                    value={newContragentName}
+                    onChange={(e) => setNewContragentName(e.target.value)}
+                    placeholder="например, ООО «Ромашка»"
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label htmlFor="new-contragent-rate">Ставка, ₽/ч</label>
+                  <input
+                    id="new-contragent-rate"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newContragentRate}
+                    onChange={(e) => setNewContragentRate(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={creatingContragent}
+                  onClick={handleCreateContragent}
+                >
+                  {creatingContragent ? "Сохранение…" : "Добавить"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowNewContragentForm(false)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="text-muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 18 }}>
             Марка/модель нужны, чтобы автоматически подтянуть нормо-часы для работ из заказ-наряда;
             контрагент — чтобы посчитать их стоимость по его ставке.
@@ -366,9 +464,17 @@ export default function UploadPage() {
           </button>
         </form>
 
+        {showMatchingInfo && (
         <div className="panel">
           <div className="panel-header">
             <h3>Как проходит сопоставление</h3>
+            <button
+              className="btn btn-secondary btn-sm"
+              title="Скрыть"
+              onClick={() => setShowMatchingInfo(false)}
+            >
+              <CloseIcon style={{ width: 13, height: 13 }} />
+            </button>
           </div>
           <div className="stepper" style={{ flexDirection: "column", alignItems: "stretch", gap: 14 }}>
             <div className="step">
@@ -401,6 +507,7 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

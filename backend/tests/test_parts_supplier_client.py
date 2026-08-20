@@ -6,7 +6,7 @@ class _StubClient:
         self._refs = refs or []
         self._error = error
 
-    def find_cross_references(self, article):
+    def find_cross_references(self, article, brand=None):
         if self._error:
             raise self._error
         return self._refs

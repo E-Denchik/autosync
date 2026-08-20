@@ -9,6 +9,7 @@ import HowToUse from "../../components/HowToUse.jsx";
 import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, UploadIcon, SearchIcon, DownloadIcon, EyeIcon } from "../../components/icons.jsx";
+import { saveFile, XLSX_FILE_TYPES } from "../../utils/saveFile.js";
 
 const PER_PAGE = 50;
 
@@ -101,13 +102,12 @@ export default function NomenclatureCatalog() {
     setDownloadingTemplate(true);
     try {
       const blob = await api.downloadNomenclatureTemplate();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "autosync-shablon-nomenklatura.xlsx";
-      a.click();
-      window.URL.revokeObjectURL(url);
-      toast.success("Шаблон скачан");
+      const result = await saveFile(blob, "autosync-shablon-nomenklatura.xlsx", XLSX_FILE_TYPES);
+      if (result.ok) {
+        toast.success(result.native ? `Шаблон сохранён: ${result.path}` : "Шаблон скачан");
+      } else if (!result.canceled) {
+        toast.error(result.error || "Не удалось сохранить файл");
+      }
     } catch (e) {
       toast.error(e.message);
     } finally {

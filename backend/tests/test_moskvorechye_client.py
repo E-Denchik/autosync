@@ -60,6 +60,21 @@ def test_find_cross_references_maps_fields(monkeypatch):
     assert refs == [{"article": "333114", "brand": "KYB", "name": "Стойка амортизационная", "price": 5399}]
 
 
+def test_find_cross_references_passes_brand_through(monkeypatch):
+    client = MoskvorechyeClient(base_url="https://example.abcp2b.ru", api_key="login:pass")
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured["params"] = params
+        return _FakeResponse(True, [])
+
+    monkeypatch.setattr("app.services.moskvorechye_client.requests.get", fake_get)
+    client.find_cross_references("PN32661", brand="AUTOWELT")
+
+    assert captured["params"]["number"] == "PN32661"
+    assert captured["params"]["brand"] == "AUTOWELT"
+
+
 def test_find_cross_references_returns_empty_on_error(monkeypatch):
     client = MoskvorechyeClient(base_url="https://example.abcp2b.ru", api_key="login:pass")
 

@@ -74,6 +74,16 @@ def test_find_cross_references_extracts_crosses_only(monkeypatch):
     assert refs == [{"article": "290 074", "brand": "Sachs", "name": "Амортизатор", "price": 10920.33}]
 
 
+def test_find_cross_references_includes_brand_in_search_text(monkeypatch):
+    client = RosscoClient(key1="k1", key2="k2")
+    fake = _FakeZeepClient({"success": True, "PartsList": {}})
+    monkeypatch.setattr(client, "_client", lambda method: fake)
+
+    client.find_cross_references("PN32661", brand="AUTOWELT")
+
+    assert fake.service.last_call["text"] == "AUTOWELT PN32661"
+
+
 def test_find_cross_references_returns_empty_on_error(monkeypatch):
     client = RosscoClient(key1="k1", key2="k2")
     monkeypatch.setattr(client, "_client", lambda method: _FakeZeepClient({"success": False, "message": "boom"}))

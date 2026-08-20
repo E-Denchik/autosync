@@ -216,6 +216,73 @@ def start_scheduler(app):
     return scheduler
 
 
+class SaveDialogApi:
+    """js_api-мост для фронта: JS сам не может открыть системное окно
+    "Сохранить как" — это умеет только объект окна pywebview, доступный
+    только в этом процессе. Фронт вместо скрытого <a download> (см. историю
+    багов — файл незаметно падал в системную папку загрузок, и не было
+    способа выбрать место/имя/формат) вызывает
+    window.pywebview.api.save_file_dialog(...), которая открывает настоящий
+    диалог ОС и пишет файл туда, куда указал пользователь.
+
+    Экземпляр создаётся до create_window (pywebview требует js_api на
+    момент создания окна) — сам объект window подставляется в него сразу
+    после того, как create_window его вернёт (см. run_window)."""
+
+    window = None
+
+    def save_file_dialog(
+        self, suggested_filename: str, content_base64: str, file_types: list[str] | None = None
+    ) -> dict:
+        import base64
+
+        import webview
+        from webview.util import parse_file_type
+
+        if self.window is None:
+            return {"ok": False, "error": "Окно приложения ещё не готово"}
+
+        # create_file_dialog падает целиком, если хоть один фильтр не
+        # соответствует строгому формату pywebview ("Описание (*.ext)" —
+        # только буквы/цифры/пробелы в описании, никакой пунктуации, см.
+        # webview.util.parse_file_type) — один опечатавшийся фильтр не
+        # должен ронять сохранение файла вообще, поэтому невалидные молча
+        # пропускаем, а не падаем на всём диалоге.
+        valid_file_types = []
+        for file_type in file_types or ():
+            try:
+                parse_file_type(file_type)
+            except ValueError:
+                logger.warning("Пропускаю некорректный фильтр файла в диалоге сохранения: %r", file_type)
+                continue
+            valid_file_types.append(file_type)
+
+        try:
+            result = self.window.create_file_dialog(
+                webview.FileDialog.SAVE,
+                save_filename=suggested_filename,
+                file_types=tuple(valid_file_types),
+            )
+        except Exception as exc:
+            logger.exception("create_file_dialog упал")
+            return {"ok": False, "error": str(exc)}
+
+        if not result:
+            # Пользователь нажал "Отмена" — не ошибка, фронт просто не показывает тост.
+            return {"ok": False, "canceled": True}
+
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        try:
+            data = base64.b64decode(content_base64)
+            with open(path, "wb") as f:
+                f.write(data)
+        except Exception as exc:
+            logger.exception("Не удалось записать файл через save_file_dialog: %s", path)
+            return {"ok": False, "error": str(exc)}
+
+        return {"ok": True, "path": path}
+
+
 def run_window(url: str) -> None:
     """Открывает AutoSync в собственном окне через pywebview (системный
     webview — WebView2 на Windows, WebKitGTK на Linux, без Chromium внутри
@@ -255,9 +322,11 @@ def run_window(url: str) -> None:
     except Exception:
         width, height = 1360, 860
 
-    webview.create_window(
-        "AutoSync", url, width=width, height=height, min_size=(1024, 700), maximized=True
+    save_api = SaveDialogApi()
+    window = webview.create_window(
+        "AutoSync", url, width=width, height=height, min_size=(1024, 700), maximized=True, js_api=save_api
     )
+    save_api.window = window
     try:
         # private_mode=False — по умолчанию pywebview открывает окно как
         # приватную/инкогнито-сессию: WebKitGTK создаёт эфемерный контекст

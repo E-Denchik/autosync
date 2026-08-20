@@ -113,6 +113,8 @@ export const api = {
   listContractParts: (id, params = {}) => request(`/contracts/${id}/parts${withPaging(params)}`),
   listContractLaborNorms: (id, params = {}) => request(`/contracts/${id}/labor-norms${withPaging(params)}`),
   deleteContract: (id) => request(`/contracts/${id}`, { method: "DELETE" }),
+  mergeContract: (sourceId, targetId) =>
+    request(`/contracts/${sourceId}/merge-into/${targetId}`, { method: "POST" }),
   archiveContract: (id) => request(`/contracts/${id}/archive`, { method: "POST" }),
   unarchiveContract: (id) => request(`/contracts/${id}/unarchive`, { method: "POST" }),
   listContractHourlyRates: (id) => request(`/contracts/${id}/hourly-rates`),

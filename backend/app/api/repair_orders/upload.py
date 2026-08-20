@@ -17,7 +17,7 @@ from app.models import (
 from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
 from app.services.pagination import paginate, paginated_response
-from app.services.upload_helpers import display_filename, save_upload as _save_upload
+from app.services.upload_helpers import compute_files_hash, display_filename, save_upload as _save_upload
 
 bp = Blueprint("repair_orders_upload", __name__)
 
@@ -41,6 +41,7 @@ def upload_documents():
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
+    reused_existing_contract = False
     if existing_contract_id:
         contract = db.session.get(Contract, int(existing_contract_id))
         if not contract:
@@ -53,19 +54,36 @@ def upload_documents():
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
-        contract = Contract(
-            original_filename=display_filename(contract_files[0].filename),
-            storage_path=contract_paths[0],
-            status=DocumentProcessingStatus.UPLOADED,
+        # Тот же набор файлов уже когда-то загружали ("Новый файл" выбран по
+        # привычке вместо "Уже загруженный контракт") — переиспользуем
+        # существующий разобранный договор вместо создания задвоенной копии
+        # (см. PROJECT.md: жалоба заказчика на дублирующиеся договоры).
+        content_hash = compute_files_hash(contract_paths)
+        contract = (
+            Contract.query.filter_by(content_hash=content_hash, active=True, status=DocumentProcessingStatus.PARSED)
+            .order_by(Contract.created_at.desc())
+            .first()
         )
-        db.session.add(contract)
-        db.session.flush()
-        for f, path in zip(contract_files[1:], contract_paths[1:]):
-            db.session.add(
-                ContractFile(
-                    contract_id=contract.id, original_filename=display_filename(f.filename), storage_path=path
-                )
+        if contract is not None:
+            reused_existing_contract = True
+            for path in contract_paths:
+                if os.path.isfile(path):
+                    os.remove(path)
+        else:
+            contract = Contract(
+                original_filename=display_filename(contract_files[0].filename),
+                storage_path=contract_paths[0],
+                content_hash=content_hash,
+                status=DocumentProcessingStatus.UPLOADED,
             )
+            db.session.add(contract)
+            db.session.flush()
+            for f, path in zip(contract_files[1:], contract_paths[1:]):
+                db.session.add(
+                    ContractFile(
+                        contract_id=contract.id, original_filename=display_filename(f.filename), storage_path=path
+                    )
+                )
 
     contragent_id = request.form.get("contragent_id")
     repair_order = RepairOrder(
@@ -97,13 +115,22 @@ def upload_documents():
             "contract_filename": contract.original_filename,
             "order_file_count": len(order_files),
             "contract_file_count": len(contract_files),
+            "reused_existing_contract": reused_existing_contract,
         },
     )
     db.session.commit()
 
     enqueue_process_upload(contract.id, repair_order.id)
 
-    return jsonify(contract_id=contract.id, repair_order_id=repair_order.id), 202
+    return (
+        jsonify(
+            contract_id=contract.id,
+            repair_order_id=repair_order.id,
+            reused_existing_contract=reused_existing_contract,
+            reused_contract_name=contract.name or contract.original_filename if reused_existing_contract else None,
+        ),
+        202,
+    )
 
 
 @bp.get("")
@@ -148,6 +175,12 @@ def upload_status(repair_order_id: int):
         id=repair_order.id,
         status=repair_order.status.value,
         error_message=repair_order.error_message,
+        # Видно сразу на странице проверки, что контрагент/машина реально
+        # привязались к заказ-наряду — без этого не было способа убедиться,
+        # что выбор на странице загрузки к чему-то привёл.
+        contragent_name=repair_order.contragent.name if repair_order.contragent else None,
+        vehicle_make=repair_order.vehicle_make,
+        vehicle_model=repair_order.vehicle_model,
     )
 
 

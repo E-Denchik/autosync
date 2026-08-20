@@ -50,7 +50,7 @@ class PartsSupplierClient:
             raise PartsSupplierError(f"parts supplier -> {resp.status_code}: {resp.text}")
         return resp.json() or None
 
-    def find_cross_references(self, article: str) -> list[dict]:
+    def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
         """Кросс-номера/аналоги для артикула, которого нет напрямую у поставщика.
 
         TODO: подтвердить с заказчиком, какие поля реально отдаёт API
@@ -61,7 +61,7 @@ class PartsSupplierClient:
         try:
             resp = requests.get(
                 f"{self.base_url}/v1/parts/cross-references",
-                params={"article": article},
+                params={"article": article, "brand": brand},
                 headers=self._headers(),
                 timeout=self.timeout,
             )
@@ -85,12 +85,12 @@ class AggregatedPartsSupplierClient:
     def __init__(self, clients: list) -> None:
         self._clients = clients
 
-    def find_cross_references(self, article: str) -> list[dict]:
+    def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
         seen = set()
         merged: list[dict] = []
         for client in self._clients:
             try:
-                refs = client.find_cross_references(article)
+                refs = client.find_cross_references(article, brand=brand)
             except Exception as exc:
                 logger.warning("%s.find_cross_references(%r) упал: %s", type(client).__name__, article, exc)
                 continue

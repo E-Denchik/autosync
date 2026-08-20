@@ -12,12 +12,14 @@ import HowToUse from "../../components/HowToUse.jsx";
 import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { AlertCircleIcon, CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon } from "../../components/icons.jsx";
+import { saveFile, CSV_FILE_TYPES, XLSX_FILE_TYPES } from "../../utils/saveFile.js";
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
 
 export default function ReviewMatches() {
   const { repairOrderId } = useParams();
   const [status, setStatus] = useState(null);
+  const [orderInfo, setOrderInfo] = useState(null);
   const [matches, setMatches] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [laborLines, setLaborLines] = useState([]);
@@ -84,6 +86,7 @@ export default function ReviewMatches() {
         const s = await api.getUploadStatus(repairOrderId);
         if (cancelled) return;
         setStatus(s.status);
+        setOrderInfo(s);
         setLoading(false);
 
         if (s.status === "failed") {
@@ -243,13 +246,12 @@ export default function ReviewMatches() {
     setExporting(true);
     try {
       const blob = await api.exportMatchesCsv(repairOrderId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `repair_order_${repairOrderId}_matches.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-      toast.success("CSV-файл скачан");
+      const result = await saveFile(blob, `repair_order_${repairOrderId}_matches.csv`, CSV_FILE_TYPES);
+      if (result.ok) {
+        toast.success(result.native ? `CSV-файл сохранён: ${result.path}` : "CSV-файл скачан");
+      } else if (!result.canceled) {
+        toast.error(result.error || "Не удалось сохранить файл");
+      }
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -257,22 +259,17 @@ export default function ReviewMatches() {
     }
   };
 
-  const triggerBrowserDownload = (blob, fileName) => {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
   const handleGenerateDocument = async () => {
     setGenerating(true);
     try {
       const fileName = `repair_order_${repairOrderId}_final.xlsx`;
       const blob = await api.generateDocument(repairOrderId, selectedTemplateId || undefined);
-      triggerBrowserDownload(blob, fileName);
-      toast.success("Итоговый документ сформирован и скачан — обычно в папку «Загрузки» вашей системы");
+      const result = await saveFile(blob, fileName, XLSX_FILE_TYPES);
+      if (result.ok) {
+        toast.success(result.native ? `Итоговый документ сохранён: ${result.path}` : "Итоговый документ сформирован и скачан");
+      } else if (!result.canceled) {
+        toast.error(result.error || "Не удалось сохранить файл");
+      }
       if (blob.unresolvedTokens?.length) {
         toast.error(
           `В документе остались нераспознанные плейсхолдеры: ${blob.unresolvedTokens.join(", ")} — проверьте шаблон.`
@@ -305,6 +302,17 @@ export default function ReviewMatches() {
             совпадение. Проверьте их вручную: примите, отклоните или подберите правильную позицию через
             поиск.
           </p>
+          {orderInfo && (orderInfo.contragent_name || orderInfo.vehicle_make) && (
+            <p className="text-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              {orderInfo.contragent_name && <>Контрагент: <strong>{orderInfo.contragent_name}</strong></>}
+              {orderInfo.contragent_name && orderInfo.vehicle_make && " · "}
+              {orderInfo.vehicle_make && (
+                <>
+                  Автомобиль: <strong>{orderInfo.vehicle_make} {orderInfo.vehicle_model || ""}</strong>
+                </>
+              )}
+            </p>
+          )}
         </div>
         {!isProcessing && (
           <div style={{ display: "flex", gap: 8 }}>
@@ -730,7 +738,11 @@ export default function ReviewMatches() {
           blob={generatedPreview.blob}
           fileName={generatedPreview.fileName}
           onClose={() => setGeneratedPreview(null)}
-          onDownload={() => triggerBrowserDownload(generatedPreview.blob, generatedPreview.fileName)}
+          onDownload={async () => {
+            const result = await saveFile(generatedPreview.blob, generatedPreview.fileName, XLSX_FILE_TYPES);
+            if (result.ok && result.native) toast.success(`Сохранено: ${result.path}`);
+            else if (!result.ok && !result.canceled) toast.error(result.error || "Не удалось сохранить файл");
+          }}
         />
       )}
 

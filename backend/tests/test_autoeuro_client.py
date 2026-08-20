@@ -98,6 +98,36 @@ def test_find_cross_references_skips_the_exact_match(monkeypatch):
     assert refs == [{"article": "290074", "brand": "Sachs", "name": "Амортизатор", "price": 200}]
 
 
+def test_find_cross_references_with_known_brand_skips_search_brands(monkeypatch):
+    """Регрессия: артикулы из выгрузки 1С иногда приходят в виде "код
+    [БРЕНД]" (см. matcher.split_article_brand) — если бренд уже известен,
+    не нужно (и не стоит) ещё гадать его через search_brands по искажённому
+    коду, где search_brands мог бы вообще ничего не найти."""
+    client = AutoEuroClient(api_key="k")
+    calls = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(url)
+        if "/search_brands/" in url:
+            raise AssertionError("search_brands не должен вызываться, когда бренд уже известен")
+        if "/get_deliveries/" in url:
+            return _FakeResponse(True, {"META": {"client_state": "OK"}, "DATA": [{"delivery_key": "dk-1"}]})
+        if "/search_items/" in url:
+            return _FakeResponse(
+                True,
+                {
+                    "META": {"client_state": "OK"},
+                    "DATA": [{"brand": "REINZ", "code": "141038301", "cross": 0, "price": 900, "name": "Прокладка"}],
+                },
+            )
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    refs = client.find_cross_references("141038301", brand="REINZ")
+
+    assert refs == [{"article": "141038301", "brand": "REINZ", "name": "Прокладка", "price": 900}]
+
+
 def test_find_cross_references_returns_empty_when_brand_not_found(monkeypatch):
     client = AutoEuroClient(api_key="k")
 

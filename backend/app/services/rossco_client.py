@@ -114,11 +114,15 @@ class RosscoClient:
             "amount": amount,
         }
 
-    def find_cross_references(self, article: str) -> list[dict]:
+    def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
         """Кросс-номера (аналоги) для артикула — по контракту, которого ждёт
-        matcher.py: список {"article": ..., "name": ..., "brand": ..., "price": ...}."""
+        matcher.py: список {"article": ..., "name": ..., "brand": ..., "price": ...}.
+
+        brand, если известен (см. matcher.split_article_brand), сужает
+        полнотекстовый поиск Rossco — так же, как в search_all выше."""
+        text = f"{brand} {article}" if brand else article
         try:
-            result = self.search(article)
+            result = self.search(text)
         except RosscoError:
             return []
         parts = (result.get("PartsList") or {}).get("Part") or []
