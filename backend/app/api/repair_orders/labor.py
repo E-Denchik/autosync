@@ -50,9 +50,17 @@ def edit_labor_line(labor_line_id: int):
     if "matched_operation_name" not in body and "norm_hours" not in body:
         return jsonify(error="Нужно указать хотя бы matched_operation_name или norm_hours"), 400
 
-    line.matched_operation_name = body.get("matched_operation_name", line.matched_operation_name)
     if "norm_hours" in body:
-        line.norm_hours = body.get("norm_hours")
+        raw_norm_hours = body.get("norm_hours")
+        try:
+            norm_hours = float(raw_norm_hours)
+        except (TypeError, ValueError):
+            return jsonify(error="'norm_hours' должен быть числом"), 400
+        if norm_hours <= 0:
+            return jsonify(error="'norm_hours' должен быть положительным"), 400
+        line.norm_hours = norm_hours
+
+    line.matched_operation_name = body.get("matched_operation_name", line.matched_operation_name)
     if line.norm_hours is not None and line.hourly_rate is not None:
         line.total_cost = float(line.norm_hours) * float(line.hourly_rate)
     line.manually_edited = True
@@ -63,7 +71,13 @@ def edit_labor_line(labor_line_id: int):
         "labor_line",
         line.id,
         "edited",
-        details={"matched_operation_name": line.matched_operation_name, "norm_hours": line.norm_hours},
+        details={
+            "matched_operation_name": line.matched_operation_name,
+            # line.norm_hours — SQLAlchemy Numeric, приходит как Decimal при
+            # чтении уже сохранённой строки (не только что присвоенный
+            # float выше) — Decimal не сериализуется в JSON для колонки details.
+            "norm_hours": float(line.norm_hours) if line.norm_hours is not None else None,
+        },
     )
     db.session.commit()
     return jsonify(_serialize(line))
