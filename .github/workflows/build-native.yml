@@ -32,7 +32,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Гейт перед сборкой: раньше между пушем в main и автообновлением на
+  # машине заказчика (update_checker.py подтягивает pre-release "latest")
+  # ничего не прогоняло тесты — сборка и публикация бинарников шли вообще
+  # без проверки, что код рабочий. build-linux/build-windows ниже явно
+  # требуют (needs) оба тестовых джоба — сломанный тест останавливает всё
+  # до сборки, а не после.
+  test-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+
+      - name: Run backend test suite
+        run: |
+          cd backend
+          python -m pytest tests/ -q
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend test suite
+        run: |
+          cd frontend
+          npm run test
+
   build-linux:
+    needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -76,6 +123,7 @@ jobs:
           if-no-files-found: error
 
   build-windows:
+    needs: [test-backend, test-frontend]
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
