@@ -457,7 +457,12 @@ export default function UploadPage() {
           <button
             className="btn btn-primary"
             style={{ width: "100%", justifyContent: "center" }}
-            disabled={submitting || contractFiles.length === 0 || orderFiles.length === 0}
+            disabled={
+              submitting ||
+              orderFiles.length === 0 ||
+              (contractMode === "new" && contractFiles.length === 0) ||
+              (contractMode === "existing" && !existingContractId)
+            }
             type="submit"
           >
             <UploadIcon /> {submitting ? "Загрузка…" : "Загрузить и сопоставить"}

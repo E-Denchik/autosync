@@ -3,6 +3,7 @@ import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import ContragentRatesModal from "../../components/ContragentRatesModal.jsx";
+import ContragentEditModal from "../../components/ContragentEditModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
 import { PlusIcon, EditIcon, ClockIcon } from "../../components/icons.jsx";
@@ -18,6 +19,7 @@ export default function Contragents() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [ratesTarget, setRatesTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
   const [editingRateId, setEditingRateId] = useState(null);
   const [rateInput, setRateInput] = useState("");
   const [savingRate, setSavingRate] = useState(false);
@@ -212,6 +214,13 @@ export default function Contragents() {
                       <button className="btn btn-secondary btn-sm" onClick={() => setRatesTarget(c)}>
                         <ClockIcon style={{ width: 13, height: 13 }} /> Ставки по маркам
                       </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        title="Изменить название/ставку/заметки"
+                        onClick={() => setEditTarget(c)}
+                      >
+                        <EditIcon style={{ width: 13, height: 13 }} />
+                      </button>
                       <button className="btn btn-reject btn-sm" onClick={() => setDeleteTarget(c)}>
                         Удалить
                       </button>
@@ -241,6 +250,17 @@ export default function Contragents() {
       )}
 
       {ratesTarget && <ContragentRatesModal contragent={ratesTarget} onClose={() => setRatesTarget(null)} />}
+
+      {editTarget && (
+        <ContragentEditModal
+          contragent={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={(updated) => {
+            setContragents((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+            setEditTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }

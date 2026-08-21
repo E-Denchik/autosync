@@ -6,9 +6,11 @@ import EmptyState from "../../components/EmptyState.jsx";
 import StatusPill from "../../components/StatusPill.jsx";
 import Pagination from "../../components/Pagination.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
+import ConfirmDialog from "../../components/ConfirmDialog.jsx";
+import RepairOrderEditModal from "../../components/RepairOrderEditModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { FileTextIcon, UploadIcon, ChevronRightIcon, EyeIcon } from "../../components/icons.jsx";
+import { FileTextIcon, UploadIcon, ChevronRightIcon, EyeIcon, EditIcon } from "../../components/icons.jsx";
 
 const PER_PAGE = 50;
 
@@ -18,6 +20,9 @@ export default function RepairOrdersList() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [previewTarget, setPreviewTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const toast = useToast();
 
   const handlePreview = async (orderId, source, fileName) => {
@@ -49,6 +54,37 @@ export default function RepairOrdersList() {
   const handlePageChange = (p) => {
     setPage(p);
     load(p);
+  };
+
+  const handleSaved = (updated) => {
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === editTarget.id
+          ? {
+              ...o,
+              contragent_name: updated.contragent_name,
+              vehicle_make: updated.vehicle_make,
+              vehicle_model: updated.vehicle_model,
+            }
+          : o
+      )
+    );
+    setEditTarget(null);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteRepairOrder(deleteTarget.id);
+      setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
+      setTotal((t) => t - 1);
+      toast.success(`Заказ-наряд «${deleteTarget.original_filename}» удалён`);
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -149,9 +185,27 @@ export default function RepairOrdersList() {
                   </td>
                   <td className="text-muted">{new Date(o.created_at).toLocaleString("ru-RU")}</td>
                   <td>
-                    <Link to={`/repair-orders/${o.id}/review`} className="btn btn-secondary btn-sm">
-                      Открыть <ChevronRightIcon />
-                    </Link>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        title="Изменить контрагента/машину"
+                        onClick={() => setEditTarget(o)}
+                      >
+                        <EditIcon style={{ width: 13, height: 13 }} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-reject btn-sm"
+                        title="Удалить заказ-наряд"
+                        onClick={() => setDeleteTarget(o)}
+                      >
+                        Удалить
+                      </button>
+                      <Link to={`/repair-orders/${o.id}/review`} className="btn btn-secondary btn-sm">
+                        Открыть <ChevronRightIcon />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -166,6 +220,27 @@ export default function RepairOrdersList() {
           blob={previewTarget.blob}
           fileName={previewTarget.fileName}
           onClose={() => setPreviewTarget(null)}
+        />
+      )}
+
+      {editTarget && (
+        <RepairOrderEditModal order={editTarget} onClose={() => setEditTarget(null)} onSaved={handleSaved} />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Удалить заказ-наряд?"
+          message={
+            <>
+              Заказ-наряд <strong>{deleteTarget.original_filename}</strong> вместе со всеми сопоставленными
+              позициями и работами будет удалён безвозвратно.
+            </>
+          }
+          confirmLabel="Удалить"
+          danger
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

@@ -168,6 +168,82 @@ def list_repair_orders():
     return paginated_response(result, total_count)
 
 
+@bp.patch("/<int:repair_order_id>")
+def update_repair_order(repair_order_id: int):
+    """Правка метаданных уже загруженного заказ-наряда (контрагент/машина).
+
+    Уже сопоставленные строки работ/запчастей не пересчитываются — как и
+    везде в этом модуле, конкретную строку правят вручную через PATCH
+    .../labor/<id> или .../matching/<id>, если смена контрагента должна
+    повлиять на цену."""
+    repair_order = db.get_or_404(RepairOrder, repair_order_id)
+    body = request.get_json(force=True) or {}
+
+    if "contragent_id" in body:
+        contragent_id = body.get("contragent_id")
+        repair_order.contragent_id = int(contragent_id) if contragent_id else None
+    if "vehicle_make" in body:
+        repair_order.vehicle_make = (body.get("vehicle_make") or "").strip() or None
+    if "vehicle_model" in body:
+        repair_order.vehicle_model = (body.get("vehicle_model") or "").strip() or None
+    if "vehicle_year" in body:
+        vehicle_year = body.get("vehicle_year")
+        try:
+            repair_order.vehicle_year = int(vehicle_year) if vehicle_year not in (None, "") else None
+        except (TypeError, ValueError):
+            return jsonify(error="'vehicle_year' должен быть числом"), 400
+    if "vehicle_vin" in body:
+        repair_order.vehicle_vin = (body.get("vehicle_vin") or "").strip() or None
+
+    log_change(
+        "repair_order",
+        repair_order.id,
+        "edited",
+        details={
+            "contragent_id": repair_order.contragent_id,
+            "vehicle_make": repair_order.vehicle_make,
+            "vehicle_model": repair_order.vehicle_model,
+            "vehicle_year": repair_order.vehicle_year,
+            "vehicle_vin": repair_order.vehicle_vin,
+        },
+    )
+    db.session.commit()
+    return jsonify(
+        id=repair_order.id,
+        contragent_id=repair_order.contragent_id,
+        contragent_name=repair_order.contragent.name if repair_order.contragent else None,
+        vehicle_make=repair_order.vehicle_make,
+        vehicle_model=repair_order.vehicle_model,
+        vehicle_year=repair_order.vehicle_year,
+        vehicle_vin=repair_order.vehicle_vin,
+    )
+
+
+@bp.delete("/<int:repair_order_id>")
+def delete_repair_order(repair_order_id: int):
+    """Удаляет заказ-наряд целиком — вместе с сопоставленными позициями,
+    работами и загруженными файлами. В отличие от договора (см.
+    contracts.py: delete_contract), тут нет причины блокировать удаление
+    по статусу — заказ-наряд не переиспользуется другими записями, и
+    заказчик явно должен иметь возможность убрать ошибочную/тестовую
+    загрузку в любом состоянии."""
+    repair_order = db.get_or_404(RepairOrder, repair_order_id)
+
+    paths = [repair_order.storage_path] + [f.storage_path for f in repair_order.extra_files]
+    if repair_order.generated_document_path:
+        paths.append(repair_order.generated_document_path)
+    for path in paths:
+        if path and os.path.isfile(path):
+            os.remove(path)
+
+    log_change(
+        "repair_order", repair_order.id, "deleted", details={"original_filename": repair_order.original_filename}
+    )
+    db.session.delete(repair_order)
+    db.session.commit()
+    return "", 204
+
+
 @bp.get("/<int:repair_order_id>/status")
 def upload_status(repair_order_id: int):
     repair_order = db.get_or_404(RepairOrder, repair_order_id)

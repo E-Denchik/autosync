@@ -90,6 +90,9 @@ export const api = {
   },
   listRepairOrders: (params = {}) => request(`/repair-orders/upload${withPaging(params)}`),
   getUploadStatus: (repairOrderId) => request(`/repair-orders/upload/${repairOrderId}/status`),
+  updateRepairOrder: (repairOrderId, data) =>
+    request(`/repair-orders/upload/${repairOrderId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteRepairOrder: (repairOrderId) => request(`/repair-orders/upload/${repairOrderId}`, { method: "DELETE" }),
 
   listContracts: () => request("/contracts"),
   getContract: (id) => request(`/contracts/${id}`),
