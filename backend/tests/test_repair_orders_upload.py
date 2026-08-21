@@ -2,7 +2,7 @@ import io
 import os
 
 from app.extensions import db
-from app.models import Contract, DocumentProcessingStatus, RepairOrder, RepairOrderStatus
+from app.models import Contract, Contragent, DocumentProcessingStatus, PartMatch, RepairOrder, RepairOrderStatus
 
 
 def _files():
@@ -230,3 +230,122 @@ def test_status_reports_contragent_and_vehicle_so_ui_can_confirm_they_were_saved
     assert body["contragent_name"] == "СТО Восток"
     assert body["vehicle_make"] == "KIA"
     assert body["vehicle_model"] == "Rio"
+
+
+def _create_repair_order(app, **overrides):
+    with app.app_context():
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.commit()
+        fields = {
+            "contract_id": contract.id,
+            "original_filename": "o.xlsx",
+            "storage_path": "/tmp/o.xlsx",
+            "status": RepairOrderStatus.UPLOADED,
+            **overrides,
+        }
+        order = RepairOrder(**fields)
+        db.session.add(order)
+        db.session.commit()
+        return order.id
+
+
+def test_update_repair_order_metadata(client, admin_headers, app):
+    with app.app_context():
+        contragent = Contragent(name="СТО Запад", hourly_rate=1200)
+        db.session.add(contragent)
+        db.session.commit()
+        contragent_id = contragent.id
+
+    repair_order_id = _create_repair_order(app)
+
+    resp = client.patch(
+        f"/api/repair-orders/upload/{repair_order_id}",
+        headers=admin_headers,
+        json={
+            "contragent_id": contragent_id,
+            "vehicle_make": "KIA",
+            "vehicle_model": "Rio",
+            "vehicle_year": 2020,
+            "vehicle_vin": "XTA21099999999999",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["contragent_id"] == contragent_id
+    assert body["contragent_name"] == "СТО Запад"
+    assert body["vehicle_make"] == "KIA"
+    assert body["vehicle_model"] == "Rio"
+    assert body["vehicle_year"] == 2020
+    assert body["vehicle_vin"] == "XTA21099999999999"
+
+    with app.app_context():
+        order = db.session.get(RepairOrder, repair_order_id)
+        assert order.vehicle_make == "KIA"
+
+
+def test_update_repair_order_clears_contragent_when_set_to_empty(client, admin_headers, app):
+    with app.app_context():
+        contragent = Contragent(name="СТО Юг", hourly_rate=1000)
+        db.session.add(contragent)
+        db.session.commit()
+        contragent_id = contragent.id
+
+    repair_order_id = _create_repair_order(app, contragent_id=contragent_id)
+
+    resp = client.patch(
+        f"/api/repair-orders/upload/{repair_order_id}", headers=admin_headers, json={"contragent_id": None}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["contragent_id"] is None
+
+
+def test_update_repair_order_rejects_non_numeric_year(client, admin_headers, app):
+    repair_order_id = _create_repair_order(app)
+
+    resp = client.patch(
+        f"/api/repair-orders/upload/{repair_order_id}", headers=admin_headers, json={"vehicle_year": "не число"}
+    )
+    assert resp.status_code == 400
+
+
+def test_update_unknown_repair_order_404(client, admin_headers):
+    resp = client.patch("/api/repair-orders/upload/999999", headers=admin_headers, json={"vehicle_make": "KIA"})
+    assert resp.status_code == 404
+
+
+def test_delete_repair_order_removes_it_and_dependent_rows(client, admin_headers, app):
+    repair_order_id = _create_repair_order(app, status=RepairOrderStatus.REVIEWED)
+
+    with app.app_context():
+        from app.models.part_match import ConfidenceLevel
+
+        db.session.add(
+            PartMatch(repair_order_id=repair_order_id, contract_article="A1", confidence_level=ConfidenceLevel.EXACT)
+        )
+        db.session.commit()
+        assert PartMatch.query.filter_by(repair_order_id=repair_order_id).count() == 1
+
+    resp = client.delete(f"/api/repair-orders/upload/{repair_order_id}", headers=admin_headers)
+    assert resp.status_code == 204
+
+    with app.app_context():
+        assert db.session.get(RepairOrder, repair_order_id) is None
+        assert PartMatch.query.filter_by(repair_order_id=repair_order_id).count() == 0
+
+    assert client.get(f"/api/repair-orders/upload/{repair_order_id}/status", headers=admin_headers).status_code == 404
+
+
+def test_delete_repair_order_works_regardless_of_status(client, admin_headers, app):
+    """Регрессия: в отличие от договора (см. delete_contract), у заказ-наряда
+    нет причин блокировать удаление по статусу — заказчик должен уметь убрать
+    ошибочную загрузку в любом состоянии, включая уже проверенные."""
+    for status in RepairOrderStatus:
+        repair_order_id = _create_repair_order(app, status=status)
+        resp = client.delete(f"/api/repair-orders/upload/{repair_order_id}", headers=admin_headers)
+        assert resp.status_code == 204, f"status={status} должен допускать удаление"
+
+
+def test_delete_unknown_repair_order_404(client, admin_headers):
+    resp = client.delete("/api/repair-orders/upload/999999", headers=admin_headers)
+    assert resp.status_code == 404

@@ -146,6 +146,14 @@ jobs:
           for ($i = 1; $i -le 3; $i++) {
             try {
               choco install tesseract -y --no-progress
+              # choco — нативный exe: ненулевой код возврата НЕ бросает
+              # исключение в PowerShell сам по себе (в отличие от cmdlet'ов
+              # вроде Invoke-WebRequest), поэтому try/catch выше молча
+              # "проглатывал" реальный сбой (например 503 от community
+              # feed) после первой же попытки — цикл ни разу не
+              # ретраился. Явная проверка $LASTEXITCODE заставляет такой
+              # сбой попасть в catch и реально повториться.
+              if ($LASTEXITCODE -ne 0) { throw "choco install tesseract завершился с кодом $LASTEXITCODE" }
               break
             } catch {
               if ($i -eq 3) { throw }
@@ -181,6 +189,10 @@ jobs:
           for ($i = 1; $i -le 3; $i++) {
             try {
               choco install innosetup -y --no-progress
+              # см. аналогичный комментарий в шаге "Install Tesseract OCR" —
+              # без явной проверки $LASTEXITCODE ненулевой код возврата
+              # choco не попадёт в catch, и цикл не ретраится.
+              if ($LASTEXITCODE -ne 0) { throw "choco install innosetup завершился с кодом $LASTEXITCODE" }
               break
             } catch {
               if ($i -eq 3) { throw }
