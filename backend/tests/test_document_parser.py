@@ -1,3 +1,5 @@
+import os
+
 import openpyxl
 import pandas as pd
 import pytest
@@ -8,6 +10,8 @@ from app.services.document_parser import (
     parse_hourly_rate_table,
     parse_repair_order_export,
 )
+
+TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
 
 ROWS = [
     {"Артикул": "ABC-1", "Наименование": "Тормозной диск", "Кол-во": 2, "Цена": "1 500,50"},
@@ -199,8 +203,8 @@ def test_parse_hourly_rate_table_xlsx(tmp_path):
         [{"Марка": "Hyundai", "Ставка, руб/ч": 800}, {"Марка": "Toyota", "Ставка, руб/ч": 900}]
     ).to_excel(path, index=False, engine="openpyxl")
     assert parse_hourly_rate_table(str(path)) == [
-        {"vehicle_make": "Hyundai", "hourly_rate": 800.0},
-        {"vehicle_make": "Toyota", "hourly_rate": 900.0},
+        {"vehicle_make": "Hyundai", "vehicle_model": None, "hourly_rate": 800.0},
+        {"vehicle_make": "Toyota", "vehicle_model": None, "hourly_rate": 900.0},
     ]
 
 
@@ -212,13 +216,13 @@ def test_parse_hourly_rate_table_adapts_to_different_column_names(tmp_path):
     pd.DataFrame(
         [{"Brand": "KIA", "Цена нормо-часа": "1 200,50"}]
     ).to_excel(path, index=False, engine="openpyxl")
-    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "KIA", "hourly_rate": 1200.50}]
+    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "KIA", "vehicle_model": None, "hourly_rate": 1200.50}]
 
 
 def test_parse_hourly_rate_table_csv(tmp_path):
     path = tmp_path / "rates.csv"
     pd.DataFrame([{"Марка ТС": "Hyundai", "Стоимость": 800}]).to_csv(path, index=False, encoding="utf-8-sig")
-    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "Hyundai", "hourly_rate": 800.0}]
+    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "Hyundai", "vehicle_model": None, "hourly_rate": 800.0}]
 
 
 def test_parse_hourly_rate_table_skips_blank_make_and_non_positive_rate(tmp_path):
@@ -231,7 +235,7 @@ def test_parse_hourly_rate_table_skips_blank_make_and_non_positive_rate(tmp_path
             {"Марка": "Kia", "Ставка": -100},
         ]
     ).to_excel(path, index=False, engine="openpyxl")
-    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "Hyundai", "hourly_rate": 800.0}]
+    assert parse_hourly_rate_table(str(path)) == [{"vehicle_make": "Hyundai", "vehicle_model": None, "hourly_rate": 800.0}]
 
 
 def test_parse_hourly_rate_table_raises_when_make_column_not_found(tmp_path):
@@ -248,8 +252,179 @@ def test_parse_hourly_rate_table_raises_when_rate_column_not_found(tmp_path):
         parse_hourly_rate_table(str(path))
 
 
+def test_parse_hourly_rate_table_docx_real_customer_file():
+    """Реальный файл заказчика — приложение к тендерному контракту:
+    таблица "Марка (модель) | Цена единицы услуги" внутри Word-документа,
+    марка+модель одной ячейкой, несколько моделей через запятую на одну
+    цену, плюс итоговая строка "ИТОГО с учетом аукционного снижения", её
+    не должно быть в результате."""
+    path = os.path.join(TESTDATA_DIR, "Нормочасы.docx")
+    result = parse_hourly_rate_table(path)
+
+    assert len(result) == 15
+    assert not any("итого" in r["vehicle_make"].lower() for r in result)
+
+    by_model = {(r["vehicle_make"], r["vehicle_model"]): r["hourly_rate"] for r in result}
+    assert by_model[("Chevrolet", "Niva")] == 540.0
+    assert by_model[("Hyundai", "Accent")] == 720.0
+    assert by_model[("Hyundai", "Sonata")] == 720.0
+    assert by_model[("Hyundai", "Tucson")] == 810.0
+    assert by_model[("Hyundai", "IX35")] == 810.0
+    assert by_model[("Hyundai", "Santa Fe")] == 810.0
+    assert by_model[("Audi", "A8")] == 900.0
+
+
+def test_parse_hourly_rate_table_splits_comma_separated_make_model_pairs(tmp_path):
+    path = tmp_path / "rates.xlsx"
+    pd.DataFrame([{"Марка (модель)": "Renault Sandero, Nissan Teana, Hyundai Accent", "Цена": 720}]).to_excel(
+        path, index=False, engine="openpyxl"
+    )
+    result = parse_hourly_rate_table(str(path))
+    assert result == [
+        {"vehicle_make": "Renault", "vehicle_model": "Sandero", "hourly_rate": 720.0},
+        {"vehicle_make": "Nissan", "vehicle_model": "Teana", "hourly_rate": 720.0},
+        {"vehicle_make": "Hyundai", "vehicle_model": "Accent", "hourly_rate": 720.0},
+    ]
+
+
+def test_parse_hourly_rate_table_uses_separate_model_column_when_present(tmp_path):
+    path = tmp_path / "rates.xlsx"
+    pd.DataFrame([{"Марка": "Hyundai", "Модель": "IX35", "Ставка": 810}]).to_excel(
+        path, index=False, engine="openpyxl"
+    )
+    assert parse_hourly_rate_table(str(path)) == [
+        {"vehicle_make": "Hyundai", "vehicle_model": "IX35", "hourly_rate": 810.0}
+    ]
+
+
+def test_parse_hourly_rate_table_bare_make_has_no_model(tmp_path):
+    path = tmp_path / "rates.xlsx"
+    pd.DataFrame([{"Марка": "Hyundai", "Ставка": 800}]).to_excel(path, index=False, engine="openpyxl")
+    assert parse_hourly_rate_table(str(path)) == [
+        {"vehicle_make": "Hyundai", "vehicle_model": None, "hourly_rate": 800.0}
+    ]
+
+
+def test_parse_hourly_rate_table_excludes_total_row(tmp_path):
+    path = tmp_path / "rates.xlsx"
+    pd.DataFrame(
+        [
+            {"Марка": "Hyundai", "Ставка": 800},
+            {"Марка": "ИТОГО с учетом аукционного снижения (55%):", "Ставка": 6209.99},
+        ]
+    ).to_excel(path, index=False, engine="openpyxl")
+    result = parse_hourly_rate_table(str(path))
+    assert result == [{"vehicle_make": "Hyundai", "vehicle_model": None, "hourly_rate": 800.0}]
+
+
 def test_parse_hourly_rate_table_unsupported_extension_raises(tmp_path):
-    path = tmp_path / "rates.docx"
+    path = tmp_path / "rates.zip"
     path.write_text("что угодно")
     with pytest.raises(DocumentParseError):
         parse_hourly_rate_table(str(path))
+
+
+# Тендерное приложение — бумажный документ по своей природе (печать,
+# подпись, печать организации), фото/скан вместо цифрового оригинала —
+# не гипотетический случай, а то же самое, что уже поддержано для
+# заказ-нарядов/договоров (см. services/ocr.py). Ниже — та же реальная
+# картина, что и docx/pdf-тесты выше, но пришедшая как фото: реальный OCR-
+# текст с этого же файла (снят один раз через настоящий Tesseract на
+# рендере реального Нормочасы.docx — см. историю разработки), а не выдуманный.
+_REAL_OCR_TEXT_FROM_CUSTOMER_RATE_TABLE = """\
+Идентификационный код закупки: 262631610547363160100100010014520244
+
+к Контракту № 02-2026/ЭА от 02.03.2026
+
+ПЕРЕЧЕНЬ ЦЕН ЕДИНИЦ УСЛУГ
+
+№ Марка (модель)
+п/п Цена единицы услуги, руб.
+Chevrolet Niva 540
+Renault Sandero, Nissan Almera Classik, Nissan Teana, 720
+
+Hyundai Accent, Hyundai Sonata
+
+KIA Spjrtage 810
+
+Renault Duster 810
+
+Volkswagen Multivan, Ford Tranzit 810
+Hyundai Tucson, Hyundai 1X35, Hyundai Santa Fe 810
+Toyota Land Cruiser 810
+
+Audi A8 900
+
+ИТОГО с учетом аукционного снижения (55%): 6 209.99999972623
+"""
+
+
+def test_parse_hourly_rate_table_image_uses_ocr_and_llm_extraction(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from PIL import Image
+
+    img_path = tmp_path / "rates.png"
+    Image.new("RGB", (10, 10)).save(img_path)
+    monkeypatch.setattr(
+        "pytesseract.image_to_string", lambda image, lang=None: _REAL_OCR_TEXT_FROM_CUSTOMER_RATE_TABLE
+    )
+
+    llm_client = MagicMock()
+    llm_client.extract_table_from_text.return_value = [
+        {"vehicle_make": "Chevrolet Niva", "vehicle_model": None, "hourly_rate": 540},
+        {
+            "vehicle_make": "Renault Sandero, Nissan Almera Classik, Nissan Teana, Hyundai Accent, Hyundai Sonata",
+            "vehicle_model": None,
+            "hourly_rate": 720,
+        },
+        {"vehicle_make": "Hyundai Tucson, Hyundai IX35, Hyundai Santa Fe", "vehicle_model": None, "hourly_rate": 810},
+        {"vehicle_make": "ИТОГО с учетом аукционного снижения (55%):", "vehicle_model": None, "hourly_rate": 6209.99},
+    ]
+
+    result = parse_hourly_rate_table(str(img_path), llm_client=llm_client)
+
+    by_model = {(r["vehicle_make"], r["vehicle_model"]): r["hourly_rate"] for r in result}
+    assert by_model[("Hyundai", "IX35")] == 810.0
+    assert by_model[("Hyundai", "Accent")] == 720.0
+    assert by_model[("Chevrolet", "Niva")] == 540.0
+    assert not any("итого" in make.lower() for make, _ in by_model)
+
+    # OCR-текст реально дошёл до LLM, а не какая-то заглушка.
+    passed_text = llm_client.extract_table_from_text.call_args[0][0]
+    assert "Chevrolet Niva" in passed_text
+
+
+def test_parse_hourly_rate_table_image_without_llm_client_raises_clear_error(tmp_path, monkeypatch):
+    from PIL import Image
+
+    img_path = tmp_path / "rates.png"
+    Image.new("RGB", (10, 10)).save(img_path)
+    monkeypatch.setattr("pytesseract.image_to_string", lambda image, lang=None: "неважно")
+
+    with pytest.raises(DocumentParseError):
+        parse_hourly_rate_table(str(img_path))
+
+
+def test_parse_hourly_rate_table_pdf_without_text_layer_falls_back_to_ocr(tmp_path, monkeypatch):
+    """PDF без текстового слоя (тоже фото/скан, просто упакованное в PDF) —
+    extract_pdf_tables() ничего не находит, должен сработать тот же OCR-путь,
+    что и для картинки."""
+    from unittest.mock import MagicMock
+
+    path = tmp_path / "rates.pdf"
+    path.write_bytes(b"%PDF-1.4\n%%EOF\n")  # заведомо без извлекаемых таблиц
+
+    monkeypatch.setattr("app.services.document_parser.extract_pdf_tables", lambda p: [])
+
+    from app.services import ocr as ocr_module
+
+    monkeypatch.setattr(ocr_module, "extract_text", lambda p: "Hyundai IX35 810\n")
+
+    llm_client = MagicMock()
+    llm_client.extract_table_from_text.return_value = [
+        {"vehicle_make": "Hyundai", "vehicle_model": "IX35", "hourly_rate": 810}
+    ]
+
+    result = parse_hourly_rate_table(str(path), llm_client=llm_client)
+    assert result == [{"vehicle_make": "Hyundai", "vehicle_model": "IX35", "hourly_rate": 810.0}]

@@ -6,7 +6,7 @@ import { UploadIcon } from "./icons.jsx";
 export default function ContragentRatesModal({ contragent, onClose }) {
   const [rates, setRates] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ vehicle_make: "", hourly_rate: "" });
+  const [form, setForm] = useState({ vehicle_make: "", vehicle_model: "", hourly_rate: "" });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
@@ -28,7 +28,7 @@ export default function ContragentRatesModal({ contragent, onClose }) {
     setSaving(true);
     try {
       await api.createContragentHourlyRate(contragent.id, form);
-      setForm({ vehicle_make: "", hourly_rate: "" });
+      setForm({ vehicle_make: "", vehicle_model: "", hourly_rate: "" });
       load();
     } catch (err) {
       toast.error(err.message);
@@ -77,13 +77,14 @@ export default function ContragentRatesModal({ contragent, onClose }) {
       }}
       onClick={onClose}
     >
-      <div className="panel" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
+      <div className="panel" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <div style={{ fontWeight: 650, fontSize: 14.5 }}>Ставки по маркам — {contragent.name}</div>
             <div className="text-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-              Если для марки заказ-наряда задана ставка здесь, она используется вместо общей ставки контрагента
-              ({contragent.hourly_rate} ₽/ч).
+              Если для марки (и, если задана, модели) заказ-наряда есть ставка здесь, она используется вместо
+              общей ставки контрагента ({contragent.hourly_rate} ₽/ч). Ставка по конкретной модели важнее ставки
+              на всю марку без модели.
             </div>
           </div>
           <button className="btn btn-secondary btn-sm" onClick={onClose}>
@@ -102,7 +103,16 @@ export default function ContragentRatesModal({ contragent, onClose }) {
               placeholder="Например, VOLKSWAGEN"
             />
           </div>
-          <div className="field" style={{ width: 140 }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label htmlFor="cr-model">Модель (необязательно)</label>
+            <input
+              id="cr-model"
+              value={form.vehicle_model}
+              onChange={(e) => setForm((f) => ({ ...f, vehicle_model: e.target.value }))}
+              placeholder="Например, Tucson"
+            />
+          </div>
+          <div className="field" style={{ width: 130 }}>
             <label htmlFor="cr-value">Ставка, ₽/ч</label>
             <input
               id="cr-value"
@@ -129,13 +139,14 @@ export default function ContragentRatesModal({ contragent, onClose }) {
             <UploadIcon style={{ width: 13, height: 13 }} /> {importing ? "Загрузка…" : "Загрузить файлом"}
           </button>
           <span className="text-muted" style={{ fontSize: 12 }}>
-            Excel/CSV со столбцами «Марка» и «Ставка» — названия колонок могут быть любыми, система сама
-            их распознаёт. Марка, которая уже есть в списке, обновится, а не задвоится.
+            Excel/CSV/Word/PDF со столбцами «Марка» (можно сразу с моделью, в том числе несколько через запятую
+            на одну ставку) и «Цена» — названия колонок могут быть любыми, система сама их распознаёт. Подойдёт
+            и фото/скан бумажной таблицы. Марка (и модель), которая уже есть в списке, обновится, а не задвоится.
           </span>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.xlsm,.xls,.ods,.csv"
+            accept=".xlsx,.xlsm,.xls,.ods,.csv,.docx,.pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
             style={{ display: "none" }}
             onChange={handleFilePicked}
           />
@@ -154,6 +165,7 @@ export default function ContragentRatesModal({ contragent, onClose }) {
             <thead>
               <tr>
                 <th>Марка</th>
+                <th>Модель</th>
                 <th>Ставка, ₽/ч</th>
                 <th></th>
               </tr>
@@ -162,6 +174,7 @@ export default function ContragentRatesModal({ contragent, onClose }) {
               {rates.map((r) => (
                 <tr key={r.id}>
                   <td>{r.vehicle_make}</td>
+                  <td className="text-muted">{r.vehicle_model || "любая"}</td>
                   <td>{r.hourly_rate}</td>
                   <td>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>

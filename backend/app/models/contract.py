@@ -103,9 +103,15 @@ class ContractHourlyRate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
     vehicle_make = db.Column(db.String(128), nullable=False, index=True)
+    # NULL — ставка действует на все модели этой марки. Заполнено — только
+    # на конкретную модель: реальный тендерный прайс-лист заказчика даёт
+    # РАЗНЫЕ ставки для разных моделей одной марки (Hyundai Accent/Sonata —
+    # 720 ₽, Hyundai Tucson/IX35/Santa Fe — 810 ₽) — одной ставки на марку
+    # недостаточно, см. app/services/hourly_rate_import.py.
+    vehicle_model = db.Column(db.String(128))
     hourly_rate = db.Column(db.Numeric(10, 2), nullable=False)
 
     contract = db.relationship("Contract", back_populates="hourly_rates")
 
     def __repr__(self):
-        return f"<ContractHourlyRate {self.vehicle_make} {self.hourly_rate}>"
+        return f"<ContractHourlyRate {self.vehicle_make} {self.vehicle_model or ''} {self.hourly_rate}>"

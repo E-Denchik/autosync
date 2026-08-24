@@ -17,6 +17,7 @@ from app.services.repair_order_processor import process_upload_job
 
 TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
 REPAIR_ORDER_FILE = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+RATE_TABLE_DOCX = os.path.join(TESTDATA_DIR, "Нормочасы.docx")
 
 
 def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
@@ -372,6 +373,48 @@ def test_process_upload_job_matches_contract_labor_norm_regardless_of_vehicle_ma
         assert labor_match is not None
         assert labor_match.confidence_level == ConfidenceLevel.EXACT
         assert float(labor_match.norm_hours) == 28.0
+
+
+def test_process_upload_job_uses_model_specific_rate_from_real_customer_rate_table(app):
+    """Сквозной регресс на реальных файлах заказчика: тендерный прайс-лист
+    (Нормочасы.docx) даёт РАЗНЫЕ ставки для разных моделей Hyundai — Accent/
+    Sonata по 720 ₽, Tucson/IX35/Santa Fe по 810 ₽. Реальный заказ-наряд
+    (тест 1 (исходник).xlsx) — как раз про Hyundai IX35, должен взять
+    именно 810, а не 720 (другая модель) и не первую попавшуюся ставку по
+    марке "Hyundai" вообще."""
+    from app.models import Contragent, ContragentHourlyRate
+    from app.services.hourly_rate_import import import_hourly_rates
+
+    with app.app_context():
+        contragent = Contragent(name="Управление дорог", hourly_rate=1000)
+        db.session.add(contragent)
+        db.session.flush()
+        result = import_hourly_rates(ContragentHourlyRate, "contragent_id", contragent.id, RATE_TABLE_DOCX)
+        assert result["created"] == 15
+
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,  # парсится с vehicle_make="HYUNDAI", vehicle_model="IX35"
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        any_labor_line = LaborLine.query.filter_by(repair_order_id=repair_order_id).first()
+        assert float(any_labor_line.hourly_rate) == 810.0
 
 
 def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):

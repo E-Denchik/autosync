@@ -53,6 +53,25 @@ def _contract_paths(contract: Contract) -> list[str]:
     return [contract.storage_path] + [f.storage_path for f in contract.extra_files]
 
 
+def _find_hourly_rate(model_cls, fk_field: str, fk_value: int, vehicle_make: str, vehicle_model: str | None):
+    """Ставка за нормо-час по марке (+ опционально модели) — регистронезависимо
+    (марка из заказ-наряда обычно ЗАГЛАВНЫМИ из 1С-выгрузки, ставку заводят
+    вручную/из файла как угодно — см. ContractHourlyRate.vehicle_model).
+    Реальный тендерный прайс заказчика даёт РАЗНЫЕ ставки для разных
+    моделей одной марки (Hyundai Accent — 720 ₽, Hyundai Tucson/IX35 —
+    810 ₽) — точное совпадение по модели проверяется первым, ставка "на
+    все модели марки" (vehicle_model IS NULL) — запасной вариант."""
+    query = model_cls.query.filter(
+        getattr(model_cls, fk_field) == fk_value,
+        db.func.lower(model_cls.vehicle_make) == vehicle_make.lower(),
+    )
+    if vehicle_model:
+        exact = query.filter(db.func.lower(model_cls.vehicle_model) == vehicle_model.lower()).first()
+        if exact is not None:
+            return exact
+    return query.filter(model_cls.vehicle_model.is_(None)).first()
+
+
 def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[dict, list[dict], list[dict]]:
     meta = {"vehicle_make": None, "vehicle_model": None, "vehicle_vin": None, "vehicle_year": None}
     part_lines: list[dict] = []
@@ -176,21 +195,17 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     contract_rate = None
     contragent_make_rate = None
     if repair_order.vehicle_make:
-        # Регистронезависимо: марка в заказ-наряде приходит "как в источнике"
-        # (1С-выгрузка обычно кладёт её заглавными, оператор может ввести
-        # ставку по марке как угодно — "Hyundai"/"HYUNDAI"/"hyundai") — без
-        # этого точное сравнение молча не находило бы ставку по марке и
-        # тихо откатывалось на общую ставку контрагента (см. AutoDataClient
-        # локальный поиск — там то же самое уже сделано через func.lower()).
-        contract_rate = ContractHourlyRate.query.filter(
-            ContractHourlyRate.contract_id == contract.id,
-            db.func.lower(ContractHourlyRate.vehicle_make) == repair_order.vehicle_make.lower(),
-        ).first()
+        contract_rate = _find_hourly_rate(
+            ContractHourlyRate, "contract_id", contract.id, repair_order.vehicle_make, repair_order.vehicle_model
+        )
         if contract_rate is None and repair_order.contragent:
-            contragent_make_rate = ContragentHourlyRate.query.filter(
-                ContragentHourlyRate.contragent_id == repair_order.contragent.id,
-                db.func.lower(ContragentHourlyRate.vehicle_make) == repair_order.vehicle_make.lower(),
-            ).first()
+            contragent_make_rate = _find_hourly_rate(
+                ContragentHourlyRate,
+                "contragent_id",
+                repair_order.contragent.id,
+                repair_order.vehicle_make,
+                repair_order.vehicle_model,
+            )
     if contract_rate is not None:
         hourly_rate = float(contract_rate.hourly_rate)
     elif contragent_make_rate is not None:

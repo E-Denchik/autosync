@@ -1,6 +1,6 @@
 import os
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.extensions import db
 from app.models import (
@@ -16,12 +16,16 @@ from app.services.document_parser import DocumentParseError
 from app.services.history import log_change
 from app.services.hourly_rate_import import import_hourly_rates
 from app.services.job_queue import enqueue_import_contract
+from app.services.llm_client import LLMClient
+from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
 from app.services.upload_helpers import compute_files_hash, display_filename, save_upload
 
 bp = Blueprint("contracts", __name__)
 
-RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv"}
+# Скан/фото — тоже допустимый формат таблицы ставок (см. document_parser.
+# parse_hourly_rate_table: OCR + LLM для файлов без текстового слоя).
+RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
 
 def _contract_paths(contract: Contract) -> list[str]:
@@ -208,13 +212,19 @@ def unarchive_contract(contract_id: int):
     return jsonify(_serialize(contract))
 
 
+def _serialize_rate(r) -> dict:
+    return {"id": r.id, "vehicle_make": r.vehicle_make, "vehicle_model": r.vehicle_model, "hourly_rate": float(r.hourly_rate)}
+
+
 @bp.get("/<int:contract_id>/hourly-rates")
 def list_hourly_rates(contract_id: int):
     db.get_or_404(Contract, contract_id)
-    rates = ContractHourlyRate.query.filter_by(contract_id=contract_id).order_by(ContractHourlyRate.vehicle_make).all()
-    return jsonify(
-        [{"id": r.id, "vehicle_make": r.vehicle_make, "hourly_rate": float(r.hourly_rate)} for r in rates]
+    rates = (
+        ContractHourlyRate.query.filter_by(contract_id=contract_id)
+        .order_by(ContractHourlyRate.vehicle_make, ContractHourlyRate.vehicle_model)
+        .all()
     )
+    return jsonify([_serialize_rate(r) for r in rates])
 
 
 @bp.post("/<int:contract_id>/hourly-rates")
@@ -224,6 +234,7 @@ def create_hourly_rate(contract_id: int):
     vehicle_make = (body.get("vehicle_make") or "").strip()
     if not vehicle_make:
         return jsonify(error="'vehicle_make' обязателен"), 400
+    vehicle_model = (body.get("vehicle_model") or "").strip() or None
     try:
         hourly_rate = float(body.get("hourly_rate"))
     except (TypeError, ValueError):
@@ -231,10 +242,12 @@ def create_hourly_rate(contract_id: int):
     if hourly_rate <= 0:
         return jsonify(error="'hourly_rate' должен быть положительным"), 400
 
-    rate = ContractHourlyRate(contract_id=contract_id, vehicle_make=vehicle_make, hourly_rate=hourly_rate)
+    rate = ContractHourlyRate(
+        contract_id=contract_id, vehicle_make=vehicle_make, vehicle_model=vehicle_model, hourly_rate=hourly_rate
+    )
     db.session.add(rate)
     db.session.commit()
-    return jsonify({"id": rate.id, "vehicle_make": rate.vehicle_make, "hourly_rate": float(rate.hourly_rate)}), 201
+    return jsonify(_serialize_rate(rate)), 201
 
 
 @bp.delete("/<int:contract_id>/hourly-rates/<int:rate_id>")
@@ -259,8 +272,9 @@ def import_hourly_rates_file(contract_id: int):
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
+    llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
     try:
-        result = import_hourly_rates(ContractHourlyRate, "contract_id", contract_id, path)
+        result = import_hourly_rates(ContractHourlyRate, "contract_id", contract_id, path, llm_client=llm_client)
     except DocumentParseError as exc:
         return jsonify(error=str(exc)), 400
     finally:

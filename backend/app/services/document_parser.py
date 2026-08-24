@@ -29,12 +29,19 @@ QTY_COLUMN_ALIASES = ["кол-во", "количество", "qty", "quantity", 
 PRICE_COLUMN_ALIASES = ["цена", "price", "стоимость", "сумма"]
 
 # Таблица ставок за нормо-час по маркам ТС (см. parse_hourly_rate_table
-# ниже) — образец файла от заказчика так и не пришёл, поэтому колонки тоже
-# ищутся по алиасам заголовка, а не по конкретному имени/позиции: заказчик
-# может назвать колонки "Марка"/"Марка ТС"/"Brand", "Ставка"/"Цена н/ч" — как
-# ему удобно, а не так, как было в одном присланном примере.
+# ниже) — колонки ищутся по алиасам заголовка, как и везде в этом файле.
+# Реальный файл заказчика (приложение к тендерному контракту, .docx) кладёт
+# марку и модель ОДНОЙ колонкой "Марка (модель)" — алиас "марка" ловит её
+# по подстроке без отдельной записи. MODEL_COLUMN_ALIASES — на случай, если
+# в файле марка и модель всё же разнесены по разным колонкам.
 MAKE_COLUMN_ALIASES = ["марка", "make", "brand", "марка тс", "марка автомобиля"]
+MODEL_COLUMN_ALIASES = ["модель"]
 RATE_COLUMN_ALIASES = ["ставка", "цена н/ч", "цена нормо-часа", "стоимость н/ч", "цена", "rate", "price", "стоимость"]
+# Строка "ИТОГО ..."/"Всего ..." в конце такой таблицы — это сумма по
+# таблице, а не реальная ставка (реальный файл заказчика: "ИТОГО с учетом
+# аукционного снижения (55%): ... 6209.99" — своя "марка" и число, похожее
+# на ставку, но это агрегат, который выдал бы мусорную ставку в 6000+ ₽).
+_TOTAL_ROW_MARKERS = ("итого", "всего")
 
 # Колонки печатной формы заказ-наряда 1С ("Выполненные работы"/"Расходная
 # накладная", см. parse_repair_order_export ниже) — по алиасам заголовка, а
@@ -99,10 +106,49 @@ def _dataframe_to_lines(df: pd.DataFrame) -> list[dict]:
     return lines
 
 
+def _split_make_model(text: str) -> tuple[str, str | None]:
+    """"Hyundai Accent" -> ("Hyundai", "Accent"); "Chevrolet" -> ("Chevrolet", None).
+    Эвристика (первое слово — марка, остаток — модель) верна для подавляющего
+    большинства марок ("Toyota Land Cruiser", "Hyundai Santa Fe"); двусловные
+    марки без модели в одной ячейке ("Great Wall") — известное исключение,
+    которое эта эвристика не отличит от "марка+модель"."""
+    parts = text.split(None, 1)
+    if len(parts) == 2:
+        return parts[0], parts[1].strip()
+    return parts[0], None
+
+
+def _expand_make_cell(make_text: str, rate: float, model_text: str | None = None) -> list[dict]:
+    """Одна "ячейка" с маркой(-ами) + ставка -> одна или несколько строк
+    {vehicle_make, vehicle_model, hourly_rate}. Если модель уже известна
+    отдельно (своя колонка, или её уже выделила LLM при OCR-разборе) —
+    доверяем ей как есть. Иначе разбираем make_text сами: одна ячейка может
+    перечислять сразу несколько марок/моделей с одинаковой ставкой через
+    запятую (реальный файл заказчика: "Renault Sandero, Nissan Almera
+    Classik, ..., Hyundai Accent, Hyundai Sonata" — все по одной цене)."""
+    if model_text:
+        return [{"vehicle_make": make_text, "vehicle_model": model_text, "hourly_rate": rate}]
+
+    lines = []
+    for segment in make_text.split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        make, model = _split_make_model(segment)
+        lines.append({"vehicle_make": make, "vehicle_model": model, "hourly_rate": rate})
+    return lines
+
+
 def _dataframe_to_rate_lines(df: pd.DataFrame) -> list[dict]:
     columns = list(df.columns)
     make_col = _match_column(columns, MAKE_COLUMN_ALIASES)
+    model_col = _match_column(columns, MODEL_COLUMN_ALIASES)
     rate_col = _match_column(columns, RATE_COLUMN_ALIASES)
+    if model_col == make_col:
+        # "Марка (модель)" одной колонкой matches оба алиаса сразу — это НЕ
+        # отдельная колонка модели, а комбинированная ячейка (см.
+        # _expand_make_cell).
+        model_col = None
 
     if make_col is None:
         raise DocumentParseError(f"Не удалось найти колонку с маркой ТС среди {columns}")
@@ -111,32 +157,114 @@ def _dataframe_to_rate_lines(df: pd.DataFrame) -> list[dict]:
 
     lines = []
     for _, row in df.iterrows():
-        make = row.get(make_col)
-        if pd.isna(make) or not str(make).strip():
+        make_cell = row.get(make_col)
+        if pd.isna(make_cell) or not str(make_cell).strip():
             continue
+        make_text = str(make_cell).strip()
+        if any(marker in make_text.lower() for marker in _TOTAL_ROW_MARKERS):
+            continue
+
         rate = _to_float(row.get(rate_col))
         if rate is None or rate <= 0:
             continue
-        lines.append({"vehicle_make": str(make).strip(), "hourly_rate": rate})
+
+        model_text = _clean(row.get(model_col)) if model_col else None
+        lines.extend(_expand_make_cell(make_text, rate, model_text))
     return lines
 
 
-def parse_hourly_rate_table(file_path: str) -> list[dict]:
-    """Таблица ставок за нормо-час по маркам ТС (для контрагента или
-    договора, см. app/services/hourly_rate_import.py) — только табличные
-    форматы (xlsx/xls/ods/csv), без docx/pdf: такая таблица на практике
-    всегда простая электронная таблица, а не свободный документ со сканами.
-    Каждая строка: {"vehicle_make": str, "hourly_rate": float}."""
+def parse_hourly_rate_table(file_path: str, llm_client=None) -> list[dict]:
+    """Таблица ставок за нормо-час по маркам/моделям ТС (для контрагента или
+    договора, см. app/services/hourly_rate_import.py). Каждая строка:
+    {"vehicle_make": str, "vehicle_model": str | None, "hourly_rate": float}.
+
+    Поддержаны и простые таблицы (xlsx/xls/ods/csv — одна колонка "Марка",
+    одна "Ставка"), и печатная форма приложения к тендерному контракту
+    (docx — реальный файл заказчика: таблица "Марка (модель) | Цена" внутри
+    Word-документа, возможно несколько таблиц в файле, включая пустые
+    служебные — из них просто не наберётся ни одной строки, это не ошибка),
+    и PDF с текстовым слоем — тем же путём, что и docx.
+
+    Скан/фото (jpg/png) и PDF БЕЗ текстового слоя (сфотографированное
+    бумажное приложение к тендеру — вполне реальный случай, не только
+    цифровой оригинал) идут через OCR + LLM-извлечение — тот же путь, что
+    и распознавание сканов заказ-нарядов/договоров (см. services/ocr.py,
+    LLMClient.extract_table_from_text). Для этого пути нужен llm_client —
+    если он не передан, а файл оказался сканом, вернётся понятная ошибка,
+    а не тихая пустота."""
+    from app.services.ocr import is_image_extension
+
     ext = os.path.splitext(file_path)[1].lower()
+    if is_image_extension(ext):
+        return _parse_rate_table_via_ocr(file_path, llm_client)
+
     if ext in (".xlsx", ".xlsm", ".xls"):
-        df = _read_excel_df(file_path)
+        dataframes = [_read_excel_df(file_path)]
     elif ext == ".ods":
-        df = _read_ods_df(file_path)
+        dataframes = [_read_ods_df(file_path)]
     elif ext == ".csv":
-        df = _read_csv_df(file_path)
+        dataframes = [_read_csv_df(file_path)]
+    elif ext == ".docx":
+        dataframes = extract_docx_tables(file_path)
+    elif ext == ".pdf":
+        dataframes = extract_pdf_tables(file_path)
     else:
         raise DocumentParseError(f"Неподдерживаемый формат файла для таблицы ставок: {ext}")
-    return _dataframe_to_rate_lines(df)
+
+    lines: list[dict] = []
+    last_error: DocumentParseError | None = None
+    for df in dataframes:
+        try:
+            lines.extend(_dataframe_to_rate_lines(df))
+        except DocumentParseError as exc:
+            last_error = exc
+    if lines:
+        return lines
+
+    if ext == ".pdf":
+        # Ни одна таблица не нашлась текстом — похоже на скан без
+        # текстового слоя, а не настоящий PDF-документ с таблицей.
+        return _parse_rate_table_via_ocr(file_path, llm_client)
+
+    raise last_error or DocumentParseError("В файле не найдено ни одной таблицы со ставками")
+
+
+def _parse_rate_table_via_ocr(file_path: str, llm_client) -> list[dict]:
+    if llm_client is None:
+        raise DocumentParseError(
+            "Файл похож на скан/фото — чтобы распознать таблицу ставок, нужна выбранная LLM-модель"
+        )
+
+    from app.services.ocr import OcrError, extract_text
+
+    try:
+        raw_text = extract_text(file_path)
+    except OcrError as exc:
+        raise DocumentParseError(str(exc)) from exc
+    if not raw_text.strip():
+        raise DocumentParseError("Не удалось распознать текст в файле (пустой результат OCR)")
+
+    try:
+        rows = llm_client.extract_table_from_text(raw_text, ["vehicle_make", "vehicle_model", "hourly_rate"])
+    except Exception as exc:
+        raise DocumentParseError(f"Не удалось извлечь таблицу ставок из распознанного текста: {exc}") from exc
+
+    lines: list[dict] = []
+    for row in rows:
+        make_text = _clean(row.get("vehicle_make"))
+        if not make_text:
+            continue
+        if any(marker in make_text.lower() for marker in _TOTAL_ROW_MARKERS):
+            continue
+        rate = _to_float(row.get("hourly_rate"))
+        if rate is None or rate <= 0:
+            continue
+        model_text = _clean(row.get("vehicle_model"))
+        lines.extend(_expand_make_cell(make_text, rate, model_text))
+
+    if not lines:
+        raise DocumentParseError("Не удалось найти ни одной ставки в распознанном тексте")
+    return lines
 
 
 def _clean(value) -> str | None:

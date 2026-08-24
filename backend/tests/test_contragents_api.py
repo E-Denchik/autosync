@@ -1,3 +1,8 @@
+import os
+
+TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
+
+
 def test_create_list_update_delete(client, admin_headers):
     create_resp = client.post(
         "/api/contragents",
@@ -170,3 +175,71 @@ def test_import_hourly_rates_reports_parse_error_for_unrecognized_columns(client
     )
     assert resp.status_code == 400
     assert "error" in resp.get_json()
+
+
+def test_import_hourly_rates_accepts_real_customer_docx_file(client, admin_headers):
+    """Реальный файл заказчика — приложение к тендерному контракту (.docx,
+    не Excel), марка+модель одной ячейкой, несколько моделей через запятую
+    на одну ставку, плюс итоговая строка. Должен полностью пройти через
+    HTTP-эндпоинт, а не только через сервисную функцию напрямую."""
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "Управление дорог", "hourly_rate": 1000}
+    ).get_json()["id"]
+
+    with open(os.path.join(TESTDATA_DIR, "Нормочасы.docx"), "rb") as f:
+        resp = client.post(
+            f"/api/contragents/{contragent_id}/hourly-rates/import",
+            headers=admin_headers,
+            data={"file": (f, "Нормочасы.docx")},
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"created": 15, "updated": 0, "total": 15}
+
+    listed = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers).get_json()
+    by_model = {(r["vehicle_make"], r["vehicle_model"]): r["hourly_rate"] for r in listed}
+    assert by_model[("Hyundai", "IX35")] == 810.0
+    assert by_model[("Hyundai", "Accent")] == 720.0
+    assert not any("итого" in make.lower() for make, _ in by_model)
+
+
+def test_import_hourly_rates_accepts_a_photo_of_the_rate_table(client, admin_headers, monkeypatch):
+    """Тот же реальный тендерный прайс, но пришедший как фото/скан, а не
+    цифровой файл — бумажные приложения к контрактам вполне могут прийти
+    именно так. Идёт через OCR + LLM (см. document_parser._parse_rate_table_via_ocr)."""
+    import io
+
+    from PIL import Image
+
+    monkeypatch.setattr(
+        "pytesseract.image_to_string",
+        lambda image, lang=None: "Chevrolet Niva 540\nHyundai Tucson, Hyundai IX35 810\n",
+    )
+    monkeypatch.setattr(
+        "app.services.llm_client.LLMClient.extract_table_from_text",
+        lambda self, raw_text, fields: [
+            {"vehicle_make": "Chevrolet Niva", "vehicle_model": None, "hourly_rate": 540},
+            {"vehicle_make": "Hyundai Tucson, Hyundai IX35", "vehicle_model": None, "hourly_rate": 810},
+        ],
+    )
+
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "Управление дорог", "hourly_rate": 1000}
+    ).get_json()["id"]
+
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(buf, format="PNG")
+    buf.seek(0)
+
+    resp = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates/import",
+        headers=admin_headers,
+        data={"file": (buf, "rates.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"created": 3, "updated": 0, "total": 3}
+
+    listed = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers).get_json()
+    by_model = {(r["vehicle_make"], r["vehicle_model"]): r["hourly_rate"] for r in listed}
+    assert by_model[("Hyundai", "IX35")] == 810.0

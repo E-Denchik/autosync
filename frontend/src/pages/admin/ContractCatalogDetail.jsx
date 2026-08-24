@@ -22,7 +22,7 @@ export default function ContractCatalogDetail() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [hourlyRates, setHourlyRates] = useState([]);
-  const [rateForm, setRateForm] = useState({ vehicle_make: "", hourly_rate: "" });
+  const [rateForm, setRateForm] = useState({ vehicle_make: "", vehicle_model: "", hourly_rate: "" });
   const [savingRate, setSavingRate] = useState(false);
   const [importingRates, setImportingRates] = useState(false);
   const rateFileInputRef = useRef(null);
@@ -84,7 +84,7 @@ export default function ContractCatalogDetail() {
     try {
       await api.createContractHourlyRate(contractId, rateForm);
       toast.success("Ставка добавлена");
-      setRateForm({ vehicle_make: "", hourly_rate: "" });
+      setRateForm({ vehicle_make: "", vehicle_model: "", hourly_rate: "" });
       loadHourlyRates();
     } catch (err) {
       toast.error(err.message);
@@ -201,10 +201,11 @@ export default function ContractCatalogDetail() {
       </div>
 
       {tab === "rates" ? (
-        <div className="panel" style={{ maxWidth: 520 }}>
+        <div className="panel" style={{ maxWidth: 600 }}>
           <p className="text-muted" style={{ marginTop: 0, fontSize: 12.5 }}>
-            Цена нормо-часа для этого контракта по маркам ТС — если для марки заказ-наряда задана ставка
-            здесь, она используется вместо общей ставки контрагента.
+            Цена нормо-часа для этого контракта по маркам (и, если задано, моделям) ТС — если для марки/модели
+            заказ-наряда есть ставка здесь, она используется вместо общей ставки контрагента. Ставка по
+            конкретной модели важнее ставки на всю марку без модели.
           </p>
           <form onSubmit={handleAddRate} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 16 }}>
             <div className="field" style={{ flex: 1 }}>
@@ -217,7 +218,16 @@ export default function ContractCatalogDetail() {
                 placeholder="Например, HYUNDAI"
               />
             </div>
-            <div className="field" style={{ width: 140 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="rate-model">Модель (необязательно)</label>
+              <input
+                id="rate-model"
+                value={rateForm.vehicle_model}
+                onChange={(e) => setRateForm((f) => ({ ...f, vehicle_model: e.target.value }))}
+                placeholder="Например, IX35"
+              />
+            </div>
+            <div className="field" style={{ width: 130 }}>
               <label htmlFor="rate-value">Ставка, ₽/ч</label>
               <input
                 id="rate-value"
@@ -244,13 +254,14 @@ export default function ContractCatalogDetail() {
               <UploadIcon style={{ width: 13, height: 13 }} /> {importingRates ? "Загрузка…" : "Загрузить файлом"}
             </button>
             <span className="text-muted" style={{ fontSize: 12 }}>
-              Excel/CSV со столбцами «Марка» и «Ставка» — названия колонок могут быть любыми. Марка, которая
-              уже есть в списке, обновится, а не задвоится.
+              Excel/CSV/Word/PDF со столбцами «Марка» (можно сразу с моделью, в том числе несколько через
+              запятую на одну ставку) и «Цена» — названия колонок могут быть любыми. Подойдёт и фото/скан
+              бумажной таблицы. Марка (и модель), которая уже есть в списке, обновится, а не задвоится.
             </span>
             <input
               ref={rateFileInputRef}
               type="file"
-              accept=".xlsx,.xlsm,.xls,.ods,.csv"
+              accept=".xlsx,.xlsm,.xls,.ods,.csv,.docx,.pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
               style={{ display: "none" }}
               onChange={handleRateFilePicked}
             />
@@ -263,6 +274,7 @@ export default function ContractCatalogDetail() {
               <thead>
                 <tr>
                   <th>Марка</th>
+                  <th>Модель</th>
                   <th>Ставка, ₽/ч</th>
                   <th></th>
                 </tr>
@@ -271,6 +283,7 @@ export default function ContractCatalogDetail() {
                 {hourlyRates.map((r) => (
                   <tr key={r.id}>
                     <td>{r.vehicle_make}</td>
+                    <td className="text-muted">{r.vehicle_model || "любая"}</td>
                     <td>{r.hourly_rate}</td>
                     <td>
                       <button className="btn btn-reject btn-sm" onClick={() => handleDeleteRate(r.id)}>
