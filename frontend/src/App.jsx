@@ -1,5 +1,6 @@
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import UpdateChecker from "./components/UpdateChecker.jsx";
+import UpdateProgressWindow from "./pages/UpdateProgressWindow.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import PricingDashboard from "./pages/ozon/PricingDashboard.jsx";
 import CardGenerator from "./pages/ozon/CardGenerator.jsx";
@@ -34,6 +35,16 @@ import {
 } from "./components/icons.jsx";
 
 export default function App() {
+  const location = useLocation();
+
+  // Отдельное системное окно прогресса обновления открывается на этот же
+  // адрес (см. native_app.py: open_update_window) — своя, "голая" страница
+  // без сайдбара/навигации остального приложения, это отдельное окно ОС,
+  // а не раздел SPA.
+  if (location.pathname === "/update-progress") {
+    return <UpdateProgressWindow />;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">

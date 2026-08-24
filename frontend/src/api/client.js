@@ -232,5 +232,9 @@ export const api = {
     request(`/repair-orders/upload/${repairOrderId}/file?source=${source}`),
 
   checkForUpdate: () => request("/update/check"),
-  installUpdate: () => request("/update/install", { method: "POST" }),
+  getPendingUpdateResult: () => request("/update/pending-result"),
+  startUpdateDownload: () => request("/update/download", { method: "POST" }),
+  getUpdateProgress: () => request("/update/progress"),
+  cancelUpdateDownload: () => request("/update/cancel", { method: "POST" }),
+  applyUpdate: () => request("/update/apply", { method: "POST" }),
 };

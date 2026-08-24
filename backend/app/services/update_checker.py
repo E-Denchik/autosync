@@ -8,16 +8,36 @@ app/_build_info.json) — сравниваем его с тем commit, на к�
 коммитов между текущим и последним (GitHub compare API), без ручного
 ведения release notes.
 
+Скачивание и применение обновления — два РАЗДЕЛЬНЫХ шага, а не один
+блокирующий вызов (см. историю багов: раньше install_update() скачивал и
+сразу же ставил внутри одного HTTP-запроса — фронт физически не мог
+показать прогресс скачивания, потому что к моменту получения ответа файл
+уже был скачан целиком). Скачивание идёт в фоновом потоке и пишет прогресс
+в общее состояние (get_download_state()), которое фронт опрашивает поллингом.
+Установка ждёт явного подтверждения пользователя (apply_update()).
+
 Установка платформо-зависима и всегда завершает текущий процесс (см.
-_schedule_exit): Windows-инсталлятор и `apt install` на Linux не могут
+_schedule_exit): Windows-инсталлятор и `apt install`/`cp` на Linux не могут
 перезаписать уже запущенный бинарник, поэтому реальная установка идёт в
 отдельном, отсоединённом от нас процессе, который стартует ПОСЛЕ нашего
 выхода, а затем сам перезапускает приложение.
-"""
+
+Раньше обе ветки установки ГЛОТАЛИ ошибку молча (Windows:
+/SUPPRESSMSGBOXES прятал любую ошибку инсталлятора; Linux: `|| true` после
+pkexec/apt-get) и всё равно перезапускали СТАРЫЙ бинарник — снаружи это
+выглядело как "нажал установить, а обновление всё равно предлагается
+заново" при каждой следующей проверке, без единой подсказки почему. Теперь
+перед запуском установщика пишется маркер с ожидаемым исходом
+(_write_pending_marker), а установочный скрипт дополнительно сохраняет код
+возврата самого инсталлятора/apt-get/cp. При следующем запуске
+consume_pending_update_result() сравнивает вшитый в НОВЫЙ процесс commit с
+тем, что было "до" — если они совпали, установка не применилась, и
+причина (код возврата) показывается пользователю вместо тишины."""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import stat
@@ -31,6 +51,8 @@ import requests
 
 from app.config import _bundled_resource
 
+logger = logging.getLogger(__name__)
+
 GITHUB_REPO = "E-Denchik/autosync"
 # Переопределяется в тестах/локальной проверке на мок-сервер (тот же приём,
 # что и scripts/mock_ozon_api.py + OZON_SELLER_API_BASE).
@@ -42,6 +64,10 @@ class UpdateCheckError(RuntimeError):
 
 
 class UpdateInstallError(RuntimeError):
+    pass
+
+
+class _DownloadCanceled(Exception):
     pass
 
 
@@ -116,22 +142,6 @@ def _running_binary_path() -> str:
     return os.path.abspath(sys.executable)
 
 
-def _download(url: str, dest: str) -> None:
-    try:
-        resp = requests.get(url, headers={"Accept": "application/octet-stream"}, stream=True, timeout=120)
-    except requests.exceptions.RequestException as exc:
-        raise UpdateInstallError(f"Не удалось скачать обновление: {exc}") from exc
-    if not resp.ok:
-        raise UpdateInstallError(f"Не удалось скачать обновление: GitHub -> {resp.status_code}")
-    total = 0
-    with open(dest, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=1024 * 256):
-            f.write(chunk)
-            total += len(chunk)
-    if total == 0:
-        raise UpdateInstallError("Скачанный файл обновления пуст")
-
-
 def _relaunch_env() -> dict:
     """Окружение для процесса, который запускает обновлённый бинарник.
 
@@ -159,26 +169,234 @@ def _schedule_exit(delay: float = 1.5) -> None:
     threading.Thread(target=_exit, daemon=True).start()
 
 
-def _install_windows(assets: list[dict]) -> None:
-    asset = next(
-        (a for a in assets if a["name"].startswith("autosync-setup") and a["name"].endswith(".exe")), None
+# ---------------------------------------------------------------------------
+# Скачивание — фоновый поток с прогрессом
+# ---------------------------------------------------------------------------
+
+_state_lock = threading.Lock()
+_state: dict = {
+    # idle -> downloading -> downloaded -> applying (после чего процесс
+    # завершается сам, см. _schedule_exit) | error | canceled
+    "phase": "idle",
+    "downloaded_bytes": 0,
+    "total_bytes": 0,
+    "speed_bytes_per_sec": 0.0,
+    "error": None,
+    "asset_path": None,
+    "asset_name": None,
+}
+_cancel_event = threading.Event()
+
+
+def get_download_state() -> dict:
+    with _state_lock:
+        return dict(_state)
+
+
+def _set_state(**kwargs) -> None:
+    with _state_lock:
+        _state.update(kwargs)
+
+
+def _pick_asset(assets: list[dict]) -> dict:
+    system = platform.system()
+    if system == "Windows":
+        asset = next(
+            (a for a in assets if a["name"].startswith("autosync-setup") and a["name"].endswith(".exe")), None
+        )
+        if not asset:
+            raise UpdateInstallError("В последнем релизе не найден установщик Windows.")
+        return asset
+    if system == "Linux":
+        current_exe = _running_binary_path()
+        if current_exe.startswith("/opt/autosync/"):
+            asset = next(
+                (a for a in assets if a["name"].startswith("autosync-desktop") and a["name"].endswith(".deb")), None
+            )
+            if not asset:
+                raise UpdateInstallError("В последнем релизе не найден .deb-пакет.")
+            return asset
+        asset = next((a for a in assets if a.get("name") == "autosync"), None)
+        if not asset:
+            raise UpdateInstallError("В последнем релизе не найден бинарник Linux.")
+        return asset
+    raise UpdateInstallError(f"Автообновление не поддерживается на {system}.")
+
+
+def _download_with_progress(url: str, dest: str) -> None:
+    try:
+        resp = requests.get(url, headers={"Accept": "application/octet-stream"}, stream=True, timeout=120)
+    except requests.exceptions.RequestException as exc:
+        raise UpdateInstallError(f"Не удалось скачать обновление: {exc}") from exc
+    if not resp.ok:
+        raise UpdateInstallError(f"Не удалось скачать обновление: GitHub -> {resp.status_code}")
+
+    try:
+        total = int(resp.headers.get("Content-Length") or 0)
+    except ValueError:
+        total = 0
+    _set_state(total_bytes=total, downloaded_bytes=0, speed_bytes_per_sec=0.0)
+
+    downloaded = 0
+    window_start = time.monotonic()
+    window_bytes = 0
+    with open(dest, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=1024 * 256):
+            if _cancel_event.is_set():
+                raise _DownloadCanceled()
+            f.write(chunk)
+            downloaded += len(chunk)
+            window_bytes += len(chunk)
+            now = time.monotonic()
+            elapsed = now - window_start
+            if elapsed >= 0.25:
+                _set_state(downloaded_bytes=downloaded, speed_bytes_per_sec=window_bytes / elapsed)
+                window_start = now
+                window_bytes = 0
+    _set_state(downloaded_bytes=downloaded)
+    if downloaded == 0:
+        raise UpdateInstallError("Скачанный файл обновления пуст")
+
+
+def _download_job() -> None:
+    try:
+        release = _get(f"{GITHUB_API}/repos/{GITHUB_REPO}/releases/tags/latest")
+        assets = release.get("assets", [])
+        asset = _pick_asset(assets)
+
+        tmp_dir = tempfile.mkdtemp(prefix="autosync-update-")
+        dest = os.path.join(tmp_dir, asset["name"])
+        _download_with_progress(asset["browser_download_url"], dest)
+        _set_state(phase="downloaded", asset_path=dest, asset_name=asset["name"])
+    except _DownloadCanceled:
+        _set_state(phase="canceled")
+    except (UpdateCheckError, UpdateInstallError) as exc:
+        _set_state(phase="error", error=str(exc))
+    except Exception as exc:  # не должно тихо теряться — см. докстринг модуля
+        logger.exception("Скачивание обновления упало неожиданно")
+        _set_state(phase="error", error=f"Непредвиденная ошибка: {exc}")
+
+
+def start_download() -> None:
+    if not is_frozen():
+        raise UpdateInstallError("Установка обновления доступна только в собранном приложении.")
+    with _state_lock:
+        if _state["phase"] == "downloading":
+            return  # уже идёт — повторный клик не должен запускать вторую параллельную загрузку
+    _cancel_event.clear()
+    _set_state(
+        phase="downloading", downloaded_bytes=0, total_bytes=0, speed_bytes_per_sec=0.0, error=None, asset_path=None
     )
-    if not asset:
-        raise UpdateInstallError("В последнем релизе не найден установщик Windows.")
+    threading.Thread(target=_download_job, daemon=True, name="update-download").start()
 
-    tmp_dir = tempfile.mkdtemp(prefix="autosync-update-")
-    installer_path = os.path.join(tmp_dir, asset["name"])
-    _download(asset["browser_download_url"], installer_path)
 
+def cancel_download() -> None:
+    with _state_lock:
+        phase = _state["phase"]
+        asset_path = _state.get("asset_path")
+    if phase == "downloading":
+        _cancel_event.set()
+        return
+    if phase == "downloaded" and asset_path and os.path.isfile(asset_path):
+        try:
+            os.remove(asset_path)
+        except OSError:
+            pass
+    _set_state(phase="idle", asset_path=None, asset_name=None, error=None)
+
+
+# ---------------------------------------------------------------------------
+# Применение уже скачанного обновления
+# ---------------------------------------------------------------------------
+
+
+def _marker_path() -> str:
+    data_dir = os.environ.get("AUTOSYNC_DATA_DIR") or tempfile.gettempdir()
+    return os.path.join(data_dir, "pending_update.json")
+
+
+def _write_pending_marker(result_path: str) -> None:
+    marker = {"previous_commit": get_current_commit(), "result_path": result_path}
+    try:
+        with open(_marker_path(), "w", encoding="utf-8") as f:
+            json.dump(marker, f)
+    except OSError:
+        logger.warning("Не удалось записать маркер ожидаемого обновления", exc_info=True)
+
+
+def _explain_install_failure(exit_code: str | None) -> str:
+    if exit_code is None:
+        return (
+            "Не удалось подтвердить установку обновления — возможно, приложение "
+            "было закрыто до её завершения."
+        )
+    if exit_code.strip() == "0":
+        return "Установщик отработал без ошибок, но версия приложения не изменилась. Попробуйте ещё раз."
+    return f"Установка обновления завершилась с ошибкой (код {exit_code.strip()})."
+
+
+def consume_pending_update_result() -> dict | None:
+    """Вызывается один раз при старте приложения — проверяет, применилось ли
+    обновление, запущенное перед ЭТИМ запуском. См. докстринг модуля про
+    то, почему раньше это тихо терялось."""
+    path = _marker_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            marker = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    previous_commit = marker.get("previous_commit")
+    result_path = marker.get("result_path")
+    current_commit = get_current_commit()
+
+    exit_code = None
+    if result_path and os.path.isfile(result_path):
+        try:
+            with open(result_path, "r", encoding="utf-8") as f:
+                exit_code = f.read().strip() or None
+        except OSError:
+            pass
+        try:
+            os.remove(result_path)
+        except OSError:
+            pass
+
+    if current_commit and previous_commit and current_commit != previous_commit:
+        return {"success": True, "commit": current_commit}
+
+    return {"success": False, "exit_code": exit_code, "message": _explain_install_failure(exit_code)}
+
+
+def _apply_windows(installer_path: str) -> None:
+    asset_name = os.path.basename(installer_path)
+    if not (asset_name.startswith("autosync-setup") and asset_name.endswith(".exe")):
+        raise UpdateInstallError("Скачанный файл не похож на установщик Windows.")
+
+    tmp_dir = os.path.dirname(installer_path)
     current_exe = _running_binary_path()
-    # 2 секунды — чтобы наш процесс успел выйти и освободить файл: Windows
-    # не даёт инсталлятору перезаписать exe, пока он ещё запущен.
+    result_path = os.path.join(tmp_dir, "install_result.txt")
+    _write_pending_marker(result_path)
+
+    # /SILENT (не /VERYSILENT) — Inno Setup сам показывает нативное окно
+    # прогресса установки, этого достаточно, чтобы пользователь видел,
+    # что происходит, без отдельного кастомного UI. /SUPPRESSMSGBOXES
+    # раньше прятал вместе с прогрессом и реальные ошибки инсталлятора —
+    # убран намеренно (см. докстринг модуля).
     script_path = os.path.join(tmp_dir, "apply_update.bat")
     with open(script_path, "w", encoding="mbcs", errors="ignore") as f:
         f.write(
             "@echo off\r\n"
             "timeout /t 2 /nobreak >nul\r\n"
-            f'"{installer_path}" /SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS\r\n'
+            f'"{installer_path}" /SILENT /NORESTART /CLOSEAPPLICATIONS\r\n'
+            f'echo %errorlevel% > "{result_path}"\r\n'
             f'start "" "{current_exe}"\r\n'
         )
 
@@ -191,45 +409,38 @@ def _install_windows(assets: list[dict]) -> None:
     _schedule_exit()
 
 
-def _install_linux(assets: list[dict]) -> None:
+def _apply_linux(asset_path: str) -> None:
     current_exe = _running_binary_path()
-    tmp_dir = tempfile.mkdtemp(prefix="autosync-update-")
+    tmp_dir = os.path.dirname(asset_path)
     is_deb_install = current_exe.startswith("/opt/autosync/")
+    result_path = os.path.join(tmp_dir, "install_result.txt")
+    _write_pending_marker(result_path)
 
     if is_deb_install:
-        asset = next(
-            (a for a in assets if a["name"].startswith("autosync-desktop") and a["name"].endswith(".deb")), None
-        )
-        if not asset:
-            raise UpdateInstallError("В последнем релизе не найден .deb-пакет.")
-        deb_path = os.path.join(tmp_dir, asset["name"])
-        _download(asset["browser_download_url"], deb_path)
-
-        # apt install запросит пароль через графический диалог (pkexec).
-        # Если пользователь отменит или установка не удастся — всё равно
-        # перезапускаем то, что лежит по текущему пути: dpkg атомарен,
-        # старая рабочая версия остаётся на месте, приложение не потеряется.
+        if not asset_path.endswith(".deb"):
+            raise UpdateInstallError("Скачанный файл не похож на .deb-пакет.")
+        # pkexec запросит пароль через графический диалог. Раньше `|| true`
+        # после этой команды тихо проглатывал любой отказ (отменённый ввод
+        # пароля, конфликт пакетов и т.п.) — теперь код возврата реально
+        # сохраняется и показывается пользователю при следующем запуске
+        # (см. consume_pending_update_result), вместо того чтобы просто
+        # молча перезапустить старую версию.
         script = (
             "#!/bin/sh\n"
             "sleep 2\n"
-            f"pkexec apt-get install -y --allow-downgrades '{deb_path}' || true\n"
+            f"pkexec apt-get install -y --allow-downgrades '{asset_path}'\n"
+            f"echo $? > '{result_path}'\n"
             f"'{current_exe}' &\n"
         )
     else:
-        asset = next((a for a in assets if a.get("name") == "autosync"), None)
-        if not asset:
-            raise UpdateInstallError("В последнем релизе не найден бинарник Linux.")
-        new_binary_path = os.path.join(tmp_dir, "autosync-new")
-        _download(asset["browser_download_url"], new_binary_path)
-        os.chmod(new_binary_path, os.stat(new_binary_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-
+        os.chmod(asset_path, os.stat(asset_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         # cp, не mv — tmp_dir может быть на другой файловой системе
         # (например, tmpfs), mv между ФС падает с "Invalid cross-device link".
         script = (
             "#!/bin/sh\n"
             "sleep 2\n"
-            f"cp -f '{new_binary_path}' '{current_exe}'\n"
-            f"chmod +x '{current_exe}'\n"
+            f"cp -f '{asset_path}' '{current_exe}' && chmod +x '{current_exe}'\n"
+            f"echo $? > '{result_path}'\n"
             f"'{current_exe}' &\n"
         )
 
@@ -249,17 +460,26 @@ def _install_linux(assets: list[dict]) -> None:
     _schedule_exit()
 
 
-def install_update() -> None:
+def apply_update() -> None:
     if not is_frozen():
         raise UpdateInstallError("Установка обновления доступна только в собранном приложении.")
 
-    release = _get(f"{GITHUB_API}/repos/{GITHUB_REPO}/releases/tags/latest")
-    assets = release.get("assets", [])
+    with _state_lock:
+        phase = _state["phase"]
+        asset_path = _state.get("asset_path")
+    if phase != "downloaded" or not asset_path or not os.path.isfile(asset_path):
+        raise UpdateInstallError("Сначала нужно скачать обновление.")
+
+    _set_state(phase="applying")
 
     system = platform.system()
-    if system == "Windows":
-        _install_windows(assets)
-    elif system == "Linux":
-        _install_linux(assets)
-    else:
-        raise UpdateInstallError(f"Автообновление не поддерживается на {system}.")
+    try:
+        if system == "Windows":
+            _apply_windows(asset_path)
+        elif system == "Linux":
+            _apply_linux(asset_path)
+        else:
+            raise UpdateInstallError(f"Автообновление не поддерживается на {system}.")
+    except Exception as exc:
+        _set_state(phase="error", error=str(exc))
+        raise

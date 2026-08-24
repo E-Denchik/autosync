@@ -1,11 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
+import { useToast } from "../context/ToastContext.jsx";
 import { RefreshIcon, CheckCircleIcon, AlertCircleIcon } from "./icons.jsx";
 
 export default function UpdateChecker() {
   const [state, setState] = useState("idle");
   const [info, setInfo] = useState(null);
   const [error, setError] = useState("");
+  const toast = useToast();
+
+  useEffect(() => {
+    // Один раз при старте — не осталось ли необъявленного результата
+    // предыдущей попытки обновить приложение (см. update_checker.py:
+    // consume_pending_update_result — раньше неудачная тихая установка
+    // просто не оставляла никакого следа, кроме того что при следующей
+    // проверке снова предлагалось "обновление доступно").
+    api
+      .getPendingUpdateResult()
+      .then((result) => {
+        if (!result) return;
+        if (result.success) {
+          toast.success("Обновление успешно установлено");
+        } else {
+          toast.error(result.message || "Не удалось установить обновление");
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCheck = async () => {
     setState("checking");
@@ -20,11 +42,21 @@ export default function UpdateChecker() {
     }
   };
 
-  const handleInstall = async () => {
-    setState("installing");
+  const handleDownload = async () => {
+    setState("opening");
     setError("");
     try {
-      await api.installUpdate();
+      await api.startUpdateDownload();
+      if (window.pywebview?.api?.open_update_window) {
+        await window.pywebview.api.open_update_window();
+        setState("idle");
+      } else {
+        // Не должно случиться в собранном приложении (кнопка видна только
+        // когда info.frozen истинно), но на всякий случай не теряем прогресс
+        // молча — скачивание уже идёт на бэкенде, просто некуда открыть окно.
+        setError("Не удалось открыть окно обновления — попробуйте перезапустить приложение.");
+        setState("error");
+      }
     } catch (e) {
       setError(e.message);
       setState("error");
@@ -64,7 +96,7 @@ export default function UpdateChecker() {
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              onClick={handleInstall}
+              onClick={handleDownload}
               style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
             >
               Скачать и установить
@@ -77,11 +109,7 @@ export default function UpdateChecker() {
         </div>
       )}
 
-      {state === "installing" && (
-        <div className="update-checker-status">
-          Скачивание и установка… приложение перезапустится само.
-        </div>
-      )}
+      {state === "opening" && <div className="update-checker-status">Открываю окно обновления…</div>}
 
       {state === "error" && (
         <div className="update-checker-panel">

@@ -227,9 +227,52 @@ class SaveDialogApi:
 
     Экземпляр создаётся до create_window (pywebview требует js_api на
     момент создания окна) — сам объект window подставляется в него сразу
-    после того, как create_window его вернёт (см. run_window)."""
+    после того, как create_window его вернёт (см. run_window).
+
+    Заодно — открытие ОТДЕЛЬНОГО окна прогресса обновления
+    (open_update_window): пользователь просил именно системное окно
+    (можно свернуть/закрыть независимо от главного), а не встроенную
+    панель внутри него — JS не может создать второе нативное окно сам,
+    это умеет только pywebview на этой стороне."""
 
     window = None
+    backend_port: int | None = None
+    session_token: str | None = None
+    update_window = None
+
+    def open_update_window(self) -> dict:
+        import webview
+
+        if self.update_window is not None:
+            try:
+                self.update_window.restore()
+                self.update_window.focus()
+            except Exception:
+                pass
+            return {"ok": True}
+
+        if self.backend_port is None or self.session_token is None:
+            return {"ok": False, "error": "Окно приложения ещё не готово"}
+
+        url = f"http://127.0.0.1:{self.backend_port}/update-progress?token={self.session_token}"
+        update_api = UpdateWindowApi(self)
+        window = webview.create_window(
+            "Обновление AutoSync",
+            url,
+            width=440,
+            height=420,
+            min_size=(380, 360),
+            resizable=True,
+            js_api=update_api,
+        )
+        update_api.window = window
+        self.update_window = window
+
+        def _on_closed() -> None:
+            self.update_window = None
+
+        window.events.closed += _on_closed
+        return {"ok": True}
 
     def save_file_dialog(
         self, suggested_filename: str, content_base64: str, file_types: list[str] | None = None
@@ -283,7 +326,26 @@ class SaveDialogApi:
         return {"ok": True, "path": path}
 
 
-def run_window(url: str) -> None:
+class UpdateWindowApi:
+    """js_api окна прогресса обновления — единственное, что странице нужно
+    от Python напрямую: закрыть СЕБЯ. window.close() в контенте pywebview
+    не закрывает нативное окно (это обычная браузерная семантика, тут не
+    применимо) — только сам объект Window умеет себя закрыть."""
+
+    def __init__(self, main_api: SaveDialogApi):
+        self._main_api = main_api
+        self.window = None
+
+    def close_window(self) -> dict:
+        if self.window is not None:
+            try:
+                self.window.destroy()
+            except Exception:
+                logger.exception("Не удалось закрыть окно обновления")
+        return {"ok": True}
+
+
+def run_window(url: str, backend_port: int | None = None, session_token: str | None = None) -> None:
     """Открывает AutoSync в собственном окне через pywebview (системный
     webview — WebView2 на Windows, WebKitGTK на Linux, без Chromium внутри
     приложения). Закрытие окна — единственная точка выхода, полностью
@@ -323,6 +385,8 @@ def run_window(url: str) -> None:
         width, height = 1360, 860
 
     save_api = SaveDialogApi()
+    save_api.backend_port = backend_port
+    save_api.session_token = session_token
     window = webview.create_window(
         "AutoSync", url, width=width, height=height, min_size=(1024, 700), maximized=True, js_api=save_api
     )
@@ -412,7 +476,7 @@ def main() -> None:
             time.sleep(0.5)
 
     logger.info("Открываю окно AutoSync: http://127.0.0.1:%s/", backend_port)
-    run_window(url)
+    run_window(url, backend_port=backend_port, session_token=os.environ["AUTOSYNC_SESSION_TOKEN"])
 
     logger.info("Окно закрыто — завершение работы AutoSync")
     os._exit(0)
