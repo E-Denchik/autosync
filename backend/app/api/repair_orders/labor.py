@@ -86,6 +86,16 @@ def edit_labor_line(labor_line_id: int):
 @bp.post("/<int:labor_line_id>/approve")
 def approve_labor_line(labor_line_id: int):
     line = db.get_or_404(LaborLine, labor_line_id)
+    if line.norm_hours is None:
+        # Регрессия по реальным данным заказчика: работу без нормы часов
+        # раньше можно было принять как есть — она молча уезжала в итоговый
+        # xlsx с пустой нормой и нулевой суммой ("Итого работы: 0"),
+        # заказчик замечал это только в готовом документе. Норму нужно
+        # сначала проставить через PATCH (правку) или отклонить работу.
+        return (
+            jsonify(error="Сначала укажите норму часов — без неё работа не попадёт в итоговый документ"),
+            409,
+        )
     line.review_status = ReviewStatus.APPROVED
     line.reviewed_at = datetime.utcnow()
     log_change("labor_line", line.id, "approved")
@@ -114,12 +124,32 @@ def bulk_review():
     if not ids:
         return jsonify(error="'ids' не может быть пустым"), 400
 
-    status = ReviewStatus.APPROVED if action == "approve" else ReviewStatus.REJECTED
     lines = LaborLine.query.filter(LaborLine.id.in_(ids)).all()
-    for line in lines:
-        line.review_status = status
+
+    if action == "reject":
+        for line in lines:
+            line.review_status = ReviewStatus.REJECTED
+            line.reviewed_at = datetime.utcnow()
+            log_change("labor_line", line.id, "rejected")
+        db.session.commit()
+        return jsonify(updated=[_serialize(line) for line in lines], skipped=[])
+
+    # approve: работу без нормы часов нельзя массово принять — она молча
+    # уедет в итоговый документ с пустой нормой и нулевой суммой (см.
+    # approve_labor_line выше). Остальные строки в пачке всё равно
+    # принимаются — одна проблемная позиция не должна блокировать весь bulk.
+    approvable = [line for line in lines if line.norm_hours is not None]
+    skipped = [line for line in lines if line.norm_hours is None]
+    for line in approvable:
+        line.review_status = ReviewStatus.APPROVED
         line.reviewed_at = datetime.utcnow()
-        log_change("labor_line", line.id, status.value)
+        log_change("labor_line", line.id, "approved")
     db.session.commit()
 
-    return jsonify([_serialize(line) for line in lines])
+    return jsonify(
+        updated=[_serialize(line) for line in approvable],
+        skipped=[
+            {"id": line.id, "description": line.description, "reason": "Не указана норма часов"}
+            for line in skipped
+        ],
+    )

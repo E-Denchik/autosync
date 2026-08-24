@@ -67,6 +67,22 @@ def test_import_from_brand_catalog_file_scoped_to_requested_brand(app):
         assert vw_only_article is None
 
 
+def test_bulk_insert_parts_populates_article_normalized(app):
+    """_bulk_insert_parts идёt в обход ORM (bulk_insert_mappings) — валидатор
+    ContractPart._sync_article_normalized при этом не срабатывает, поэтому
+    article_normalized должен выставляться явно в самой функции импорта."""
+    from app.services.contract_catalog_import import _bulk_insert_parts
+
+    with app.app_context():
+        contract_id = _make_contract(app)
+        _bulk_insert_parts(contract_id, [{"article": "23410-2G000", "name": "Поршень", "qty": 1, "price": 100}])
+        db.session.commit()
+
+        part = ContractPart.query.filter_by(contract_id=contract_id).first()
+        assert part.article == "23410-2G000"
+        assert part.article_normalized == "234102G000"
+
+
 def test_reimporting_the_same_file_updates_in_place_instead_of_duplicating(app):
     """Регрессия: раньше повторная загрузка того же файла в уже
     существующий договор удваивала ContractPart на каждый повторный импорт

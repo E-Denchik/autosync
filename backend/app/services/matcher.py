@@ -46,6 +46,42 @@ def split_article_brand(raw_article: str | None) -> tuple[str | None, str | None
     return match.group(1).strip(), match.group(2).strip()
 
 
+# Артикулы у Kia/Hyundai/Bosch/... — всегда цифры + латинские буквы, без
+# смысловых разделителей: "-", " ", ".", "/", "_" в разных источниках
+# расставлены непоследовательно (мехник вручную набивает заказ-наряд в
+# Excel не так, как отформатирован каталог поставщика) и ничего не значат
+# сами по себе — поэтому норма не перечисляет конкретные символы-разделители,
+# а оставляет только буквы/цифры, вычищая ЛЮБОЙ разделительный "мусор" разом.
+_ARTICLE_KEEP_RE = re.compile(r"[^0-9A-Z]+")
+
+# Кириллица и латиница на глаз неразличимы для части букв — русская
+# раскладка клавиатуры физически совпадает по расположению клавиш с
+# латинской для этих букв, поэтому при наборе артикула кириллица
+# просачивается на автомате (опечатка, а не другой артикул). Отображается
+# как есть (contract_article/matched_article не трогаем), но при сравнении
+# на этом должно совпадать.
+_CYRILLIC_LOOKALIKES = str.maketrans(
+    {"А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X", "У": "Y"}
+)
+
+
+def normalize_article(article: str | None) -> str | None:
+    """Сводит два по-разному отформатированных написания ОДНОГО и того же
+    артикула к одной строке для сравнения: убирает пробелы/тире/точки/слэши
+    и любые другие небуквенно-цифровые разделители, приводит к верхнему
+    регистру и схлопывает кириллические буквы-омоглифы в латинские
+    аналоги. Пример из реальных данных заказчика: заказ-наряд содержит
+    "234102G000", каталог поставщика — "23410-2G000" (тот же физический
+    артикул). НЕ используется при запросах к внешним API поставщиков
+    (Rossco/АвтоЕвро/Москворечье) — им нужен канонически отформатированный
+    код, как в split_article_brand()."""
+    if not article:
+        return None
+    normalized = article.upper().translate(_CYRILLIC_LOOKALIKES)
+    normalized = _ARTICLE_KEEP_RE.sub("", normalized)
+    return normalized or None
+
+
 def _shortlist_candidates(name: str | None, order_lines: list[dict]) -> list[dict]:
     if not name or len(order_lines) <= LLM_CANDIDATE_LIMIT:
         return order_lines
@@ -189,6 +225,17 @@ def match_line_against_contract(
             # На случай, если в самом договоре артикулы записаны в том же
             # "код [бренд]" виде — сравниваем и с исходной строкой как есть.
             exact = ContractPart.query.filter_by(contract_id=contract_id, article=article).first()
+        source = "exact_article_match"
+        if exact is None:
+            # Пробелы/тире у механика в заказ-наряде часто расходятся с
+            # форматированием каталога (см. matcher.normalize_article) —
+            # тот же физический артикул, просто иначе набран.
+            normalized = normalize_article(clean_article)
+            if normalized:
+                exact = ContractPart.query.filter_by(
+                    contract_id=contract_id, article_normalized=normalized
+                ).first()
+                source = "exact_article_match_normalized"
         if exact:
             return {
                 "contract_article": article,
@@ -198,7 +245,7 @@ def match_line_against_contract(
                 "matched_price": exact.price,
                 "confidence_level": ConfidenceLevel.EXACT,
                 "confidence_score": 1.0,
-                "raw_match_data": {"source": "exact_article_match"},
+                "raw_match_data": {"source": source},
             }
 
     if clean_article:
@@ -207,7 +254,14 @@ def match_line_against_contract(
         except Exception:
             cross_refs = []
         for ref in cross_refs:
-            found = ContractPart.query.filter_by(contract_id=contract_id, article=ref.get("article")).first()
+            ref_article = ref.get("article")
+            found = ContractPart.query.filter_by(contract_id=contract_id, article=ref_article).first()
+            if found is None:
+                ref_normalized = normalize_article(ref_article)
+                if ref_normalized:
+                    found = ContractPart.query.filter_by(
+                        contract_id=contract_id, article_normalized=ref_normalized
+                    ).first()
             if found:
                 return {
                     "contract_article": article,

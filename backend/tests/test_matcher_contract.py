@@ -114,6 +114,86 @@ def test_returns_no_match_when_contract_catalog_is_empty(app):
         assert result["confidence_score"] == 0.0
 
 
+def test_exact_match_ignores_dashes_and_spaces_in_article(app):
+    """Регрессия по реальным данным заказчика: заказ-наряд, набитый механиком
+    в Excel, содержит артикул без тире ("234102G000"), а каталог договора —
+    в каноническом формате поставщика с тире ("234102-G000" /
+    "23410-2G000") — это тот же физический артикул, просто другое
+    форматирование, не другая деталь."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="23410-2G000", name="Поршень двигателя с пальцем", price=3123.80)
+        )
+        db.session.commit()
+
+        order_line = {"article": "234102G000", "name": "ПОРШЕНЬ ДВИГАТЕЛЯ С ПАЛЬЦЕМ"}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["matched_article"] == "23410-2G000"
+        assert float(result["matched_price"]) == 3123.80
+        assert result["raw_match_data"]["source"] == "exact_article_match_normalized"
+
+
+def test_exact_match_ignores_extra_spaces_in_article(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="ABC 123 45", name="Деталь", price=100.0))
+        db.session.commit()
+
+        order_line = {"article": "ABC12345", "name": "деталь"}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["matched_article"] == "ABC 123 45"
+
+
+def test_byte_exact_match_still_preferred_over_normalized_when_both_exist(app):
+    """Если в каталоге есть И буквально точный артикул, И другая строка с тем
+    же нормализованным видом — точное совпадение должно побеждать, чтобы не
+    подменять явно указанный артикул похожим по форме."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="234102G000", name="Деталь А (точная)", price=1.0))
+        db.session.add(ContractPart(contract_id=contract_id, article="23410-2G000", name="Деталь Б (нормализованная)", price=2.0))
+        db.session.commit()
+
+        order_line = {"article": "234102G000", "name": "деталь"}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["matched_article"] == "234102G000"
+        assert result["raw_match_data"]["source"] == "exact_article_match"
+
+
+def test_cross_reference_result_matched_against_catalog_ignoring_dashes(app):
+    """Полная регрессия по скриншотам заказчика: заказ-наряд содержит
+    "PN32661 [AUTOWELT]" (аналог), поставщик по кросс-номеру отдаёт
+    официальный код Hyundai/Kia "23410-2G000" (с тире), а в каталоге
+    договора этот же артикул записан без тире ("234102G000") — раньше
+    verification-запрос сравнивал их буквально и терял совпадение."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="234102G000", name="Поршень двигателя с пальцем", price=3123.80)
+        )
+        db.session.commit()
+
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = [
+            {"article": "23410-2G000", "name": "Поршень двигателя с поршневым пальцем", "price": 3123.80}
+        ]
+        llm_client = MagicMock()
+
+        order_line = {"article": "PN32661 [AUTOWELT]", "name": "PN32661 поршень с кольцами 0.50 HYUNDAI/KIA G4KD *AUTOWELT"}
+        result = match_line_against_contract(order_line, contract_id, supplier_client, llm_client)
+
+        assert result["confidence_level"] == ConfidenceLevel.CROSS_REF
+        assert result["matched_article"] == "234102G000"
+        assert float(result["matched_price"]) == 3123.80
+        llm_client.match_part_by_name.assert_not_called()
+
+
 def test_match_all_against_contract_scales_to_many_parts(app):
     with app.app_context():
         contract_id = _make_contract(app)

@@ -19,6 +19,7 @@ from app.services.document_parser import (
     parse_repair_order_export,
 )
 from app.services.history import log_change
+from app.services.matcher import normalize_article
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ def _bulk_insert_parts(contract_id: int, lines: list[dict]) -> dict:
         row = {
             "contract_id": contract_id,
             "article": article,
+            "article_normalized": normalize_article(article),
             "name": line.get("name"),
             "qty": line.get("qty"),
             "price": line.get("price"),

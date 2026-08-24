@@ -1,6 +1,8 @@
 import enum
 from datetime import datetime
 
+from sqlalchemy.orm import validates
+
 from app.extensions import db
 
 
@@ -49,11 +51,31 @@ class ContractPart(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
     article = db.Column(db.String(128), index=True)
+    # article без пробелов/тире и в верхнем регистре (см. matcher.normalize_article)
+    # — механик, печатающий заказ-наряд в Excel, форматирует один и тот же
+    # артикул иначе, чем каталог поставщика ("234102G000" в наряде против
+    # "23410-2G000" в каталоге) — точное совпадение по article это пропускало.
+    # Отдельная индексированная колонка, а не REPLACE() в запросе на лету,
+    # чтобы сравнение оставалось индексированным SQL-запросом даже на
+    # каталогах 50 000+ строк (см. PROJECT.md).
+    article_normalized = db.Column(db.String(128), index=True)
     name = db.Column(db.String(512), nullable=False)
     qty = db.Column(db.Numeric(12, 2))
     price = db.Column(db.Numeric(12, 2))
 
     contract = db.relationship("Contract", back_populates="parts")
+
+    @validates("article")
+    def _sync_article_normalized(self, key, value):
+        # Локальный импорт: matcher.py импортирует ContractPart из
+        # app.models на уровне модуля — импорт наверху этого файла создал
+        # бы цикл. Это НЕ покрывает bulk_insert_mappings/bulk_update_mappings
+        # (contract_catalog_import.py) — те идут в обход ORM-событий, там
+        # article_normalized выставляется явно.
+        from app.services.matcher import normalize_article
+
+        self.article_normalized = normalize_article(value)
+        return value
 
     def __repr__(self):
         return f"<ContractPart {self.article or ''} {self.name}>"

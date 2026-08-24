@@ -161,7 +161,7 @@ def test_edit_unknown_line_404(client, admin_headers):
 def test_approve_and_reject(client, admin_headers, app):
     with app.app_context():
         order_id = _make_repair_order(app)
-        approve_id = _make_labor_line(app, order_id)
+        approve_id = _make_labor_line(app, order_id, norm_hours=1.5)
         reject_id = _make_labor_line(app, order_id)
 
     approved = client.post(f"/api/repair-orders/labor/{approve_id}/approve", headers=admin_headers)
@@ -173,18 +173,72 @@ def test_approve_and_reject(client, admin_headers, app):
     assert rejected.get_json()["review_status"] == "rejected"
 
 
+def test_approve_rejects_line_without_norm_hours(client, admin_headers, app):
+    """Регрессия по реальным данным заказчика: работу без нормы часов можно
+    было принять как есть, и она молча уезжала в итоговый xlsx с нулевой
+    суммой ("Итого работы: 0") — заказчик замечал это только в готовом
+    документе."""
+    with app.app_context():
+        order_id = _make_repair_order(app)
+        line_id = _make_labor_line(app, order_id)
+
+    resp = client.post(f"/api/repair-orders/labor/{line_id}/approve", headers=admin_headers)
+    assert resp.status_code == 409
+
+    with app.app_context():
+        line = db.session.get(LaborLine, line_id)
+        assert line.review_status == ReviewStatus.PENDING
+
+
 def test_bulk_review_approve_and_reject(client, admin_headers, app):
     with app.app_context():
         order_id = _make_repair_order(app)
-        id1 = _make_labor_line(app, order_id)
-        id2 = _make_labor_line(app, order_id)
+        id1 = _make_labor_line(app, order_id, norm_hours=1.0)
+        id2 = _make_labor_line(app, order_id, norm_hours=2.0)
 
     resp = client.post(
         "/api/repair-orders/labor/bulk", headers=admin_headers, json={"ids": [id1, id2], "action": "approve"}
     )
     assert resp.status_code == 200
-    statuses = {line["id"]: line["review_status"] for line in resp.get_json()}
+    body = resp.get_json()
+    assert body["skipped"] == []
+    statuses = {line["id"]: line["review_status"] for line in body["updated"]}
     assert statuses == {id1: "approved", id2: "approved"}
+
+
+def test_bulk_review_skips_lines_without_norm_hours_but_approves_the_rest(client, admin_headers, app):
+    with app.app_context():
+        order_id = _make_repair_order(app)
+        ok_id = _make_labor_line(app, order_id, description="Замена масла", norm_hours=1.0)
+        missing_id = _make_labor_line(app, order_id, description="Опора ДВС правая замена")
+
+    resp = client.post(
+        "/api/repair-orders/labor/bulk",
+        headers=admin_headers,
+        json={"ids": [ok_id, missing_id], "action": "approve"},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert [line["id"] for line in body["updated"]] == [ok_id]
+    assert body["skipped"] == [{"id": missing_id, "description": "Опора ДВС правая замена", "reason": "Не указана норма часов"}]
+
+    with app.app_context():
+        assert db.session.get(LaborLine, ok_id).review_status == ReviewStatus.APPROVED
+        assert db.session.get(LaborLine, missing_id).review_status == ReviewStatus.PENDING
+
+
+def test_bulk_review_reject_does_not_require_norm_hours(client, admin_headers, app):
+    with app.app_context():
+        order_id = _make_repair_order(app)
+        line_id = _make_labor_line(app, order_id)
+
+    resp = client.post(
+        "/api/repair-orders/labor/bulk", headers=admin_headers, json={"ids": [line_id], "action": "reject"}
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["skipped"] == []
+    assert body["updated"][0]["review_status"] == "rejected"
 
 
 def test_bulk_review_rejects_invalid_action(client, admin_headers, app):

@@ -171,11 +171,17 @@ export default function ReviewMatches() {
     if (laborSelected.size === 0) return;
     setLaborBulkBusy(true);
     try {
-      const updated = await api.bulkReviewLabor(Array.from(laborSelected), action);
+      const { updated, skipped } = await api.bulkReviewLabor(Array.from(laborSelected), action);
       const updatedById = new Map(updated.map((l) => [l.id, l]));
       setLaborLines((prev) => prev.map((l) => updatedById.get(l.id) || l));
       setLaborSelected(new Set());
-      toast.success(action === "approve" ? "Работы приняты" : "Работы отклонены");
+      if (skipped && skipped.length > 0) {
+        toast.error(
+          `Без нормы часов, не приняты (${skipped.length}): ${skipped.map((s) => s.description).join(", ")}`
+        );
+      } else if (updated.length > 0) {
+        toast.success(action === "approve" ? "Работы приняты" : "Работы отклонены");
+      }
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -621,10 +627,19 @@ export default function ReviewMatches() {
                         ) : (
                           <span
                             onClick={() => startEditHours(l)}
-                            title="Изменить нормо-часы вручную"
-                            style={{ cursor: "pointer", borderBottom: "1px dashed var(--border-strong)" }}
+                            title={
+                              l.norm_hours == null
+                                ? "Норма часов не указана — без неё работа не попадёт в итоговый документ. Нажмите, чтобы вписать."
+                                : "Изменить нормо-часы вручную"
+                            }
+                            style={{
+                              cursor: "pointer",
+                              borderBottom: "1px dashed var(--border-strong)",
+                              color: l.norm_hours == null ? "var(--warning)" : undefined,
+                              fontWeight: l.norm_hours == null ? 600 : undefined,
+                            }}
                           >
-                            {l.norm_hours ?? "—"}
+                            {l.norm_hours ?? "не указана"}
                           </span>
                         )}
                       </td>
