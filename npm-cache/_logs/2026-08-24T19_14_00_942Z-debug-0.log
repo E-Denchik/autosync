@@ -1,0 +1,18 @@
+0 verbose cli /home/kali/.local/share/fnm/node-versions/v20.19.2/installation/bin/node /run/user/1000/fnm_multishells/10337_1787596424085/bin/npm
+1 info using npm@11.18.0
+2 info using node@v20.19.2
+3 silly config load:file:/home/kali/.local/share/fnm/node-versions/v20.19.2/installation/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/kali/Рабочий стол/projects/autosync/.npmrc
+5 silly config load:file:/home/kali/.npmrc
+6 silly config load:file:/home/kali/.local/share/fnm/node-versions/v20.19.2/installation/etc/npmrc
+7 verbose title npm config get prefix
+8 verbose argv "config" "get" "prefix"
+9 verbose logfile logs-max:10 dir:/home/kali/Рабочий стол/projects/autosync/npm-cache/_logs/2026-08-24T19_14_00_942Z-
+10 verbose logfile /home/kali/Рабочий стол/projects/autosync/npm-cache/_logs/2026-08-24T19_14_00_942Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose cwd /home/kali/Рабочий стол/projects/autosync
+13 verbose os Linux 7.0.12+kali-amd64
+14 verbose node v20.19.2
+15 verbose npm  v11.18.0
+16 verbose exit 0
+17 info ok
