@@ -12,12 +12,16 @@ from app.models import (
     DocumentProcessingStatus,
 )
 from app.services.contract_catalog_import import ContractMergeError, merge_contracts
+from app.services.document_parser import DocumentParseError
 from app.services.history import log_change
+from app.services.hourly_rate_import import import_hourly_rates
 from app.services.job_queue import enqueue_import_contract
 from app.services.pagination import paginate, paginated_response
 from app.services.upload_helpers import compute_files_hash, display_filename, save_upload
 
 bp = Blueprint("contracts", __name__)
+
+RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv"}
 
 
 def _contract_paths(contract: Contract) -> list[str]:
@@ -239,6 +243,31 @@ def delete_hourly_rate(contract_id: int, rate_id: int):
     db.session.delete(rate)
     db.session.commit()
     return "", 204
+
+
+@bp.post("/<int:contract_id>/hourly-rates/import")
+def import_hourly_rates_file(contract_id: int):
+    """Массовая загрузка ставок по маркам ТС файлом — см. тот же эндпоинт
+    у контрагентов (app/api/contragents.py), формат файла не диктуется."""
+    db.get_or_404(Contract, contract_id)
+    file = request.files.get("file")
+    if not file:
+        return jsonify(error="Нужен файл 'file'"), 400
+
+    try:
+        path = save_upload(file, RATE_TABLE_EXTENSIONS)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+    try:
+        result = import_hourly_rates(ContractHourlyRate, "contract_id", contract_id, path)
+    except DocumentParseError as exc:
+        return jsonify(error=str(exc)), 400
+    finally:
+        if os.path.isfile(path):
+            os.remove(path)
+
+    return jsonify(result), 200
 
 
 @bp.delete("/<int:contract_id>")

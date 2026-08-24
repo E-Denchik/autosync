@@ -25,6 +25,12 @@ def _serialize(line: LaborLine) -> dict:
         "review_status": line.review_status.value,
         "manually_edited": line.manually_edited,
         "suggested_addition": bool(line.raw_match_data and line.raw_match_data.get("source") == "llm_suggested_addition"),
+        # Норма часов не подтверждена каталогом (matched_operation_name всё
+        # ещё пуст), но взята из самого заказ-наряда, а не выдумана — фронт
+        # должен это показать иначе, чем просто пустую норму.
+        "norm_hours_from_repair_order": bool(
+            line.raw_match_data and line.raw_match_data.get("source") == "repair_order_stated_value"
+        ),
     }
 
 

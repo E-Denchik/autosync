@@ -21,7 +21,6 @@ export default function ReviewMatches() {
   const [status, setStatus] = useState(null);
   const [orderInfo, setOrderInfo] = useState(null);
   const [matches, setMatches] = useState([]);
-  const [candidates, setCandidates] = useState([]);
   const [laborLines, setLaborLines] = useState([]);
   const [laborCatalog, setLaborCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,10 +49,6 @@ export default function ReviewMatches() {
       .listMatches(repairOrderId)
       .then(setMatches)
       .catch((e) => toast.error(e.message));
-    api
-      .listCandidates(repairOrderId)
-      .then(setCandidates)
-      .catch(() => {});
     api
       .listLaborLines(repairOrderId)
       .then(setLaborLines)
@@ -630,6 +625,8 @@ export default function ReviewMatches() {
                             title={
                               l.norm_hours == null
                                 ? "Норма часов не указана — без неё работа не попадёт в итоговый документ. Нажмите, чтобы вписать."
+                                : l.norm_hours_from_repair_order
+                                ? "Не найдено в справочнике — норма взята из самого заказ-наряда, как есть. Проверьте и нажмите, чтобы поправить."
                                 : "Изменить нормо-часы вручную"
                             }
                             style={{
@@ -640,6 +637,11 @@ export default function ReviewMatches() {
                             }}
                           >
                             {l.norm_hours ?? "не указана"}
+                          </span>
+                        )}
+                        {l.norm_hours_from_repair_order && (
+                          <span className="text-muted" style={{ fontSize: 11, marginLeft: 6 }}>
+                            (из наряда)
                           </span>
                         )}
                       </td>
@@ -731,7 +733,7 @@ export default function ReviewMatches() {
       {editingMatch && (
         <MatchEditModal
           match={editingMatch}
-          candidates={candidates}
+          repairOrderId={repairOrderId}
           saving={busyId === editingMatch.id}
           onClose={() => setEditingMatch(null)}
           onSave={handleSaveEdit}

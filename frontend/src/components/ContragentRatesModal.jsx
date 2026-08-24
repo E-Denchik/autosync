@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useToast } from "../context/ToastContext.jsx";
+import { UploadIcon } from "./icons.jsx";
 
 export default function ContragentRatesModal({ contragent, onClose }) {
   const [rates, setRates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ vehicle_make: "", hourly_rate: "" });
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
   const toast = useToast();
 
   const load = () => {
@@ -40,6 +43,24 @@ export default function ContragentRatesModal({ contragent, onClose }) {
       setRates((prev) => prev.filter((r) => r.id !== rateId));
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const handleFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.importContragentHourlyRates(contragent.id, file);
+      toast.success(
+        `Загружено: ${result.created} новых, ${result.updated} обновлено (всего строк в файле: ${result.total})`
+      );
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -97,6 +118,28 @@ export default function ContragentRatesModal({ contragent, onClose }) {
             {saving ? "…" : "Добавить"}
           </button>
         </form>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <UploadIcon style={{ width: 13, height: 13 }} /> {importing ? "Загрузка…" : "Загрузить файлом"}
+          </button>
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            Excel/CSV со столбцами «Марка» и «Ставка» — названия колонок могут быть любыми, система сама
+            их распознаёт. Марка, которая уже есть в списке, обновится, а не задвоится.
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,.xls,.ods,.csv"
+            style={{ display: "none" }}
+            onChange={handleFilePicked}
+          />
+        </div>
 
         {loading ? (
           <div className="text-muted" style={{ fontSize: 13 }}>

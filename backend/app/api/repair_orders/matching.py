@@ -7,6 +7,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from app.extensions import db
 from app.models import (
     ConfidenceLevel,
+    ContractPart,
     DocumentTemplate,
     LaborLine,
     PartMatch,
@@ -17,6 +18,8 @@ from app.models import (
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
+
+CONTRACT_CANDIDATE_SEARCH_LIMIT = 30
 
 
 def _serialize(match: PartMatch) -> dict:
@@ -81,10 +84,31 @@ def list_matches(repair_order_id: int):
 
 @bp.get("/<int:repair_order_id>/candidates")
 def list_candidates(repair_order_id: int):
-    """Позиции самого заказ-наряда — источник для ручного переподбора
-    сопоставления на фронте (поиск по названию вместо слепого accept/reject)."""
+    """Позиции КАТАЛОГА ДОГОВОРА (не самого заказ-наряда!) — источник для
+    ручного переподбора сопоставления на фронте. Раньше тут отдавались
+    parsed_lines самого заказ-наряда — то есть оператор при ручной правке
+    искал среди тех же черновых строк, которые как раз и нужно было
+    сопоставить с договором, а не среди реального прайса с проверенными
+    артикулами/ценами (см. жалобу заказчика — в поиске всплывали позиции
+    заказ-наряда с их собственными "как есть" ценами, не из договора).
+    Договор может быть большим (50 000+ позиций, см. PROJECT.md), поэтому
+    поиск идёт на бэкенде по 'q' с лимитом, а не отдаётся целиком."""
     repair_order = db.get_or_404(RepairOrder, repair_order_id)
-    return jsonify(repair_order.parsed_lines or [])
+    q = (request.args.get("q") or "").strip()
+    query = ContractPart.query.filter_by(contract_id=repair_order.contract_id)
+    if q:
+        query = query.filter(db.or_(ContractPart.name.ilike(f"%{q}%"), ContractPart.article.ilike(f"%{q}%")))
+    parts = query.order_by(ContractPart.name).limit(CONTRACT_CANDIDATE_SEARCH_LIMIT).all()
+    return jsonify(
+        [
+            {
+                "article": p.article,
+                "name": p.name,
+                "price": float(p.price) if p.price is not None else None,
+            }
+            for p in parts
+        ]
+    )
 
 
 @bp.post("/<int:repair_order_id>/parts")

@@ -4,6 +4,7 @@ from app.extensions import db
 from app.models import (
     Contract,
     ConfidenceLevel,
+    ContractPart,
     DocumentProcessingStatus,
     PartMatch,
     RepairOrder,
@@ -68,13 +69,69 @@ def test_list_matches(client, admin_headers, repair_order_with_matches):
     assert {m["confidence_level"] for m in body} == {"exact", "llm_guess"}
 
 
-def test_list_candidates_returns_parsed_lines(client, admin_headers, repair_order_with_matches):
+def test_list_candidates_returns_contract_catalog_not_repair_order_lines(
+    client, admin_headers, repair_order_with_matches, app
+):
+    """Регрессия: раньше ручной переподбор искал среди parsed_lines самого
+    заказ-наряда (черновика мехника) — то есть среди того, что как раз
+    нужно сопоставить, а не среди реального прайса договора с проверенными
+    ценами. Источник кандидатов должен быть каталог договора (ContractPart)."""
     order_id = repair_order_with_matches["order_id"]
-    resp = client.get(
-        f"/api/repair-orders/matching/{order_id}/candidates", headers=admin_headers
-    )
+    with app.app_context():
+        order = db.session.get(RepairOrder, order_id)
+        db.session.add(
+            ContractPart(contract_id=order.contract_id, article="ABC-1", name="Диск тормозной", price=1200.0)
+        )
+        db.session.commit()
+
+    resp = client.get(f"/api/repair-orders/matching/{order_id}/candidates", headers=admin_headers)
     assert resp.status_code == 200
-    assert resp.get_json() == [{"article": "ABC-1", "name": "Диск", "qty": 1, "price": 1000.0}]
+    assert resp.get_json() == [{"article": "ABC-1", "name": "Диск тормозной", "price": 1200.0}]
+
+
+def test_list_candidates_filters_by_query_across_name_and_article(
+    client, admin_headers, repair_order_with_matches, app
+):
+    order_id = repair_order_with_matches["order_id"]
+    with app.app_context():
+        order = db.session.get(RepairOrder, order_id)
+        db.session.add_all(
+            [
+                ContractPart(contract_id=order.contract_id, article="ABC-1", name="Диск тормозной", price=1200.0),
+                ContractPart(contract_id=order.contract_id, article="XYZ-9", name="Фильтр масляный", price=300.0),
+            ]
+        )
+        db.session.commit()
+
+    by_name = client.get(
+        f"/api/repair-orders/matching/{order_id}/candidates?q=тормоз", headers=admin_headers
+    ).get_json()
+    assert [c["article"] for c in by_name] == ["ABC-1"]
+
+    by_article = client.get(
+        f"/api/repair-orders/matching/{order_id}/candidates?q=xyz", headers=admin_headers
+    ).get_json()
+    assert [c["article"] for c in by_article] == ["XYZ-9"]
+
+
+def test_list_candidates_only_returns_parts_from_this_repair_orders_own_contract(
+    client, admin_headers, repair_order_with_matches, app
+):
+    order_id = repair_order_with_matches["order_id"]
+    with app.app_context():
+        order = db.session.get(RepairOrder, order_id)
+        other_contract = Contract(
+            original_filename="other.xlsx", storage_path="/tmp/other.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(other_contract)
+        db.session.flush()
+        db.session.add(ContractPart(contract_id=other_contract.id, article="FOREIGN-1", name="Чужая деталь", price=1.0))
+        db.session.add(ContractPart(contract_id=order.contract_id, article="OWN-1", name="Своя деталь", price=1.0))
+        db.session.commit()
+
+    resp = client.get(f"/api/repair-orders/matching/{order_id}/candidates", headers=admin_headers)
+    articles = {c["article"] for c in resp.get_json()}
+    assert articles == {"OWN-1"}
 
 
 def test_edit_match_marks_manually_edited_and_approved(client, admin_headers, repair_order_with_matches, app):

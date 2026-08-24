@@ -94,3 +94,79 @@ def test_deleting_contragent_cascades_hourly_rates(app, admin_headers, client):
         from app.models import ContragentHourlyRate
 
         assert ContragentHourlyRate.query.filter_by(contragent_id=contragent_id).count() == 0
+
+
+def _rates_xlsx(rows):
+    import io
+
+    import pandas as pd
+
+    buffer = io.BytesIO()
+    pd.DataFrame(rows).to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+    return buffer
+
+
+def test_import_hourly_rates_creates_rows_from_file(client, admin_headers):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "Управление дорог", "hourly_rate": 1000}
+    ).get_json()["id"]
+
+    resp = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates/import",
+        headers=admin_headers,
+        data={"file": (_rates_xlsx([{"Марка": "Hyundai", "Ставка": 800}, {"Марка": "Toyota", "Ставка": 900}]), "rates.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"created": 2, "updated": 0, "total": 2}
+
+    listed = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers).get_json()
+    by_make = {r["vehicle_make"]: r["hourly_rate"] for r in listed}
+    assert by_make == {"Hyundai": 800.0, "Toyota": 900.0}
+
+
+def test_import_hourly_rates_updates_existing_make_instead_of_duplicating(client, admin_headers):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "Управление дорог", "hourly_rate": 1000}
+    ).get_json()["id"]
+    client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates",
+        headers=admin_headers,
+        json={"vehicle_make": "HYUNDAI", "hourly_rate": 700},
+    )
+
+    resp = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates/import",
+        headers=admin_headers,
+        # Другой регистр в файле — должно найти и обновить ту же марку, не завести вторую.
+        data={"file": (_rates_xlsx([{"Марка": "Hyundai", "Ставка": 800}]), "rates.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.get_json() == {"created": 0, "updated": 1, "total": 1}
+
+    listed = client.get(f"/api/contragents/{contragent_id}/hourly-rates", headers=admin_headers).get_json()
+    assert len(listed) == 1
+    assert listed[0]["hourly_rate"] == 800.0
+
+
+def test_import_hourly_rates_requires_file(client, admin_headers):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "СТО Юг", "hourly_rate": 1000}
+    ).get_json()["id"]
+    resp = client.post(f"/api/contragents/{contragent_id}/hourly-rates/import", headers=admin_headers, data={})
+    assert resp.status_code == 400
+
+
+def test_import_hourly_rates_reports_parse_error_for_unrecognized_columns(client, admin_headers):
+    contragent_id = client.post(
+        "/api/contragents", headers=admin_headers, json={"name": "СТО Север", "hourly_rate": 1000}
+    ).get_json()["id"]
+    resp = client.post(
+        f"/api/contragents/{contragent_id}/hourly-rates/import",
+        headers=admin_headers,
+        data={"file": (_rates_xlsx([{"Column A": "x", "Column B": 1}]), "rates.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()

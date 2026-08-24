@@ -313,3 +313,47 @@ def test_hourly_rates_crud(client, admin_headers, operator_headers, monkeypatch)
 
     listed2 = client.get(f"/api/contracts/{contract_id}/hourly-rates", headers=admin_headers)
     assert listed2.get_json() == []
+
+
+def _rates_xlsx(rows):
+    import pandas as pd
+
+    buffer = io.BytesIO()
+    pd.DataFrame(rows).to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+    return buffer
+
+
+def test_import_hourly_rates_file(client, admin_headers, monkeypatch):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    contract_id = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    ).get_json()["id"]
+
+    resp = client.post(
+        f"/api/contracts/{contract_id}/hourly-rates/import",
+        headers=admin_headers,
+        data={"file": (_rates_xlsx([{"Марка": "Hyundai", "Ставка": 800}, {"Марка": "Toyota", "Ставка": 900}]), "rates.xlsx")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"created": 2, "updated": 0, "total": 2}
+
+    listed = client.get(f"/api/contracts/{contract_id}/hourly-rates", headers=admin_headers).get_json()
+    assert {r["vehicle_make"]: r["hourly_rate"] for r in listed} == {"Hyundai": 800.0, "Toyota": 900.0}
+
+
+def test_import_hourly_rates_file_requires_file(client, admin_headers, monkeypatch):
+    monkeypatch.setattr("app.api.contracts.enqueue_import_contract", lambda *a, **kw: None)
+    contract_id = client.post(
+        "/api/contracts",
+        headers=admin_headers,
+        data={"name": "x", "file": (_xlsx_bytes([["A-1", "Деталь", 100]]), "c.xlsx")},
+        content_type="multipart/form-data",
+    ).get_json()["id"]
+
+    resp = client.post(f"/api/contracts/{contract_id}/hourly-rates/import", headers=admin_headers, data={})
+    assert resp.status_code == 400

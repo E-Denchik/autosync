@@ -1,9 +1,16 @@
+import os
+
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
 from app.models import Contragent, ContragentHourlyRate
+from app.services.document_parser import DocumentParseError
+from app.services.hourly_rate_import import import_hourly_rates
+from app.services.upload_helpers import save_upload
 
 bp = Blueprint("contragents", __name__)
+
+RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv"}
 
 
 def _serialize(c: Contragent) -> dict:
@@ -112,3 +119,30 @@ def delete_hourly_rate(contragent_id: int, rate_id: int):
     db.session.delete(rate)
     db.session.commit()
     return "", 204
+
+
+@bp.post("/<int:contragent_id>/hourly-rates/import")
+def import_hourly_rates_file(contragent_id: int):
+    """Массовая загрузка ставок по маркам ТС файлом — вместо добавления
+    по одной через форму выше. Формат файла заранее не диктуется: колонки
+    "марка"/"ставка" ищутся по синонимам в заголовке (см.
+    document_parser.parse_hourly_rate_table), а не по жёсткому шаблону."""
+    db.get_or_404(Contragent, contragent_id)
+    file = request.files.get("file")
+    if not file:
+        return jsonify(error="Нужен файл 'file'"), 400
+
+    try:
+        path = save_upload(file, RATE_TABLE_EXTENSIONS)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+    try:
+        result = import_hourly_rates(ContragentHourlyRate, "contragent_id", contragent_id, path)
+    except DocumentParseError as exc:
+        return jsonify(error=str(exc)), 400
+    finally:
+        if os.path.isfile(path):
+            os.remove(path)
+
+    return jsonify(result), 200

@@ -28,6 +28,38 @@ NAME_COLUMN_ALIASES = ["наименование", "название", "name", "
 QTY_COLUMN_ALIASES = ["кол-во", "количество", "qty", "quantity", "шт"]
 PRICE_COLUMN_ALIASES = ["цена", "price", "стоимость", "сумма"]
 
+# Таблица ставок за нормо-час по маркам ТС (см. parse_hourly_rate_table
+# ниже) — образец файла от заказчика так и не пришёл, поэтому колонки тоже
+# ищутся по алиасам заголовка, а не по конкретному имени/позиции: заказчик
+# может назвать колонки "Марка"/"Марка ТС"/"Brand", "Ставка"/"Цена н/ч" — как
+# ему удобно, а не так, как было в одном присланном примере.
+MAKE_COLUMN_ALIASES = ["марка", "make", "brand", "марка тс", "марка автомобиля"]
+RATE_COLUMN_ALIASES = ["ставка", "цена н/ч", "цена нормо-часа", "стоимость н/ч", "цена", "rate", "price", "стоимость"]
+
+# Колонки печатной формы заказ-наряда 1С ("Выполненные работы"/"Расходная
+# накладная", см. parse_repair_order_export ниже) — по алиасам заголовка, а
+# не по фиксированной позиции. Раньше колонки читались строго по индексу
+# (row[9]/row[10]/row[12] и т.п.) — это совпадало с ОДНИМ конкретным
+# шаблоном отчёта 1С (реальный файл заказчика), но другая конфигурация 1С
+# или версия отчёта вполне может расставить колонки иначе — тогда позиционное
+# чтение молча подставляло бы норму часов в цену или наоборот, вместо того
+# чтобы честно не найти колонку.
+# Переиспользуем те же синонимы, что и generic-парсер выше (ARTICLE/NAME/
+# QTY/PRICE_COLUMN_ALIASES), а не заводим более узкий отдельный список —
+# "Наименование" в этой печатной форме означает то же самое, что и в любом
+# другом договоре/накладной. Добавляем только то, чего там нет: "№ кат." —
+# аббревиатура именно этого отчёта 1С для артикула/кода.
+LABOR_CATALOG_CODE_ALIASES = ARTICLE_COLUMN_ALIASES + ["№ кат"]
+LABOR_DESCRIPTION_ALIASES = NAME_COLUMN_ALIASES + ["работа", "операция"]
+LABOR_HOURLY_RATE_ALIASES = ["цена н/ч", "цена нормо-часа", "цена за час", "стоимость н/ч"]
+LABOR_NORM_HOURS_ALIASES = ["норма"]
+LABOR_TOTAL_ALIASES = ["всего", "итого", "сумма"]
+
+MATERIAL_ARTICLE_ALIASES = ARTICLE_COLUMN_ALIASES + ["№ кат"]
+MATERIAL_NAME_ALIASES = NAME_COLUMN_ALIASES
+MATERIAL_QTY_ALIASES = QTY_COLUMN_ALIASES
+MATERIAL_PRICE_ALIASES = PRICE_COLUMN_ALIASES
+
 
 class DocumentParseError(RuntimeError):
     pass
@@ -67,6 +99,46 @@ def _dataframe_to_lines(df: pd.DataFrame) -> list[dict]:
     return lines
 
 
+def _dataframe_to_rate_lines(df: pd.DataFrame) -> list[dict]:
+    columns = list(df.columns)
+    make_col = _match_column(columns, MAKE_COLUMN_ALIASES)
+    rate_col = _match_column(columns, RATE_COLUMN_ALIASES)
+
+    if make_col is None:
+        raise DocumentParseError(f"Не удалось найти колонку с маркой ТС среди {columns}")
+    if rate_col is None:
+        raise DocumentParseError(f"Не удалось найти колонку со ставкой за нормо-час среди {columns}")
+
+    lines = []
+    for _, row in df.iterrows():
+        make = row.get(make_col)
+        if pd.isna(make) or not str(make).strip():
+            continue
+        rate = _to_float(row.get(rate_col))
+        if rate is None or rate <= 0:
+            continue
+        lines.append({"vehicle_make": str(make).strip(), "hourly_rate": rate})
+    return lines
+
+
+def parse_hourly_rate_table(file_path: str) -> list[dict]:
+    """Таблица ставок за нормо-час по маркам ТС (для контрагента или
+    договора, см. app/services/hourly_rate_import.py) — только табличные
+    форматы (xlsx/xls/ods/csv), без docx/pdf: такая таблица на практике
+    всегда простая электронная таблица, а не свободный документ со сканами.
+    Каждая строка: {"vehicle_make": str, "hourly_rate": float}."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in (".xlsx", ".xlsm", ".xls"):
+        df = _read_excel_df(file_path)
+    elif ext == ".ods":
+        df = _read_ods_df(file_path)
+    elif ext == ".csv":
+        df = _read_csv_df(file_path)
+    else:
+        raise DocumentParseError(f"Неподдерживаемый формат файла для таблицы ставок: {ext}")
+    return _dataframe_to_rate_lines(df)
+
+
 def _clean(value) -> str | None:
     if value is None or pd.isna(value):
         return None
@@ -82,31 +154,40 @@ def _to_float(value) -> float | None:
         return None
 
 
-def parse_excel(file_path: str) -> list[dict]:
+def _read_excel_df(file_path: str) -> pd.DataFrame:
     # .xls — старый бинарный формат (OLE2), openpyxl умеет только xlsx/xlsm
     # и молча падает на нём — нужен отдельный движок xlrd.
     ext = os.path.splitext(file_path)[1].lower()
     engine = "xlrd" if ext == ".xls" else "openpyxl"
-    df = pd.read_excel(file_path, engine=engine, dtype=str)
-    return _dataframe_to_lines(df)
+    return pd.read_excel(file_path, engine=engine, dtype=str)
 
 
-def parse_ods(file_path: str) -> list[dict]:
-    df = pd.read_excel(file_path, engine="odf", dtype=str)
-    return _dataframe_to_lines(df)
+def _read_ods_df(file_path: str) -> pd.DataFrame:
+    return pd.read_excel(file_path, engine="odf", dtype=str)
 
 
-def parse_csv(file_path: str) -> list[dict]:
+def _read_csv_df(file_path: str) -> pd.DataFrame:
     """Экспорт из 1С/банк-клиентов чаще всего — Windows-1251 и разделитель
     ';', а не запятая — поэтому не полагаемся на дефолты pandas."""
     last_error: Exception | None = None
     for encoding in ("utf-8-sig", "cp1251"):
         try:
-            df = pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
-            return _dataframe_to_lines(df)
+            return pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
         except (UnicodeDecodeError, pd.errors.ParserError) as exc:
             last_error = exc
     raise DocumentParseError(f"Не удалось прочитать CSV (кодировка/разделитель): {last_error}")
+
+
+def parse_excel(file_path: str) -> list[dict]:
+    return _dataframe_to_lines(_read_excel_df(file_path))
+
+
+def parse_ods(file_path: str) -> list[dict]:
+    return _dataframe_to_lines(_read_ods_df(file_path))
+
+
+def parse_csv(file_path: str) -> list[dict]:
+    return _dataframe_to_lines(_read_csv_df(file_path))
 
 
 def extract_docx_tables(file_path: str) -> list[pd.DataFrame]:
@@ -221,6 +302,24 @@ _VEHICLE_RE = re.compile(r"Автомобиль\s*:\s*(.+?)\s+гос\.\s*ном�
 _YEAR_RE = re.compile(r"год\s*вып\.?\s*(\d{4})")
 
 
+def _find_export_column(header_row: list, aliases: list[str]) -> int | None:
+    """Индекс колонки в СЫРОЙ (без имён pandas) строке заголовка печатной
+    формы 1С — по алиасам, см. комментарий у LABOR_*/MATERIAL_*_ALIASES."""
+    for idx, cell in enumerate(header_row):
+        if not isinstance(cell, str):
+            continue
+        norm = cell.strip().lower()
+        if any(alias in norm for alias in aliases):
+            return idx
+    return None
+
+
+def _export_cell(row: list, idx: int | None):
+    if idx is None or idx >= len(row):
+        return None
+    return row[idx]
+
+
 def parse_repair_order_export(file_path: str) -> dict | None:
     ext = os.path.splitext(file_path)[1].lower()
     if ext not in (".xlsx", ".xlsm"):
@@ -245,6 +344,8 @@ def parse_repair_order_export(file_path: str) -> dict | None:
     labor_lines: list[dict] = []
     part_lines: list[dict] = []
     mode = None
+    labor_cols: dict[str, int | None] = {}
+    material_cols: dict[str, int | None] = {}
 
     for row in rows:
         joined = " ".join(c for c in row if isinstance(c, str))
@@ -272,6 +373,19 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             continue
         if mode == "await_labor_header":
             if c1 == "№":
+                labor_cols = {
+                    "catalog_code": _find_export_column(row, LABOR_CATALOG_CODE_ALIASES),
+                    "description": _find_export_column(row, LABOR_DESCRIPTION_ALIASES),
+                    "hourly_rate": _find_export_column(row, LABOR_HOURLY_RATE_ALIASES),
+                    "norm_hours": _find_export_column(row, LABOR_NORM_HOURS_ALIASES),
+                    "total": _find_export_column(row, LABOR_TOTAL_ALIASES),
+                }
+                if labor_cols["description"] is None:
+                    logger.warning(
+                        "parse_repair_order_export: не нашёл колонку с наименованием работы в заголовке %r — "
+                        "раздел 'Выполненные работы' пропущен",
+                        row,
+                    )
                 mode = "await_labor_index"
             continue
         if mode == "await_labor_index":
@@ -281,14 +395,14 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             if c1 and c1.startswith("Итого работ"):
                 mode = None
                 continue
-            if c1 and c1.isdigit():
+            if c1 and c1.isdigit() and labor_cols.get("description") is not None:
                 labor_lines.append(
                     {
-                        "description": _clean(row[3]) if len(row) > 3 else None,
-                        "catalog_code": _clean(row[2]) if len(row) > 2 else None,
-                        "hourly_rate": _to_float(row[9]) if len(row) > 9 else None,
-                        "norm_hours": _to_float(row[10]) if len(row) > 10 else None,
-                        "total": _to_float(row[12]) if len(row) > 12 else None,
+                        "description": _clean(_export_cell(row, labor_cols["description"])),
+                        "catalog_code": _clean(_export_cell(row, labor_cols["catalog_code"])),
+                        "hourly_rate": _to_float(_export_cell(row, labor_cols["hourly_rate"])),
+                        "norm_hours": _to_float(_export_cell(row, labor_cols["norm_hours"])),
+                        "total": _to_float(_export_cell(row, labor_cols["total"])),
                     }
                 )
             continue
@@ -298,6 +412,18 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             continue
         if mode == "await_materials_header":
             if c1 == "№":
+                material_cols = {
+                    "article": _find_export_column(row, MATERIAL_ARTICLE_ALIASES),
+                    "name": _find_export_column(row, MATERIAL_NAME_ALIASES),
+                    "qty": _find_export_column(row, MATERIAL_QTY_ALIASES),
+                    "price": _find_export_column(row, MATERIAL_PRICE_ALIASES),
+                }
+                if material_cols["name"] is None:
+                    logger.warning(
+                        "parse_repair_order_export: не нашёл колонку с наименованием запчасти в заголовке %r — "
+                        "раздел 'Расходная накладная' пропущен",
+                        row,
+                    )
                 mode = "await_materials_index"
             continue
         if mode == "await_materials_index":
@@ -307,13 +433,13 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             if c1 and (c1.startswith("Итого по странице материалов") or c1.startswith("Итого материалов")):
                 mode = None
                 continue
-            if c1 and c1.isdigit():
+            if c1 and c1.isdigit() and material_cols.get("name") is not None:
                 part_lines.append(
                     {
-                        "article": _clean(row[2]) if len(row) > 2 else None,
-                        "name": _clean(row[3]) if len(row) > 3 else None,
-                        "qty": _to_float(row[9]) if len(row) > 9 else None,
-                        "price": _to_float(row[11]) if len(row) > 11 else None,
+                        "article": _clean(_export_cell(row, material_cols["article"])),
+                        "name": _clean(_export_cell(row, material_cols["name"])),
+                        "qty": _to_float(_export_cell(row, material_cols["qty"])),
+                        "price": _to_float(_export_cell(row, material_cols["price"])),
                     }
                 )
             continue

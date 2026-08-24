@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
@@ -24,6 +24,8 @@ export default function ContractCatalogDetail() {
   const [hourlyRates, setHourlyRates] = useState([]);
   const [rateForm, setRateForm] = useState({ vehicle_make: "", hourly_rate: "" });
   const [savingRate, setSavingRate] = useState(false);
+  const [importingRates, setImportingRates] = useState(false);
+  const rateFileInputRef = useRef(null);
   const toast = useToast();
 
   const loadContract = () => {
@@ -88,6 +90,24 @@ export default function ContractCatalogDetail() {
       toast.error(err.message);
     } finally {
       setSavingRate(false);
+    }
+  };
+
+  const handleRateFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImportingRates(true);
+    try {
+      const result = await api.importContractHourlyRates(contractId, file);
+      toast.success(
+        `Загружено: ${result.created} новых, ${result.updated} обновлено (всего строк в файле: ${result.total})`
+      );
+      loadHourlyRates();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setImportingRates(false);
     }
   };
 
@@ -213,6 +233,28 @@ export default function ContractCatalogDetail() {
               {savingRate ? "…" : "Добавить"}
             </button>
           </form>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={importingRates}
+              onClick={() => rateFileInputRef.current?.click()}
+            >
+              <UploadIcon style={{ width: 13, height: 13 }} /> {importingRates ? "Загрузка…" : "Загрузить файлом"}
+            </button>
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              Excel/CSV со столбцами «Марка» и «Ставка» — названия колонок могут быть любыми. Марка, которая
+              уже есть в списке, обновится, а не задвоится.
+            </span>
+            <input
+              ref={rateFileInputRef}
+              type="file"
+              accept=".xlsx,.xlsm,.xls,.ods,.csv"
+              style={{ display: "none" }}
+              onChange={handleRateFilePicked}
+            />
+          </div>
 
           {hourlyRates.length === 0 ? (
             <p className="text-muted">Ставок пока нет — используется общая ставка контрагента.</p>

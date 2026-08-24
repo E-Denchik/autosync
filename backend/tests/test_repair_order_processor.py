@@ -91,6 +91,89 @@ def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
         assert float(labor_match.total_cost) == 28.0 * 1170.0
 
 
+def test_process_upload_job_falls_back_to_norm_hours_stated_in_repair_order_when_nothing_matched(app):
+    """Регрессия по реальным данным заказчика: у "Управление дорог" нет ни
+    каталога работ в договоре, ни доступа к AutoData/1С — но исходный
+    заказ-наряд (1С-выгрузка) уже содержит норму часов по каждой операции
+    (см. document_parser.parse_repair_order_export, колонка "Норма, ч").
+    Раньше эта норма отбрасывалась при парсинге в _parse_repair_order_files,
+    и все восемь работ уезжали на проверку с пустой нормой ("не указана"),
+    хотя цифра была прямо в исходном файле."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        # Каталог договора пуст — ни одной ContractLaborNorm, как у
+        # заказчика (98% случаев без справочника, см. PROJECT.md).
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        lines = {l.description: l for l in LaborLine.query.filter_by(repair_order_id=repair_order_id).all()}
+        assert float(lines["ДВС снятие"].norm_hours) == 28.0
+        assert float(lines["Блок цилиндров расточка"].norm_hours) == 6.0
+        assert float(lines["Опора ДВС правая замена"].norm_hours) == 0.8
+        # Каталог всё равно не подтвердил операцию — matched_operation_name
+        # остаётся пустым, это не "точное совпадение", а значение из наряда.
+        assert lines["ДВС снятие"].matched_operation_name is None
+        assert lines["ДВС снятие"].confidence_level == ConfidenceLevel.LLM_GUESS
+        assert lines["ДВС снятие"].raw_match_data["source"] == "repair_order_stated_value"
+
+
+def test_process_upload_job_prefers_contract_catalog_norm_hours_over_repair_order_stated_value(app):
+    """Если каталог договора всё-таки нашёл операцию — его норма часов
+    (проверенная, из тендерного прайса) важнее того, что написал мехник."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract.id,
+                operation_name="ДВС снятие",
+                vehicle_make="HYUNDAI",
+                vehicle_model="IX35",
+                norm_hours=99.0,
+            )
+        )
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        labor_match = LaborLine.query.filter_by(
+            repair_order_id=repair_order_id, matched_operation_name="ДВС снятие"
+        ).first()
+        assert float(labor_match.norm_hours) == 99.0
+        assert labor_match.confidence_level == ConfidenceLevel.EXACT
+
+
 def test_process_upload_job_uses_contragent_rate_when_no_contract_rate_for_make(app):
     from app.models import Contragent
 
@@ -182,6 +265,113 @@ def test_process_upload_job_prefers_contragent_make_rate_over_flat_rate(app):
         # общую плоскую ставку (1000), но контрактная ставка по-прежнему в
         # приоритете, если бы она была задана (см. предыдущий тест).
         assert float(labor_match.hourly_rate) == 1350.0
+
+
+def test_process_upload_job_matches_contract_rate_regardless_of_vehicle_make_letter_case(app):
+    """Регрессия: заказ-наряд (1С-выгрузка) обычно кладёт марку заглавными
+    ("HYUNDAI"), а ставку по марке оператор вводит вручную через UI и может
+    написать как угодно ("Hyundai") — раньше сравнение было точным строковым,
+    несовпадение регистра молча откатывалось на общую ставку вместо
+    найденной по марке."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(ContractHourlyRate(contract_id=contract.id, vehicle_make="Hyundai", hourly_rate=1170.0))
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,  # парсится с vehicle_make="HYUNDAI"
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        any_labor_line = LaborLine.query.filter_by(repair_order_id=repair_order_id).first()
+        assert float(any_labor_line.hourly_rate) == 1170.0
+
+
+def test_process_upload_job_matches_contragent_rate_regardless_of_vehicle_make_letter_case(app):
+    from app.models import Contragent, ContragentHourlyRate
+
+    with app.app_context():
+        contragent = Contragent(name="Заказчик Г", hourly_rate=1000)
+        db.session.add(contragent)
+        db.session.flush()
+        db.session.add(ContragentHourlyRate(contragent_id=contragent.id, vehicle_make="hyundai", hourly_rate=800.0))
+
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,  # парсится с vehicle_make="HYUNDAI"
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        any_labor_line = LaborLine.query.filter_by(repair_order_id=repair_order_id).first()
+        assert float(any_labor_line.hourly_rate) == 800.0
+
+
+def test_process_upload_job_matches_contract_labor_norm_regardless_of_vehicle_make_letter_case(app):
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract.id,
+                operation_name="ДВС снятие",
+                vehicle_make="Hyundai",
+                vehicle_model="IX35",
+                norm_hours=28.0,
+            )
+        )
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,  # парсится с vehicle_make="HYUNDAI"
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        labor_match = LaborLine.query.filter_by(
+            repair_order_id=repair_order_id, matched_operation_name="ДВС снятие"
+        ).first()
+        assert labor_match is not None
+        assert labor_match.confidence_level == ConfidenceLevel.EXACT
+        assert float(labor_match.norm_hours) == 28.0
 
 
 def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):

@@ -125,10 +125,16 @@ export const api = {
     request(`/contracts/${id}/hourly-rates`, { method: "POST", body: JSON.stringify(data) }),
   deleteContractHourlyRate: (id, rateId) =>
     request(`/contracts/${id}/hourly-rates/${rateId}`, { method: "DELETE" }),
+  importContractHourlyRates: (id, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request(`/contracts/${id}/hourly-rates/import`, { method: "POST", body: formData });
+  },
 
   // Заказ-наряды: сопоставление
   listMatches: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}`),
-  listCandidates: (repairOrderId) => request(`/repair-orders/matching/${repairOrderId}/candidates`),
+  listCandidates: (repairOrderId, q = "") =>
+    request(`/repair-orders/matching/${repairOrderId}/candidates${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   editMatch: (matchId, data) =>
     request(`/repair-orders/matching/${matchId}`, { method: "PATCH", body: JSON.stringify(data) }),
   approveMatch: (matchId) => request(`/repair-orders/matching/${matchId}/approve`, { method: "POST" }),
@@ -167,6 +173,11 @@ export const api = {
     request(`/contragents/${id}/hourly-rates`, { method: "POST", body: JSON.stringify(data) }),
   deleteContragentHourlyRate: (id, rateId) =>
     request(`/contragents/${id}/hourly-rates/${rateId}`, { method: "DELETE" }),
+  importContragentHourlyRates: (id, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request(`/contragents/${id}/hourly-rates/import`, { method: "POST", body: formData });
+  },
 
   // Справочник нормо-часов
   listLaborCatalog: () => request("/labor-catalog"),

@@ -64,7 +64,9 @@ def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[
                 meta[key] = meta[key] or export["meta"].get(key)
             part_lines.extend(export["part_lines"])
             labor_lines_raw.extend(
-                {"name": l["description"]} for l in export["labor_lines"] if l.get("description")
+                {"name": l["description"], "source_norm_hours": l.get("norm_hours")}
+                for l in export["labor_lines"]
+                if l.get("description")
             )
         else:
             order_lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
@@ -174,12 +176,20 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     contract_rate = None
     contragent_make_rate = None
     if repair_order.vehicle_make:
-        contract_rate = ContractHourlyRate.query.filter_by(
-            contract_id=contract.id, vehicle_make=repair_order.vehicle_make
+        # Регистронезависимо: марка в заказ-наряде приходит "как в источнике"
+        # (1С-выгрузка обычно кладёт её заглавными, оператор может ввести
+        # ставку по марке как угодно — "Hyundai"/"HYUNDAI"/"hyundai") — без
+        # этого точное сравнение молча не находило бы ставку по марке и
+        # тихо откатывалось на общую ставку контрагента (см. AutoDataClient
+        # локальный поиск — там то же самое уже сделано через func.lower()).
+        contract_rate = ContractHourlyRate.query.filter(
+            ContractHourlyRate.contract_id == contract.id,
+            db.func.lower(ContractHourlyRate.vehicle_make) == repair_order.vehicle_make.lower(),
         ).first()
         if contract_rate is None and repair_order.contragent:
-            contragent_make_rate = ContragentHourlyRate.query.filter_by(
-                contragent_id=repair_order.contragent.id, vehicle_make=repair_order.vehicle_make
+            contragent_make_rate = ContragentHourlyRate.query.filter(
+                ContragentHourlyRate.contragent_id == repair_order.contragent.id,
+                db.func.lower(ContragentHourlyRate.vehicle_make) == repair_order.vehicle_make.lower(),
             ).first()
     if contract_rate is not None:
         hourly_rate = float(contract_rate.hourly_rate)
@@ -208,6 +218,24 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         logger.exception("сопоставление работ упало для repair_order_id=%s", repair_order_id)
         labor_results = []
         log_change("repair_order", repair_order.id, "labor_matching_failed", details={"error": str(exc)})
+
+    # Если каталог/AutoData не смог определить норму часов операции — не
+    # оставляем её пустой, когда сам заказ-наряд её уже содержит (1С-выгрузка
+    # парсит колонку "Норма, ч" — см. document_parser.parse_repair_order_export).
+    # Заказчик подтвердил: справочника с нормо-часами почти никогда нет
+    # (98% случаев), поэтому то, что мехник реально вписал в наряд для ЭТОЙ
+    # работы, надёжнее пустого поля "не указана", которое иначе пришлось бы
+    # заполнять вручную по памяти — matched_operation_name остаётся пустым
+    # (каталог всё равно не подтвердил), но норма часов уже не пропадает.
+    for result, raw_line in zip(labor_results, labor_lines_raw):
+        if result.get("norm_hours") is None:
+            source_norm_hours = raw_line.get("source_norm_hours")
+            if source_norm_hours is not None:
+                result["norm_hours"] = source_norm_hours
+                result["raw_match_data"] = {
+                    "source": "repair_order_stated_value",
+                    "match_attempt_source": (result.get("raw_match_data") or {}).get("source"),
+                }
 
     try:
         if has_contract_labor_norms:

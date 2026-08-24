@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from app.extensions import db
 from app.models import ConfidenceLevel, ContractLaborNorm
 from app.services.autodata_client import AutoDataClient, AutoDataError
 from app.services.llm_client import LLMClient
@@ -140,8 +141,11 @@ def suggest_missing_labor_operations(
 def _contract_labor_candidates(contract_id: int, vehicle_make: str | None, vehicle_model: str | None) -> list[dict]:
     query = ContractLaborNorm.query.filter_by(contract_id=contract_id)
     if vehicle_make:
+        # Регистронезависимо — см. тот же комментарий в repair_order_processor.py
+        # (ставка по марке) и AutoDataClient._find_local (уже так делает).
         query = query.filter(
-            ContractLaborNorm.vehicle_make.is_(None) | (ContractLaborNorm.vehicle_make == vehicle_make)
+            ContractLaborNorm.vehicle_make.is_(None)
+            | (db.func.lower(ContractLaborNorm.vehicle_make) == vehicle_make.lower())
         )
     rows = query.all()
     if vehicle_model:
