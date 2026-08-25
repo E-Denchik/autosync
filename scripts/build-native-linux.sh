@@ -29,18 +29,51 @@ echo "==> Собираю frontend"
 
 echo "==> Готовлю Python-окружение для сборки (backend/.venv-native)"
 VENV_DIR="$REPO_ROOT/backend/.venv-native"
+# Именно /usr/bin/python3, а не просто "python3" из PATH: apt (python3-gi
+# ниже) ставит биндинги ТОЛЬКО для системного Python по этому пути. Если в
+# PATH перед ним стоит другой Python (например, actions/setup-python в CI —
+# он ставит СВОЙ отдельный Python в /opt/hostedtoolcache и подставляет его
+# первым в PATH; локально то же самое сделал бы pyenv/conda), --system-site-
+# packages унаследует site-packages ЭТОГО чужого Python, где gi нет и не
+# будет — PyInstaller потом молча соберёт бинарник без gi ("skipping data
+# collection for module 'gi' as it is not a package"), а упадёт это только
+# на этапе selftest в конце сборки (или вовсе у пользователя). Воспроизведено
+# и исправлено: сборка в GitHub Actions падала именно так, хотя тот же
+# скрипт локально (без setup-python) работал.
+SYSTEM_PYTHON3="/usr/bin/python3"
+if [ ! -x "$SYSTEM_PYTHON3" ]; then
+  echo "    /usr/bin/python3 не найден — использую python3 из PATH (может не совпадать с тем, для кого apt поставил python3-gi)"
+  SYSTEM_PYTHON3="python3"
+fi
 if [ ! -d "$VENV_DIR" ]; then
   # --system-site-packages: окно приложения (pywebview) на Linux использует
   # WebKitGTK через PyGObject (модуль gi) — тот ставится системным пакетным
   # менеджером (python3-gi), а не pip, и его нужно унаследовать из системного
   # Python. Без system-python3-gi/gir1.2-webkit2-4.1 (или 4.0) установленных
   # через apt сборка всё равно пройдёт, но окно на этой машине не откроется.
-  python3 -m venv --system-site-packages "$VENV_DIR"
+  "$SYSTEM_PYTHON3" -m venv --system-site-packages "$VENV_DIR"
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 python3 -m pip install -q --upgrade pip
 python3 -m pip install -q -r "$REPO_ROOT/backend/requirements.txt"
+
+echo "==> Проверяю, что модуль gi (GTK-биндинги) виден из venv"
+# Быстрая проверка ДО ~2-минутной сборки PyInstaller — если venv-python
+# создан не от того системного Python (см. комментарий выше), gi будет
+# недоступен уже здесь, и лучше узнать об этом сразу с понятной причиной,
+# а не после долгой сборки через selftest в конце этого скрипта.
+if ! python3 -c "import gi" 2>/tmp/gi-import-error.log; then
+  echo "" >&2
+  echo "ОШИБКА: модуль gi не импортируется из backend/.venv-native — venv, похоже," >&2
+  echo "создан не от системного Python (/usr/bin/python3), для которого apt" >&2
+  echo "поставил python3-gi. Обычно помогает: rm -rf backend/.venv-native и" >&2
+  echo "пересборка — сейчас использован: $SYSTEM_PYTHON3" >&2
+  cat /tmp/gi-import-error.log >&2
+  rm -f /tmp/gi-import-error.log
+  exit 1
+fi
+rm -f /tmp/gi-import-error.log
 
 echo "==> Готовлю ключи интеграций для вшивания в сборку"
 python3 "$REPO_ROOT/scripts/bake_integration_keys.py"
