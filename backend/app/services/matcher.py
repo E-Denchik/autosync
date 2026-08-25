@@ -258,6 +258,7 @@ def match_line_against_contract(
             return {
                 "contract_article": article,
                 "contract_name": name,
+                "contract_qty": order_line.get("qty"),
                 "matched_article": exact.article,
                 "matched_name": exact.name,
                 "matched_price": exact.price,
@@ -284,6 +285,7 @@ def match_line_against_contract(
                 return {
                     "contract_article": article,
                     "contract_name": name,
+                    "contract_qty": order_line.get("qty"),
                     "matched_article": found.article,
                     "matched_name": found.name,
                     "matched_price": found.price,
@@ -314,6 +316,7 @@ def match_line_against_contract(
                 return {
                     "contract_article": article,
                     "contract_name": name,
+                    "contract_qty": order_line.get("qty"),
                     "matched_article": candidate.get("article"),
                     "matched_name": candidate.get("name"),
                     "matched_price": candidate.get("price"),
@@ -325,6 +328,7 @@ def match_line_against_contract(
     return {
         "contract_article": article,
         "contract_name": name,
+        "contract_qty": order_line.get("qty"),
         "matched_article": None,
         "matched_name": None,
         "matched_price": None,
@@ -341,7 +345,9 @@ def match_all_against_contract(
     llm_client: LLMClient,
     vehicle_make: str | None = None,
 ) -> list[dict]:
-    return [
-        match_line_against_contract(line, contract_id, supplier_client, llm_client, vehicle_make)
-        for line in order_lines
-    ]
+    from app.services.parallel import map_with_app_context
+
+    return map_with_app_context(
+        lambda line: match_line_against_contract(line, contract_id, supplier_client, llm_client, vehicle_make),
+        order_lines,
+    )

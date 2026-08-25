@@ -10,6 +10,7 @@ from openpyxl.styles import Font
 
 from app.models import DocumentTemplate, LaborLine, PartMatch, RepairOrder, ReviewStatus
 from app.services import company_profile, document_template_engine
+from app.services.xlsx_safety import sanitize_cell_value as _s
 
 
 def generate_repair_order_document(repair_order: RepairOrder) -> str:
@@ -79,7 +80,7 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
         ws.append(
             [
                 i,
-                line.matched_operation_name or line.description,
+                _s(line.matched_operation_name or line.description),
                 float(line.norm_hours) if line.norm_hours is not None else "",
                 float(line.hourly_rate) if line.hourly_rate is not None else "",
                 cost or "",
@@ -91,33 +92,39 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
 
     ws.append(["Расходная накладная к заказ-наряду"])
     ws[f"A{ws.max_row}"].font = bold
-    ws.append(["№", "Артикул", "№ кат.", "Наименование", "Производитель", "Ед.", "Цена", "Склад"])
+    ws.append(["№", "Артикул", "№ кат.", "Наименование", "Производитель", "Ед.", "Кол-во", "Цена", "Сумма", "Склад"])
 
     parts_total = 0.0
     for i, match in enumerate(part_matches, start=1):
         price = float(match.matched_price) if match.matched_price is not None else 0.0
-        parts_total += price
+        qty = float(match.contract_qty) if match.contract_qty is not None else 1.0
+        line_total = price * qty
+        parts_total += line_total
         ws.append(
             [
                 i,
-                match.matched_article or match.contract_article or "",
-                match.nomenclature_cat_number or "",
-                match.matched_name or match.contract_name or "",
-                match.nomenclature_manufacturer or "",
-                match.nomenclature_unit or "",
+                _s(match.matched_article or match.contract_article or ""),
+                _s(match.nomenclature_cat_number or ""),
+                _s(match.matched_name or match.contract_name or ""),
+                _s(match.nomenclature_manufacturer or ""),
+                _s(match.nomenclature_unit or ""),
+                qty,
                 price or "",
-                match.nomenclature_warehouse or "",
+                line_total or "",
+                _s(match.nomenclature_warehouse or ""),
             ]
         )
-    ws.append(["", "", "", "", "", "", "Итого запчасти:", parts_total])
-    ws[f"G{ws.max_row}"].font = bold
+    ws.append(["", "", "", "", "", "", "", "Итого запчасти:", parts_total])
+    ws[f"H{ws.max_row}"].font = bold
     ws.append([])
 
-    ws.append(["", "", "", "", "", "", "ИТОГО:", parts_total + labor_total])
-    ws[f"G{ws.max_row}"].font = bold
+    ws.append(["", "", "", "", "", "", "", "ИТОГО:", parts_total + labor_total])
     ws[f"H{ws.max_row}"].font = bold
+    ws[f"I{ws.max_row}"].font = bold
 
-    for col_letter, width in {"A": 6, "B": 22, "C": 14, "D": 32, "E": 20, "F": 10, "G": 14, "H": 14}.items():
+    for col_letter, width in {
+        "A": 6, "B": 22, "C": 14, "D": 32, "E": 20, "F": 10, "G": 9, "H": 14, "I": 14, "J": 14,
+    }.items():
         ws.column_dimensions[col_letter].width = width
 
     output_dir = os.path.dirname(repair_order.storage_path)
@@ -136,7 +143,11 @@ def build_template_context(repair_order: RepairOrder, *, approved_only: bool = T
     labor_lines = labor_query.order_by(LaborLine.id).all()
     profile = company_profile.load()
 
-    parts_total = sum(float(m.matched_price) if m.matched_price is not None else 0.0 for m in part_matches)
+    parts_total = sum(
+        (float(m.matched_price) if m.matched_price is not None else 0.0)
+        * (float(m.contract_qty) if m.contract_qty is not None else 1.0)
+        for m in part_matches
+    )
     labor_total = sum(float(l.total_cost) if l.total_cost is not None else 0.0 for l in labor_lines)
 
     context = {
@@ -163,7 +174,12 @@ def build_template_context(repair_order: RepairOrder, *, approved_only: bool = T
             "name": m.matched_name or m.contract_name or "",
             "manufacturer": m.nomenclature_manufacturer or "",
             "unit": m.nomenclature_unit or "",
+            "qty": float(m.contract_qty) if m.contract_qty is not None else 1.0,
             "price": float(m.matched_price) if m.matched_price is not None else "",
+            "total": (
+                (float(m.matched_price) if m.matched_price is not None else 0.0)
+                * (float(m.contract_qty) if m.contract_qty is not None else 1.0)
+            ),
             "warehouse": m.nomenclature_warehouse or "",
         }
         for m in part_matches

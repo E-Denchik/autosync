@@ -109,8 +109,36 @@ describe("ReviewMatches — статистика проверки (реальн�
     expect(screen.getByText(/Запчасти: 2 всего · одобрено 1 из 2/)).toBeInTheDocument();
     expect(screen.getByText("точное совпадение: 1")).toBeInTheDocument();
     expect(screen.getByText("не найдено: 1")).toBeInTheDocument();
-    expect(screen.getByText(/Сумма одобренного:/)).toBeInTheDocument();
-    expect(screen.getByText("1 000 ₽")).toBeInTheDocument();
+    const approvedSumLine = screen.getByText(/Сумма одобренного:/);
+    expect(approvedSumLine).toBeInTheDocument();
+    expect(approvedSumLine.parentElement).toHaveTextContent("1 000 ₽");
+  });
+
+  it("учитывает contract_qty в сумме одобренного и показывает кол-во/сумму по строке", async () => {
+    // Регрессия: contract_qty раньше нигде не сохранялся и не учитывался —
+    // 2 шт. по 1000 ₽ считались бы как 1000 ₽, а не 2000 ₽ (см. matcher.py).
+    api.getUploadStatus.mockResolvedValue({ status: "needs_review", contragent_name: null, vehicle_make: null });
+    api.listMatches.mockResolvedValue([
+      {
+        id: 1,
+        review_status: "approved",
+        contract_article: "A1",
+        contract_name: "Колодки тормозные",
+        contract_qty: 2,
+        matched_name: "Колодки тормозные",
+        matched_price: 1000,
+        match_category: "exact",
+      },
+    ]);
+
+    renderPage();
+
+    const approvedSumLine = await screen.findByText(/Сумма одобренного:/);
+    expect(approvedSumLine.parentElement).toHaveTextContent("2 000 ₽");
+
+    const row = screen.getByText("Колодки тормозные").closest("tr");
+    expect(row).toHaveTextContent("2"); // Кол-во
+    expect(row).toHaveTextContent("2 000"); // Сумма по строке
   });
 
   it("показывает сводку ИИ отдельной строкой внутри той же панели, когда она есть", async () => {

@@ -23,10 +23,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-ARTICLE_COLUMN_ALIASES = ["артикул", "article", "код", "sku", "парт", "part_number"]
-NAME_COLUMN_ALIASES = ["наименование", "название", "name", "описание", "товар", "запчасть"]
+# Списки не претендуют на исчерпывающую полноту всех формулировок, что
+# бывают у поставщиков (заказчик не ограничится уже присланными файлами) —
+# сравнение по подстроке (см. _match_column/_find_export_column) и так уже
+# ловит большинство вариаций ("Цена с НДС, руб." совпадёт с алиасом "цена"
+# без отдельной записи) — здесь только те КОРНИ, которых иначе не было бы
+# ни в одном алиасе вовсе.
+ARTICLE_COLUMN_ALIASES = ["артикул", "article", "код", "sku", "парт", "part_number", "характеристик"]
+NAME_COLUMN_ALIASES = ["наименование", "название", "name", "описание", "товар", "запчасть", "номенклатур", "позиция", "изделие", "предмет закупки"]
 QTY_COLUMN_ALIASES = ["кол-во", "количество", "qty", "quantity", "шт"]
-PRICE_COLUMN_ALIASES = ["цена", "price", "стоимость", "сумма"]
+PRICE_COLUMN_ALIASES = ["цена", "price", "стоимость", "сумма", "тариф"]
 
 # Таблица ставок за нормо-час по маркам ТС (см. parse_hourly_rate_table
 # ниже) — колонки ищутся по алиасам заголовка, как и везде в этом файле.
@@ -511,18 +517,41 @@ def extract_pdf_tables(file_path: str) -> list[pd.DataFrame]:
     return tables
 
 
-def parse_docx(file_path: str) -> list[dict]:
+def _tables_to_lines(tables: list[pd.DataFrame]) -> list[dict]:
+    """Docx/PDF нередко содержат НЕСКОЛЬКО таблиц на документ (сама
+    ведомость запчастей + служебные таблицы — итоги, реквизиты, шапка) —
+    раньше единственная таблица без узнаваемой колонки "наименование"
+    (см. _dataframe_to_lines) роняла DocumentParseError и обрывала разбор
+    ВСЕГО документа, хотя нужная таблица дальше могла распознаться
+    нормально. Пропускаем нераспознанные таблицы, а не документ целиком —
+    и поднимаем исключение, только если НИ ОДНА таблица не дала строк
+    (тогда парсинг закономерно уходит в LLM-фоллбэк, см.
+    parse_document_with_ocr_fallback)."""
     all_lines: list[dict] = []
-    for df in extract_docx_tables(file_path):
-        all_lines.extend(_dataframe_to_lines(df))
+    last_error: DocumentParseError | None = None
+    for df in tables:
+        try:
+            all_lines.extend(_dataframe_to_lines(df))
+        except DocumentParseError as exc:
+            last_error = exc
+            continue
+    if not all_lines and last_error is not None:
+        raise last_error
     return all_lines
+
+
+def parse_docx(file_path: str) -> list[dict]:
+    tables = extract_docx_tables(file_path)
+    if not tables:
+        raise DocumentParseError("В документе не найдено ни одной таблицы")
+    return _tables_to_lines(tables)
 
 
 def parse_pdf(file_path: str) -> list[dict]:
-    all_lines: list[dict] = []
-    for df in extract_pdf_tables(file_path):
-        all_lines.extend(_dataframe_to_lines(df))
-    return all_lines
+    tables = extract_pdf_tables(file_path)
+    if not tables:
+        raise DocumentParseError("В PDF не найдено ни одной таблицы")
+    return _tables_to_lines(tables)
 
 
 _PARSERS = {
@@ -558,23 +587,55 @@ def needs_ocr(file_path: str) -> bool:
     return False
 
 
-def parse_document_with_ocr_fallback(file_path: str, llm_client, fields: list[str]) -> list[dict]:
-    if not needs_ocr(file_path):
-        return parse_document(file_path)
-
-    from app.services.ocr import OcrError, extract_text
-
+def _raw_text_for_llm_fallback(file_path: str) -> str:
+    """Сырой текст файла ЧИТАЕМОГО формата (не картинка/скан) — для случая,
+    когда жёсткий разбор по колонкам (_dataframe_to_lines/_match_column) не
+    нашёл ни одной таблицы с узнаваемой шапкой: нестандартные названия
+    колонок, шапка не в первой строке, экзотическая вёрстка и т.п.
+    Возвращает "" (не бросает исключение), если и это не удалось — тогда
+    вызывающий код поднимает исходную ошибку жёсткого парсера, а не эту."""
+    ext = os.path.splitext(file_path)[1].lower()
     try:
-        raw_text = extract_text(file_path)
-    except OcrError as exc:
-        raise DocumentParseError(str(exc)) from exc
+        if ext in (".xlsx", ".xlsm", ".xls"):
+            return _read_excel_df(file_path).to_csv(index=False)
+        if ext == ".ods":
+            return _read_ods_df(file_path).to_csv(index=False)
+        if ext == ".csv":
+            for encoding in ("utf-8-sig", "cp1251"):
+                try:
+                    with open(file_path, encoding=encoding) as f:
+                        return f.read()
+                except UnicodeDecodeError:
+                    continue
+            return ""
+        if ext == ".docx":
+            from docx import Document
+
+            document = Document(file_path)
+            parts = [p.text for p in document.paragraphs if p.text.strip()]
+            for table in document.tables:
+                for row in table.rows:
+                    parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+            return "\n".join(parts)
+        if ext == ".pdf":
+            import pdfplumber
+
+            with pdfplumber.open(file_path) as pdf:
+                return "\n\n".join(page.extract_text() or "" for page in pdf.pages)
+    except Exception:
+        logger.warning("Не удалось получить сырой текст %s для LLM-фоллбэка", file_path, exc_info=True)
+        return ""
+    return ""
+
+
+def _extract_via_llm(raw_text: str, llm_client, fields: list[str]) -> list[dict]:
     if not raw_text.strip():
-        raise DocumentParseError("Не удалось распознать текст в файле (пустой результат OCR)")
+        raise DocumentParseError("Не удалось получить текст файла для распознавания")
 
     try:
         rows = llm_client.extract_table_from_text(raw_text, fields)
     except Exception as exc:
-        raise DocumentParseError(f"Не удалось извлечь таблицу из распознанного текста: {exc}") from exc
+        raise DocumentParseError(f"Не удалось извлечь таблицу из текста: {exc}") from exc
 
     numeric_fields = {"qty", "price", "stock_qty", "ordered_qty", "reserved_qty", "in_production_qty", "norm_hours"}
     cleaned = []
@@ -588,6 +649,35 @@ def parse_document_with_ocr_fallback(file_path: str, llm_client, fields: list[st
             }
         )
     return cleaned
+
+
+def parse_document_with_ocr_fallback(file_path: str, llm_client, fields: list[str]) -> list[dict]:
+    if not needs_ocr(file_path):
+        try:
+            return parse_document(file_path)
+        except DocumentParseError:
+            # Формат читаемый (xlsx/docx/csv/pdf с таблицами), но структура
+            # не совпала ни с одним известным вариантом шапки — не сдаёмся
+            # сразу, пробуем более гибкое извлечение через LLM по сырому
+            # тексту файла, тем же путём, что и для сканов/фото ниже.
+            # Раньше LLM-фоллбэк включался только по РАСШИРЕНИЮ файла
+            # (картинка/скан-PDF), а не по факту "жёсткий разбор не
+            # справился" — нестандартный, но вполне читаемый xlsx/docx
+            # заказчика просто падал с "не удалось найти колонку".
+            raw_text = _raw_text_for_llm_fallback(file_path)
+            if not raw_text.strip():
+                raise
+            return _extract_via_llm(raw_text, llm_client, fields)
+
+    from app.services.ocr import OcrError, extract_text
+
+    try:
+        raw_text = extract_text(file_path)
+    except OcrError as exc:
+        raise DocumentParseError(str(exc)) from exc
+    if not raw_text.strip():
+        raise DocumentParseError("Не удалось распознать текст в файле (пустой результат OCR)")
+    return _extract_via_llm(raw_text, llm_client, fields)
 
 
 _ORDER_RE = re.compile(r"Заказ-наряд\s*№\s*(\S+)\s*от\s*(\d{2}\.\d{2}\.\d{4})")
@@ -794,7 +884,75 @@ def parse_repair_order_export(file_path: str) -> dict | None:
     return {"meta": meta, "labor_lines": labor_lines, "part_lines": part_lines}
 
 
+def _normalize_brand_label(label: str) -> str:
+    """label из ярлыка раздела/листа/названия марки в каталоге -> тот же
+    вид, в котором марка обычно приходит из заказ-наряда (латиница) — иначе
+    сравнение в matcher._contract_candidate_pool никогда не совпадёт
+    (кириллица vs латиница — разные строки побайтово, даже после upper()).
+    Составные ярлыки вида "GM (Шевроле, Опель)" или "ЛАДА Гранта" — берём
+    первое узнанное название (из скобок или первое слово вне скобок);
+    секция физически одна, а ContractPart.vehicle_make — одно значение,
+    развести несколько марок из одной секции не на что.
+
+    Справочник соответствий — таблица BrandAlias в БД (не константа в
+    коде): заказчик работает не только с уже присланными файлами, новую
+    марку/написание можно добавить через админку или файлом, не дожидаясь
+    правки кода и пересборки (см. app/api/brand_aliases.py). Требует
+    app_context — тот же приём, что и nomenclature_import.py, который так
+    же обращается к моделям/db прямо из "чистого" парсера."""
+    from app.extensions import db
+    from app.models import BrandAlias
+
+    label = label.strip()
+    if not label:
+        return label
+    paren = re.search(r"\(([^)]+)\)", label)
+    candidates = []
+    if paren:
+        candidates.extend(c.strip() for c in paren.group(1).split(","))
+        candidates.append(label[: paren.start()].strip())
+    else:
+        candidates.append(label)
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        key = candidate.upper()
+        match = BrandAlias.query.filter(
+            db.func.upper(BrandAlias.alias) == key, BrandAlias.canonical_make.isnot(None)
+        ).first()
+        if match:
+            return match.canonical_make
+        first_word = key.split()[0] if key.split() else key
+        if first_word != key:
+            match = BrandAlias.query.filter(
+                db.func.upper(BrandAlias.alias) == first_word, BrandAlias.canonical_make.isnot(None)
+            ).first()
+            if match:
+                return match.canonical_make
+
+    return (candidates[0] if candidates and candidates[0] else label).upper()
+
+
+# Два реальных варианта заголовка листа-каталога у заказчика:
+#   "Марка (модель) технического средства X[, Y и Z]" — список марок сразу
+#   "Запчасти на автомобиль X Model"                   — одна марка+модель
+# Дальше наверняка встретятся и другие формулировки того же смысла у других
+# поставщиков — заказчик не ограничится присланными файлами.
 _CATALOG_TITLE_MARKER = "Марка (модель) технического средства"
+_CATALOG_TITLE_MARKER_SINGLE = "Запчасти на автомобиль"
+
+
+def _sheet_title_row(ws) -> str:
+    """Не только первая ячейка — у части файлов заказчика заголовок листа
+    стоит не в колонке A (см. testdata/Приложение ГП10 №3 с падением
+    75.xlsx, листы "Dewoo"/"газ": ('Запчасти на автомобиль Daewoo Nexia'
+    лежит во ВТОРОЙ ячейке, первая пустая) — раньше это читало только
+    first_row[0] и такие листы вообще не находились как каталог по маркам."""
+    first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if not first_row:
+        return ""
+    return " ".join(str(c) for c in first_row if c is not None and str(c).strip())
 
 
 def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> list[dict] | None:
@@ -809,15 +967,43 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
     brand_sheets: dict[str, str] = {}
     for name in wb.sheetnames:
         ws = wb[name]
-        first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
-        title = str((first_row[0] if first_row else "") or "")
-        if _CATALOG_TITLE_MARKER not in title:
+        title = _sheet_title_row(ws)
+
+        if _CATALOG_TITLE_MARKER in title:
+            remainder = title.replace(_CATALOG_TITLE_MARKER, "")
+            brands = remainder.replace(",", " и ").split(" и ")
+        elif _CATALOG_TITLE_MARKER_SINGLE in title:
+            # "Запчасти на автомобиль 22172 Соболь" (реальный файл, лист
+            # "газ") — марки в тексте нет вовсе, только модель ГАЗ. Модель
+            # не по алиасу не распознать — в таком случае марку не тегируем
+            # (вернётся None, лист всё равно попадёт в общий пул при
+            # vehicle_make=None — лучше, чем совсем потерять данные листа).
+            remainder = title.replace(_CATALOG_TITLE_MARKER_SINGLE, "")
+            first_word = remainder.strip().split()[0] if remainder.strip() else ""
+            if first_word and not first_word.isdigit():
+                brands = [first_word]
+            elif 0 < len(name) <= 20:
+                # В тексте марки нет вовсе — только модель (реальный файл,
+                # лист "газ": "Запчасти на автомобиль 22172 Соболь"). Имя
+                # листа тут само по себе марка ("газ") — пробуем его как
+                # запасной вариант, а не теряем весь лист.
+                brands = [name]
+            else:
+                brands = []
+        else:
             continue
-        remainder = title.replace(_CATALOG_TITLE_MARKER, "")
-        for brand in remainder.replace(",", " и ").split(" и "):
-            brand = brand.strip().upper()
+
+        for brand in brands:
+            # Реальный файл заказчика: "Марка (модель) технического средства
+            # - ChevrolNiva ,ЛАДА Гранта, ..." — после маркера идёт тире, и
+            # .strip() его не убирает (это не пробельный символ), так что
+            # без .lstrip("-–— ") бренд сохранялся как "- CHEVROLNIVA" и
+            # НИКОГДА не совпадал бы с реальной маркой из заказ-наряда
+            # ("CHEVROLET") ни в одном сравнении — именно то самое "по Ниве
+            # ничего не находит", о котором сообщал заказчик.
+            brand = brand.strip().lstrip("-–—").strip()
             if brand:
-                brand_sheets[brand] = name
+                brand_sheets[_normalize_brand_label(brand)] = name
 
     if not brand_sheets:
         return None
@@ -865,16 +1051,69 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
     for matched_sheet in matched_sheets:
         ws = wb[matched_sheet]
         row_brand = sheet_brand.get(matched_sheet)
-        for row in ws.iter_rows(min_row=3, values_only=True):
-            name = _clean(row[1]) if len(row) > 1 else None
+
+        # И порядок колонок, и то, на какой именно строке шапка, отличаются
+        # у разных поставщиков даже внутри одного файла (testdata/Приложение
+        # ГП10 №3 с падением 75.xlsx): у Nissan/Toyota шапка колонок —
+        # отдельная строка 2 (№|Наименование|Цена|Характеристики). А у
+        # Dewoo/газ заголовок листа и подписи колонок вообще слиты в одну
+        # строку 1 ('Запчасти на автомобиль 22172 Соболь', 'ед.изм', 'цена')
+        # — при этом "Наименование" там нигде НЕ подписано текстом вообще
+        # (колонка 1 подразумевается по умолчанию), а "цена" — подписана.
+        # Поэтому наименование/цену/артикул ищем НЕЗАВИСИМО друг от друга по
+        # первым трём строкам (не требуя, чтобы оба нашлись в ОДНОЙ и той же
+        # строке) — то, что не удалось найти по алиасу, остаётся на старой
+        # позиции (1=наименование, 2=цена, 3=артикул), под которую формат
+        # изначально и был написан. Данные начинаются сразу после самой
+        # последней из строк, где хоть что-то нашлось (не путать заголовок
+        # с первой строкой данных).
+        name_col, price_col, article_col = 1, 2, 3
+        detected_name_col = detected_price_col = detected_article_col = None
+        last_detected_row: int | None = None
+        for header_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=3, values_only=True), start=1):
+            row = list(row)
+            found_name = _find_export_column(row, NAME_COLUMN_ALIASES)
+            found_price = _find_export_column(row, PRICE_COLUMN_ALIASES)
+            found_article = _find_export_column(row, ARTICLE_COLUMN_ALIASES)
+            if found_name is not None:
+                detected_name_col = found_name
+                last_detected_row = header_idx
+            if found_price is not None:
+                detected_price_col = found_price
+                last_detected_row = header_idx
+            if found_article is not None:
+                detected_article_col = found_article
+                last_detected_row = header_idx
+        if detected_name_col is not None:
+            name_col = detected_name_col
+        if detected_price_col is not None:
+            price_col = detected_price_col
+        if detected_article_col is not None:
+            article_col = detected_article_col
+        elif article_col in (name_col, price_col):
+            # Позиция артикула по умолчанию (3) кем-то уже занята из-за
+            # обнаруженных наименования/цены на других позициях (реальный
+            # случай — Dewoo/газ: цена нашлась на позиции 3, своей отдельной
+            # колонки под артикул в этих листах вообще нет) — читать оттуда
+            # же под видом артикула значило бы задвоить цену в оба поля.
+            article_col = None
+        # Ничего не нашли по алиасам вовсе — старое допущение (шапка на
+        # строке 2, данные с 3-й), под которое формат изначально написан;
+        # нашли хоть что-то — данные сразу после самой поздней из строк,
+        # где что-то обнаружилось (не перепутать шапку со строкой данных).
+        data_start_row = (last_detected_row + 1) if last_detected_row is not None else 3
+
+        for row in ws.iter_rows(min_row=data_start_row, values_only=True):
+            name = _export_cell(list(row), name_col)
+            name = _clean(name)
             if not name:
                 continue
             results.append(
                 {
-                    "article": _clean(row[3]) if len(row) > 3 else None,
+                    "article": _clean(_export_cell(list(row), article_col)),
                     "name": name,
                     "qty": None,
-                    "price": _to_float(row[2]) if len(row) > 2 else None,
+                    "price": _to_float(_export_cell(list(row), price_col)),
                     "vehicle_make": row_brand,
                 }
             )
@@ -897,3 +1136,90 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
             )
 
     return results
+
+
+# Раздел в single-sheet каталоге (см. parse_price_catalog_single_sheet_sections)
+# может быть не маркой, а общей категорией "для всех марок" — тогда её не
+# нужно превращать в фиктивную "марку", по которой заказ-наряд конкретного
+# автомобиля никогда не совпадёт (тот же принцип, что "Расходные материалы"
+# у parse_price_catalog_by_brand выше).
+_SECTION_LABEL_IS_UNIVERSAL_RE = re.compile(
+    r"расходн|материал|неоригинальн|масл|жидкост", re.IGNORECASE
+)
+
+
+def parse_price_catalog_single_sheet_sections(file_path: str) -> list[dict] | None:
+    """Каталог ОДНИМ листом на несколько марок сразу, где раздел на марку —
+    не отдельный лист (см. parse_price_catalog_by_brand выше), а
+    строка-маркер внутри самого листа: единственная непустая ячейка
+    (название марки), дальше обычные строки данных до следующего маркера.
+
+    Реальный файл заказчика (testdata/Приложение №1 ИП Даянова З.Р..xlsx) —
+    один лист, 25000+ строк, разделы LADA (ВАЗ)/УАЗ/ГАЗ/ПАЗ/TOYOTA/
+    GM (Шевроле, Опель)/Неоригинальные запчасти/Масла... — шапка колонок
+    ("№ п/п | Артикул производителя | Наименование ... | Ед. изм. | Цена...")
+    вдобавок не в первой строке листа, а в третьей (после названия
+    приложения и текстового заголовка раздела), поэтому обычный
+    _dataframe_to_lines (шапка = первая строка pandas) тут в принципе не
+    мог сработать.
+
+    Возвращает None, если ни на одном листе не нашлась строка-шапка с
+    узнаваемой колонкой "наименование" — тогда вызывающий код пробует
+    другие парсеры (см. contract_catalog_import.py)."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in (".xlsx", ".xlsm"):
+        return None
+
+    import openpyxl
+
+    wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+
+    results: list[dict] = []
+
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        header_row_idx = None
+        cols = None
+        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), start=1):
+            row = list(row)
+            name_col = _find_export_column(row, NAME_COLUMN_ALIASES)
+            price_col = _find_export_column(row, PRICE_COLUMN_ALIASES)
+            if name_col is not None and price_col is not None:
+                header_row_idx = i
+                cols = {
+                    "article": _find_export_column(row, ARTICLE_COLUMN_ALIASES),
+                    "name": name_col,
+                    "price": price_col,
+                }
+                break
+        if header_row_idx is None:
+            continue
+
+        current_brand: str | None = None
+        for row in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
+            row = list(row)
+            name = _export_cell(row, cols["name"])
+            price = _export_cell(row, cols["price"])
+            has_name = name is not None and str(name).strip()
+            has_price = price is not None and str(price).strip() != ""
+            if not (has_name and has_price):
+                # Строка-маркер раздела (или пустая строка-разделитель) —
+                # берём первую непустую ячейку как название марки.
+                label = next((c for c in row if c is not None and str(c).strip()), None)
+                if label is not None:
+                    label = str(label).strip()
+                    current_brand = (
+                        None if _SECTION_LABEL_IS_UNIVERSAL_RE.search(label) else _normalize_brand_label(label)
+                    )
+                continue
+            results.append(
+                {
+                    "article": _clean(_export_cell(row, cols["article"])),
+                    "name": _clean(name),
+                    "qty": None,
+                    "price": _to_float(price),
+                    "vehicle_make": current_brand,
+                }
+            )
+
+    return results or None

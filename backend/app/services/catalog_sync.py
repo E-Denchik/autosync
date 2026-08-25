@@ -12,6 +12,8 @@ POST /api/ozon/cards/sync. Требование: выполнять внутри
 
 from __future__ import annotations
 
+import threading
+
 from flask import current_app
 
 from app.extensions import db
@@ -21,6 +23,18 @@ from app.services.ozon_client import OzonClient, OzonClientError, extract_items
 
 PAGE_SIZE = 100
 MAX_PAGES = 1000  # защита от бесконечного цикла, если Ozon вернёт "зависший" last_id
+
+# Прогон может занять минуты на большом каталоге (постранично, с запросами
+# к Ozon на каждой странице) и коммитится ОДНОЙ транзакцией в конце — если
+# запланированный запуск (раз в 6 часов, см. native_app.py) наложится на
+# ручной "Синхронизировать сейчас" (или наоборот), второй поток дошёл бы до
+# db.session.commit() с уже вставленными первым потоком product_id
+# (unique-констрейнт не даст создать дубли, но уронит IntegrityError и
+# похоронит ВСЮ проделанную во втором прогоне работу разом — коммит один на
+# все страницы, а не по одной). Приложение — один процесс (см. модуль-
+# докстринг), поэтому блокировки в памяти процесса достаточно, распределённая
+# не нужна.
+_sync_lock = threading.Lock()
 
 
 def _extract_category_nodes(tree_resp: dict) -> list[dict]:
@@ -61,11 +75,15 @@ def _fetch_category_names(ozon: OzonClient) -> dict[int, str]:
 
 
 def sync_ozon_catalog_job() -> dict:
-    ozon = OzonClient(
-        current_app.config["OZON_CLIENT_ID"],
-        current_app.config["OZON_API_KEY"],
-    )
+    if not _sync_lock.acquire(blocking=False):
+        return {"status": "skipped", "reason": "already_running"}
+    try:
+        return _sync_ozon_catalog(ozon=OzonClient(current_app.config["OZON_CLIENT_ID"], current_app.config["OZON_API_KEY"]))
+    finally:
+        _sync_lock.release()
 
+
+def _sync_ozon_catalog(ozon: OzonClient) -> dict:
     created = 0
     updated = 0
     last_id = ""

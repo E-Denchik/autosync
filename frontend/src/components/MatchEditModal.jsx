@@ -73,6 +73,8 @@ export default function MatchEditModal({ match, repairOrderId, onClose, onSave, 
         <div className="section-title">Изменить сопоставление</div>
         <p className="text-muted" style={{ fontSize: 12.5, marginTop: -6, marginBottom: 14 }}>
           Договор: <strong>{match.contract_article || "—"}</strong> / {match.contract_name}
+          {" · Кол-во: "}
+          <strong>{match.contract_qty ?? 1}</strong>
         </p>
 
         {!showCustomForm ? (

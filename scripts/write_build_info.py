@@ -1,8 +1,7 @@
 """Генерирует backend/app/_build_info.json с commit SHA, из которого собран
-этот бинарник — тем же способом, что и bake_integration_keys.py (данные,
-вшиваемые в сборку через --add-data, см. build-native-linux.sh/
-build-native-windows.ps1), не Python-модуль и не git-команда в рантайме
-(в frozen-бинарнике репозитория рядом нет).
+этот бинарник — данные, вшиваемые в сборку через --add-data (см.
+build-native-linux.sh/build-native-windows.ps1), не Python-модуль и не
+git-команда в рантайме (в frozen-бинарнике репозитория рядом нет).
 
 Проверка обновлений (app/services/update_checker.py) сравнивает этот commit
 с тем, на который сейчас указывает тег `latest` на GitHub — расхождение

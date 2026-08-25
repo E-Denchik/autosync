@@ -1,7 +1,33 @@
 from app.extensions import db
 from app.models import Product
-from app.services.catalog_sync import sync_ozon_catalog_job
+from app.services.catalog_sync import _sync_lock, sync_ozon_catalog_job
 from app.services.ozon_client import OzonClient
+
+
+def test_sync_skips_instead_of_racing_when_already_running(app, monkeypatch):
+    """Регрессия: прогон коммитится одной транзакцией в конце — если
+    запланированный (раз в 6 часов, см. native_app.py) синк наложится на
+    ручной "Синхронизировать сейчас" (или наоборот), второй поток дошёл бы
+    до commit с уже вставленными первым потоком product_id и потерял бы всю
+    свою часть работы на IntegrityError (ozon_product_id уникален). Вместо
+    гонки — второй вызов сразу отступает, ничего не запрашивая у Ozon."""
+    with app.app_context():
+        app.config["OZON_CLIENT_ID"] = "cid"
+        app.config["OZON_API_KEY"] = "key"
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("Ozon не должен вызываться, пока идёт другой прогон синхронизации")
+
+        monkeypatch.setattr(OzonClient, "get_category_tree", _boom)
+        monkeypatch.setattr(OzonClient, "list_products", _boom)
+
+        _sync_lock.acquire()
+        try:
+            result = sync_ozon_catalog_job()
+        finally:
+            _sync_lock.release()
+
+        assert result == {"status": "skipped", "reason": "already_running"}
 
 
 def test_sync_fails_cleanly_without_credentials(app):

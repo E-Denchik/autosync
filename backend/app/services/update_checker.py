@@ -36,6 +36,7 @@ consume_pending_update_result() сравнивает вшитый в НОВЫЙ 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -223,6 +224,70 @@ def _pick_asset(assets: list[dict]) -> dict:
     raise UpdateInstallError(f"Автообновление не поддерживается на {system}.")
 
 
+CHECKSUMS_ASSET_NAME = "SHA256SUMS.txt"
+
+
+def _fetch_checksums(assets: list[dict]) -> dict[str, str]:
+    """Скачивает и разбирает SHA256SUMS.txt из ассетов релиза (см.
+    .github/workflows/build-native.yml: sha256sum пишет "<хеш>  <путь>" —
+    путь берём только по basename, в CI это относительный путь вида
+    "autosync-linux/native-linux/autosync", а не голое имя ассета)."""
+    sums_asset = next((a for a in assets if a.get("name") == CHECKSUMS_ASSET_NAME), None)
+    if sums_asset is None:
+        return {}
+    try:
+        resp = requests.get(
+            sums_asset["browser_download_url"], headers={"Accept": "application/octet-stream"}, timeout=30
+        )
+    except requests.exceptions.RequestException:
+        return {}
+    if not resp.ok:
+        return {}
+    checksums: dict[str, str] = {}
+    for line in resp.text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        digest, path = parts
+        checksums[os.path.basename(path.lstrip("*"))] = digest.lower()
+    return checksums
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_checksum(dest: str, asset_name: str, assets: list[dict]) -> None:
+    """Скачанный файл ставится (на Linux — через pkexec ROOT'ом) без
+    единой проверки, что он не повреждён при скачивании и не подменён на
+    сервере раздачи — до этой проверки контрольная сумма нигде не сверялась
+    вообще. SHA256SUMS.txt публикуется в том же релизе тем же CI-прогоном,
+    что и сами бинарники (см. build-native.yml), поэтому отсутствие записи
+    для конкретного ассета так же не должно проходить молча, как и
+    несовпадение — оба варианта одинаково означают "нельзя подтвердить,
+    что скачан именно тот файл, что был собран"."""
+    checksums = _fetch_checksums(assets)
+    expected = checksums.get(asset_name)
+    if not expected:
+        raise UpdateInstallError(
+            f"Не удалось проверить целостность скачанного файла: контрольная сумма для {asset_name} "
+            "не найдена в релизе."
+        )
+    actual = _sha256_file(dest)
+    if actual.lower() != expected:
+        raise UpdateInstallError(
+            "Скачанный файл повреждён или не совпадает с опубликованной сборкой "
+            f"(ожидалась контрольная сумма {expected}, получена {actual}) — установка отменена."
+        )
+
+
 def _download_with_progress(url: str, dest: str) -> None:
     try:
         resp = requests.get(url, headers={"Accept": "application/octet-stream"}, stream=True, timeout=120)
@@ -267,6 +332,14 @@ def _download_job() -> None:
         tmp_dir = tempfile.mkdtemp(prefix="autosync-update-")
         dest = os.path.join(tmp_dir, asset["name"])
         _download_with_progress(asset["browser_download_url"], dest)
+        try:
+            _verify_checksum(dest, asset["name"], assets)
+        except UpdateInstallError:
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
+            raise
         _set_state(phase="downloaded", asset_path=dest, asset_name=asset["name"])
     except _DownloadCanceled:
         _set_state(phase="canceled")

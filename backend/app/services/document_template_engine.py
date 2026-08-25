@@ -7,6 +7,8 @@ import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from app.services.xlsx_safety import sanitize_cell_value
+
 TOKEN_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
 FULL_TOKEN_RE = re.compile(r"^\{\{\s*([\w.]+)\s*\}\}$")
 LEFTOVER_TOKEN_RE = re.compile(r"\{\{[^{}]*\}\}")
@@ -20,14 +22,14 @@ def _substitute_cell(cell, values: dict) -> None:
     text = cell.value
     full_match = FULL_TOKEN_RE.match(text)
     if full_match:
-        cell.value = values.get(full_match.group(1))
+        cell.value = sanitize_cell_value(values.get(full_match.group(1)))
         return
 
     def repl(m: re.Match) -> str:
         value = values.get(m.group(1))
         return "" if value is None else str(value)
 
-    cell.value = TOKEN_RE.sub(repl, text)
+    cell.value = sanitize_cell_value(TOKEN_RE.sub(repl, text))
 
 
 def _find_row(ws, prefix: str) -> int | None:
@@ -189,7 +191,7 @@ def build_starter_template(output_path: str) -> str:
 
     row("Запчасти и материалы")
     ws[f"A{ws.max_row}"].font = bold
-    row("№", "Артикул", "№ кат.", "Наименование", "Производитель", "Ед.", "Цена", "Склад")
+    row("№", "Артикул", "№ кат.", "Наименование", "Производитель", "Ед.", "Кол-во", "Цена", "Сумма", "Склад")
     row(
         "{{part.n}}",
         "{{part.article}}",
@@ -197,19 +199,23 @@ def build_starter_template(output_path: str) -> str:
         "{{part.name}}",
         "{{part.manufacturer}}",
         "{{part.unit}}",
+        "{{part.qty}}",
         "{{part.price}}",
+        "{{part.total}}",
         "{{part.warehouse}}",
     )
     row()
-    row("", "", "", "", "", "", "Итого запчасти:", "{{parts_total}}")
-    ws[f"G{ws.max_row}"].font = bold
+    row("", "", "", "", "", "", "", "Итого запчасти:", "{{parts_total}}")
+    ws[f"H{ws.max_row}"].font = bold
     row()
 
-    row("", "", "", "", "", "", "ИТОГО:", "{{grand_total}}")
-    ws[f"G{ws.max_row}"].font = bold
+    row("", "", "", "", "", "", "", "ИТОГО:", "{{grand_total}}")
     ws[f"H{ws.max_row}"].font = bold
+    ws[f"I{ws.max_row}"].font = bold
 
-    for col_letter, width in {"A": 14, "B": 22, "C": 14, "D": 30, "E": 20, "F": 10, "G": 16, "H": 14}.items():
+    for col_letter, width in {
+        "A": 14, "B": 22, "C": 14, "D": 30, "E": 20, "F": 10, "G": 10, "H": 16, "I": 16, "J": 14,
+    }.items():
         ws.column_dimensions[col_letter].width = width
 
     wb.save(output_path)

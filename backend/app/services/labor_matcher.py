@@ -103,10 +103,12 @@ def match_all_labor(
     autodata_client: AutoDataClient,
     llm_client: LLMClient,
 ) -> list[dict]:
-    return [
-        match_labor_line(desc, vehicle_make, vehicle_model, autodata_client, llm_client)
-        for desc in descriptions
-    ]
+    from app.services.parallel import map_with_app_context
+
+    return map_with_app_context(
+        lambda desc: match_labor_line(desc, vehicle_make, vehicle_model, autodata_client, llm_client),
+        descriptions,
+    )
 
 
 LABOR_SUGGESTION_CANDIDATE_LIMIT = 60
@@ -288,10 +290,12 @@ def match_all_labor_against_contract(
     vehicle_model: str | None,
     llm_client: LLMClient,
 ) -> list[dict]:
-    return [
-        match_labor_line_against_contract(desc, contract_id, vehicle_make, vehicle_model, llm_client)
-        for desc in descriptions
-    ]
+    from app.services.parallel import map_with_app_context
+
+    return map_with_app_context(
+        lambda desc: match_labor_line_against_contract(desc, contract_id, vehicle_make, vehicle_model, llm_client),
+        descriptions,
+    )
 
 
 def suggest_missing_labor_operations_from_contract(

@@ -193,6 +193,23 @@ def test_sync_endpoint_returns_created_updated_counts(client, admin_headers, mon
     assert body == {"ok": True, "created": 3, "updated": 1}
 
 
+def test_sync_endpoint_reports_skipped_when_already_running(client, admin_headers, monkeypatch):
+    """catalog_sync.sync_ozon_catalog_job возвращает status="skipped", когда
+    другой прогон уже держит блокировку (см. её собственный regression-тест
+    в test_catalog_sync.py) — эндпоинт не должен путать это ни с успехом
+    (created/updated отсутствуют), ни с ошибкой (ничего не сломалось)."""
+    monkeypatch.setattr(
+        "app.api.ozon.cards.sync_ozon_catalog_job",
+        lambda: {"status": "skipped", "reason": "already_running"},
+    )
+    resp = client.post("/api/ozon/cards/sync", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["skipped"] is True
+    assert "message" in body
+
+
 def test_sync_endpoint_unreachable_server_returns_ok_false_not_500(client, admin_headers, monkeypatch):
     """Регрессия: Ozon (или мок-сервер для теста) недоступен по сети —
     раньше это была необработанная requests.exceptions.ConnectionError,

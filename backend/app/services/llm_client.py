@@ -240,3 +240,24 @@ class LLMClient:
             return json.loads(text)
         except json.JSONDecodeError as exc:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
+    def normalize_brand_labels(self, labels: list[str]) -> dict[str, str | None]:
+        """Марки из каталога заказчика, которых нет в справочнике BrandAlias
+        (см. app/models/brand_alias.py) — просим ИИ привести к каноничному
+        латинскому написанию, как в заказ-наряде. Один пакетный запрос на
+        все нераспознанные метки сразу, а не по одной — они всё равно
+        сравниваются вместе (см. contract_catalog_import.py).
+
+        Возвращает {метка_как_на_входе: каноничная_марка | None}. Ключ
+        "mapping" в ответе модели — словарь; отсутствие метки в ответе
+        (модель забыла её обработать) трактуем так же, как None."""
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt("brand_normalization.md", labels=labels)
+        text = self._generate(prompt, json_response=True)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+        mapping = parsed.get("mapping") or {}
+        return {label: mapping.get(label) or None for label in labels}

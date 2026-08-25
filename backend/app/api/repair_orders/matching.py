@@ -45,6 +45,7 @@ def _serialize(match: PartMatch) -> dict:
         "repair_order_id": match.repair_order_id,
         "contract_article": match.contract_article,
         "contract_name": match.contract_name,
+        "contract_qty": float(match.contract_qty) if match.contract_qty is not None else None,
         "matched_article": match.matched_article,
         "matched_name": match.matched_name,
         "matched_price": float(match.matched_price) if match.matched_price is not None else None,
@@ -157,6 +158,7 @@ def add_part(repair_order_id: int):
         repair_order_id=repair_order_id,
         contract_article=body.get("matched_article"),
         contract_name=matched_name,
+        contract_qty=body.get("contract_qty"),
         matched_article=body.get("matched_article"),
         matched_name=matched_name,
         matched_price=body.get("matched_price"),
@@ -196,6 +198,8 @@ def edit_match(match_id: int):
     match.matched_name = body.get("matched_name", match.matched_name)
     if "matched_price" in body:
         match.matched_price = body.get("matched_price")
+    if "contract_qty" in body:
+        match.contract_qty = body.get("contract_qty")
     match.manually_edited = True
     match.review_status = ReviewStatus.APPROVED
     match.reviewed_at = datetime.utcnow()

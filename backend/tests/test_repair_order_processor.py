@@ -11,6 +11,7 @@ from app.models import (
     DocumentProcessingStatus,
     LaborLine,
     PartMatch,
+    RawImportRow,
     RepairOrder,
     RepairOrderStatus,
 )
@@ -92,6 +93,18 @@ def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
         assert float(labor_match.norm_hours) == 28.0
         assert float(labor_match.hourly_rate) == 1170.0
         assert float(labor_match.total_cost) == 28.0 * 1170.0
+
+        # Заказчик: сырые строки заказ-наряда должны попасть в БД ДО
+        # сопоставления (см. raw_import_staging.py), а после того, как они
+        # реально стали PartMatch/LaborLine — пометиться перенесёнными.
+        staged_parts = RawImportRow.query.filter_by(repair_order_id=repair_order_id, row_kind="order_part").all()
+        assert len(staged_parts) > 0
+        assert all(r.status == "moved" for r in staged_parts)
+        assert all("name" in r.raw_data for r in staged_parts)
+
+        staged_labor = RawImportRow.query.filter_by(repair_order_id=repair_order_id, row_kind="order_labor").all()
+        assert len(staged_labor) > 0
+        assert all(r.status == "moved" for r in staged_labor)
 
 
 def test_process_upload_job_falls_back_to_norm_hours_stated_in_repair_order_when_nothing_matched(app):
@@ -446,6 +459,45 @@ def test_process_upload_job_fails_gracefully_on_broken_repair_order_file(app):
         assert repair_order.status == RepairOrderStatus.FAILED
 
 
+def test_process_upload_job_marks_repair_order_failed_on_unexpected_parse_error(app, monkeypatch):
+    """Регрессия: только DocumentParseError ловился вокруг
+    _parse_repair_order_files — любая другая ошибка (сбой БД, необработанное
+    исключение внутри normalize_brand_with_ai_fallback и т.п.) улетала выше
+    в job_queue.py, где ловится лишь ради того, чтобы не уронить
+    воркер-поток, но статус заказ-наряда никто не меняет — запись зависала
+    в PARSING навсегда без единого сообщения об ошибке."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("неожиданная ошибка парсинга заказ-наряда")
+
+        monkeypatch.setattr("app.services.repair_order_processor._parse_repair_order_files", _boom)
+
+        result = process_upload_job(contract.id, repair_order_id)
+
+        assert result["status"] == "failed"
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.status == RepairOrderStatus.FAILED
+        assert repair_order.error_message
+
+
 def test_process_upload_job_marks_contract_failed_instead_of_hanging_on_unexpected_import_error(app, monkeypatch):
     with app.app_context():
         contract = Contract(
@@ -564,6 +616,49 @@ def test_process_upload_job_handles_repair_order_with_only_parts_section(app):
         assert repair_order.vehicle_model == "CAMRY"
         assert PartMatch.query.filter_by(repair_order_id=repair_order_id).count() == 2
         assert LaborLine.query.filter_by(repair_order_id=repair_order_id).count() == 0
+
+
+def test_process_upload_job_normalizes_cyrillic_vehicle_make_before_matching(app, monkeypatch):
+    """Регрессия: марка САМОГО заказ-наряда раньше нигде не нормализовалась
+    — бралась как есть из текста файла ("Автомобиль: Шевроле ...") и в
+    таком виде шла в фильтр по марке при сопоставлении и в поиск ставки —
+    там сравнение со справочником/каталогом ТОЧНОЕ, так что кириллица в
+    заказ-наряде не находила ничего, даже если каталог сам по себе уже
+    правильно затегирован латиницей."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(contract)
+        db.session.flush()
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        contract_id, repair_order_id = contract.id, repair_order.id
+
+        def _fake_parse(*args, **kwargs):
+            meta = {
+                "order_number": None,
+                "order_date": None,
+                "vehicle_make": "Шевроле",
+                "vehicle_model": None,
+                "vehicle_vin": None,
+                "vehicle_year": None,
+            }
+            return meta, [], []
+
+        monkeypatch.setattr("app.services.repair_order_processor._parse_repair_order_files", _fake_parse)
+
+        result = process_upload_job(contract_id, repair_order_id)
+
+        assert result["status"] == "ok"
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.vehicle_make == "CHEVROLET"  # не "Шевроле" как есть
 
 
 def test_process_upload_job_handles_repair_order_with_only_labor_section(app):

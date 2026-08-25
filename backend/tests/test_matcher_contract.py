@@ -248,6 +248,67 @@ def test_cross_reference_result_matched_against_catalog_ignoring_dashes(app):
         llm_client.match_part_by_name.assert_not_called()
 
 
+def test_contract_qty_propagates_through_exact_match(app):
+    """Регрессия: количество из строки заказ-наряда раньше нигде не
+    сохранялось в результате сопоставления, из-за чего итоговый документ
+    считал сумму так, будто всё заказано в количестве 1 (см.
+    document_generator.py)."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="ABC-123", name="Диск тормозной", price=1500.0))
+        db.session.commit()
+
+        order_line = {"article": "ABC-123", "name": "диск тормоз задний", "qty": 2}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["contract_qty"] == 2
+
+
+def test_contract_qty_propagates_through_cross_reference_match(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="CROSS-1", name="Аналог фильтра", price=350.0))
+        db.session.commit()
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = [{"article": "CROSS-1", "name": "x", "price": 350.0}]
+        llm_client = MagicMock()
+
+        order_line = {"article": "XYZ-999", "name": "Фильтр масляный", "qty": 3}
+        result = match_line_against_contract(order_line, contract_id, supplier_client, llm_client)
+
+        assert result["confidence_level"] == ConfidenceLevel.CROSS_REF
+        assert result["contract_qty"] == 3
+
+
+def test_contract_qty_propagates_through_llm_guess_match(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(ContractPart(contract_id=contract_id, article="SP-1", name="Свеча NGK BKR6E", price=250.0))
+        db.session.commit()
+
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = []
+        llm_client = MagicMock()
+        llm_client.match_part_by_name.return_value = {"matched_index": 0, "confidence": 0.8, "reasoning": "совпадение"}
+
+        order_line = {"article": None, "name": "Свеча зажигания NGK", "qty": 4}
+        result = match_line_against_contract(order_line, contract_id, supplier_client, llm_client)
+
+        assert result["confidence_level"] == ConfidenceLevel.LLM_GUESS
+        assert result["contract_qty"] == 4
+
+
+def test_contract_qty_propagates_through_no_match_fallback(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+
+        order_line = {"article": "ANY", "name": "Что угодно", "qty": 5}
+        result = match_line_against_contract(order_line, contract_id, MagicMock(), MagicMock())
+
+        assert result["matched_article"] is None
+        assert result["contract_qty"] == 5
+
+
 def test_match_all_against_contract_scales_to_many_parts(app):
     with app.app_context():
         contract_id = _make_contract(app)

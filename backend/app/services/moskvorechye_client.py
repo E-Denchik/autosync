@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import requests
 
+from app.services.secret_redaction import redact_secrets
+
 
 class MoskvorechyeError(RuntimeError):
     pass
@@ -50,9 +52,19 @@ class MoskvorechyeClient:
                 timeout=self.timeout,
             )
         except requests.exceptions.RequestException as exc:
-            raise MoskvorechyeError(f"Москворечье недоступно: {exc}") from exc
+            # userlogin/userpsw — часть query-параметров (см. класс выше), а
+            # requests/urllib3 включают полный URL запроса в текст сетевой
+            # ошибки — без вычистки они утекли бы в лог (parts_supplier_client.py)
+            # и в ответ фронту (search_all не глотает ошибку намеренно).
+            raise MoskvorechyeError(
+                redact_secrets(f"Москворечье недоступно: {exc}", [self.userlogin, self.userpsw])
+            ) from exc
         if not resp.ok:
-            raise MoskvorechyeError(f"Москворечье -> {resp.status_code}: {resp.text[:300]}")
+            raise MoskvorechyeError(
+                redact_secrets(
+                    f"Москворечье -> {resp.status_code}: {resp.text[:300]}", [self.userlogin, self.userpsw]
+                )
+            )
         return resp.json()
 
     def search_articles(self, number: str, brand: str | None = None) -> list[dict]:

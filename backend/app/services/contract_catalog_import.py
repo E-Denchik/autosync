@@ -5,6 +5,7 @@ import os
 
 from app.extensions import db
 from app.models import (
+    BrandAlias,
     Contract,
     ContractHourlyRate,
     ContractLaborNorm,
@@ -16,10 +17,12 @@ from app.services.document_parser import (
     DocumentParseError,
     parse_document_with_ocr_fallback,
     parse_price_catalog_by_brand,
+    parse_price_catalog_single_sheet_sections,
     parse_repair_order_export,
 )
 from app.services.history import log_change
 from app.services.matcher import normalize_article
+from app.services.raw_import_staging import mark_rows_moved, stage_raw_rows
 
 logger = logging.getLogger(__name__)
 
@@ -83,41 +86,88 @@ def _bulk_insert_parts(contract_id: int, lines: list[dict]) -> dict:
     return {"created": len(to_insert), "updated": len(to_update)}
 
 
+def _labor_norm_key(operation_name: str | None, vehicle_make: str | None, vehicle_model: str | None) -> tuple:
+    # Тот же регистронезависимый ключ, что и в labor_matcher._contract_labor_candidates/
+    # match_labor_line_against_contract — иначе дедупликация здесь и сопоставление
+    # там расходились бы в том, что считать "той же" нормой.
+    return (
+        (operation_name or "").strip().lower(),
+        (vehicle_make or "").strip().lower(),
+        (vehicle_model or "").strip().lower(),
+    )
+
+
 def _bulk_insert_labor_norms(
     contract_id: int, lines: list[dict], vehicle_make: str | None, vehicle_model: str | None
-) -> int:
-    rows = [
-        {
+) -> dict:
+    """Пишет строки норм-часов как ContractLaborNorm. Норма с тем же
+    (операция, марка, модель) в этом договоре ОБНОВЛЯЕТСЯ (норма-часы), а не
+    создаётся заново — иначе повторная загрузка файла норм через "Добавить ещё
+    файлы" (см. app/api/contracts.py::import_more_files) удваивала бы список
+    норм при каждой загрузке, как и было раньше исправлено для ContractPart
+    в _bulk_insert_parts."""
+    existing_by_key = {
+        _labor_norm_key(r.operation_name, r.vehicle_make, r.vehicle_model): r.id
+        for r in ContractLaborNorm.query.filter_by(contract_id=contract_id).all()
+    }
+
+    to_insert: list[dict] = []
+    to_update: list[dict] = []
+    seen_in_batch: dict[tuple, int] = {}
+    for line in lines:
+        if not line.get("description") or line.get("norm_hours") is None:
+            continue
+        key = _labor_norm_key(line.get("description"), vehicle_make, vehicle_model)
+        row = {
             "contract_id": contract_id,
             "operation_name": line.get("description"),
             "vehicle_make": vehicle_make,
             "vehicle_model": vehicle_model,
             "norm_hours": line.get("norm_hours"),
         }
-        for line in lines
-        if line.get("description") and line.get("norm_hours") is not None
-    ]
-    for i in range(0, len(rows), BATCH_SIZE):
-        db.session.bulk_insert_mappings(ContractLaborNorm, rows[i : i + BATCH_SIZE])
-    return len(rows)
+        existing_id = existing_by_key.get(key)
+        if existing_id is not None:
+            to_update.append({**row, "id": existing_id})
+        elif key in seen_in_batch:
+            # Та же операция несколько раз в одном файле — оставляем последнюю строку.
+            to_insert[seen_in_batch[key]] = row
+        else:
+            seen_in_batch[key] = len(to_insert)
+            to_insert.append(row)
+
+    for i in range(0, len(to_insert), BATCH_SIZE):
+        db.session.bulk_insert_mappings(ContractLaborNorm, to_insert[i : i + BATCH_SIZE])
+    for i in range(0, len(to_update), BATCH_SIZE):
+        db.session.bulk_update_mappings(ContractLaborNorm, to_update[i : i + BATCH_SIZE])
+
+    return {"created": len(to_insert), "updated": len(to_update)}
 
 
 def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str | None, llm_client) -> dict:
     parts_created = 0
     parts_updated = 0
     labor_norms_created = 0
+    labor_norms_updated = 0
     for path in paths:
+        filename = os.path.basename(path)
         export = parse_repair_order_export(path)
         if export is not None:
+            # Сохраняем строки как они были распознаны в файле — ДО того,
+            # как они станут ContractPart (см. raw_import_staging.py — тот
+            # же принцип "сначала сырые данные, потом постоянные таблицы"
+            # для каталога договора, что и для заказ-наряда ниже).
+            stage_raw_rows(export["part_lines"], row_kind="catalog_part", contract_id=contract_id, source_filename=filename)
             parts_result = _bulk_insert_parts(contract_id, export["part_lines"])
             parts_created += parts_result["created"]
             parts_updated += parts_result["updated"]
-            labor_norms_created += _bulk_insert_labor_norms(
+            labor_norms_result = _bulk_insert_labor_norms(
                 contract_id,
                 export["labor_lines"],
                 export["meta"].get("vehicle_make") or vehicle_make,
                 export["meta"].get("vehicle_model"),
             )
+            labor_norms_created += labor_norms_result["created"]
+            labor_norms_updated += labor_norms_result["updated"]
             continue
 
         # Всегда разбираем ВСЕ найденные листы марок разом (vehicle_make=None
@@ -132,13 +182,89 @@ def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str 
         # оставался вообще без единой запчасти для сопоставления.
         lines = parse_price_catalog_by_brand(path, None)
         if lines is None:
+            # Тот же смысл, что и выше, но раздел на марку — не отдельный
+            # лист, а строка-маркер внутри одного листа (см. её докстринг —
+            # реальный файл заказчика на 25000+ строк одним листом).
+            lines = parse_price_catalog_single_sheet_sections(path)
+        if lines is None:
             lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
+        stage_raw_rows(lines, row_kind="catalog_part", contract_id=contract_id, source_filename=filename)
         parts_result = _bulk_insert_parts(contract_id, lines)
         parts_created += parts_result["created"]
         parts_updated += parts_result["updated"]
 
+    # "ИИ проверяет и адаптирует сохранённые данные" — уже застейджены
+    # выше, дальше сама марка/каталог доводятся до нашего стандарта.
+    brands_normalized = _normalize_unresolved_brands(contract_id, llm_client)
+    mark_rows_moved(contract_id=contract_id, row_kind="catalog_part")
+
     db.session.commit()
-    return {"parts_created": parts_created, "parts_updated": parts_updated, "labor_norms_created": labor_norms_created}
+    return {
+        "parts_created": parts_created,
+        "parts_updated": parts_updated,
+        "labor_norms_created": labor_norms_created,
+        "labor_norms_updated": labor_norms_updated,
+        "brands_normalized": brands_normalized,
+    }
+
+
+def _normalize_unresolved_brands(contract_id: int, llm_client) -> int:
+    """Марки, которых нет в справочнике BrandAlias (см. document_parser.
+    _normalize_brand_label — при отсутствии совпадения строки остаются с
+    исходным, необработанным написанием) — заказчик попросил: сохранённые
+    данные проверяет и адаптирует под наш стандарт выбранная им ИИ, а уже
+    ПОТОМ идёт сопоставление (см. repair_order_processor.process_upload_job:
+    вызывается после этой функции). Как и весь остальной код с LLM в этом
+    проекте — best-effort: недоступность LLM просто оставляет марку как
+    есть, сопоставление всё равно продолжится (см. matcher.py/
+    labor_matcher.py — тот же принцип везде)."""
+    known_canonical = {
+        row[0] for row in db.session.query(BrandAlias.canonical_make).filter(BrandAlias.canonical_make.isnot(None))
+    }
+    contract_makes = {
+        row[0]
+        for row in db.session.query(ContractPart.vehicle_make).filter(
+            ContractPart.contract_id == contract_id, ContractPart.vehicle_make.isnot(None)
+        )
+    }
+    unresolved = sorted(contract_makes - known_canonical)
+    if not unresolved or llm_client is None:
+        return 0
+
+    try:
+        mapping = llm_client.normalize_brand_labels(unresolved)
+    except Exception as exc:
+        logger.warning("ИИ-нормализация марок недоступна для contract_id=%s: %s", contract_id, exc)
+        return 0
+
+    normalized_count = 0
+    for label, canonical in mapping.items():
+        if not canonical:
+            continue
+        canonical = canonical.strip().upper()
+        if not canonical:
+            continue
+        existing = BrandAlias.query.filter(db.func.upper(BrandAlias.alias) == label.upper()).first()
+        if existing is None:
+            db.session.add(BrandAlias(alias=label, canonical_make=canonical, source="llm"))
+        elif existing.canonical_make is None:
+            existing.canonical_make = canonical
+            existing.source = "llm"
+        else:
+            continue
+        ContractPart.query.filter(
+            ContractPart.contract_id == contract_id, ContractPart.vehicle_make == label
+        ).update({"vehicle_make": canonical}, synchronize_session=False)
+        normalized_count += 1
+
+    if normalized_count:
+        log_change(
+            "contract",
+            contract_id,
+            "brands_normalized_by_llm",
+            details={"mapping": {k: v for k, v in mapping.items() if v}},
+        )
+    return normalized_count
 
 
 def import_contract_job(contract_id: int, paths: list[str], vehicle_make: str | None) -> dict:

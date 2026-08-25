@@ -93,16 +93,83 @@ def test_generates_readable_xlsx_with_correct_totals(app, tmp_path):
     assert labor_row[:5] == (1, "Замена тормозных колодок", 1.5, 1000.0, 1500.0)
     assert next(r for r in rows if r[3] == "Итого работы:")[:5] == (None, None, None, "Итого работы:", 1500.0)
 
-    # Запчасти: артикул/номенклатура/цена/склад из PartMatch.
+    # Запчасти: артикул/номенклатура/кол-во/цена/сумма/склад из PartMatch.
     part_row = next(r for r in rows if r[1] == "A-1")
-    assert part_row[:8] == (1, "A-1", "CAT-1", "Тормозной диск", "LUZAR", "шт", 1500.0, "Основной")
-    assert next(r for r in rows if r[6] == "Итого запчасти:")[:8] == (
-        None, None, None, None, None, None, "Итого запчасти:", 1500.0,
+    assert part_row[:10] == (1, "A-1", "CAT-1", "Тормозной диск", "LUZAR", "шт", 1.0, 1500.0, 1500.0, "Основной")
+    assert next(r for r in rows if r[7] == "Итого запчасти:")[:9] == (
+        None, None, None, None, None, None, None, "Итого запчасти:", 1500.0,
     )
 
-    assert next(r for r in rows if r[6] == "ИТОГО:")[:8] == (
-        None, None, None, None, None, None, "ИТОГО:", 3000.0,
+    assert next(r for r in rows if r[7] == "ИТОГО:")[:9] == (
+        None, None, None, None, None, None, None, "ИТОГО:", 3000.0,
     )
+
+
+def test_quantity_multiplies_price_in_totals(app, tmp_path):
+    """Регрессия: 2 шт. по 1500 ₽ должны дать 3000 ₽ в итоговом документе,
+    а не 1500 ₽ — раньше contract_qty вообще не сохранялся и не участвовал
+    в расчёте суммы (см. PartMatch.contract_qty)."""
+    with app.app_context():
+        order = _make_repair_order(app, tmp_path)
+        db.session.add(
+            PartMatch(
+                repair_order_id=order.id,
+                contract_article="A-1",
+                contract_name="Тормозные колодки",
+                contract_qty=2,
+                matched_article="A-1",
+                matched_name="Тормозные колодки",
+                matched_price=1500,
+                confidence_level=ConfidenceLevel.EXACT,
+                review_status=ReviewStatus.APPROVED,
+            )
+        )
+        db.session.commit()
+
+        path = generate_repair_order_document(order)
+        context, part_items, _ = build_template_context(order)
+
+    part_row = next(r for r in _rows(path) if r[1] == "A-1")
+    assert part_row[6] == 2.0  # Кол-во
+    assert part_row[7] == 1500.0  # Цена (за единицу)
+    assert part_row[8] == 3000.0  # Сумма
+
+    assert any(r[:9] == (None, None, None, None, None, None, None, "Итого запчасти:", 3000.0) for r in _rows(path))
+
+    assert context["parts_total"] == 3000.0
+    assert part_items[0]["qty"] == 2.0
+    assert part_items[0]["total"] == 3000.0
+
+
+def test_generate_document_neutralizes_formula_injection_in_part_name(app, tmp_path):
+    """Регрессия: matched_name/matched_article приходят из данных
+    заказ-наряда/договора (в конечном счёте — из загруженного заказчиком
+    файла), не из доверенной формы — строка с ведущим "=" попадала в ячейку
+    как есть, а openpyxl сам помечает такую ячейку как формулу, которая
+    выполнится при открытии готового документа. См. app/services/xlsx_safety.py."""
+    with app.app_context():
+        order = _make_repair_order(app, tmp_path)
+        db.session.add(
+            PartMatch(
+                repair_order_id=order.id,
+                contract_article="A-1",
+                contract_name="Деталь",
+                matched_article="=1+1",
+                matched_name="=CMD('/c calc')A1",
+                matched_price=100,
+                confidence_level=ConfidenceLevel.EXACT,
+                review_status=ReviewStatus.APPROVED,
+            )
+        )
+        db.session.commit()
+
+        path = generate_repair_order_document(order)
+
+    wb = openpyxl.load_workbook(path)
+    article_cell = next(c for row in wb.active.iter_rows() for c in row if c.value == "'=1+1")
+    name_cell = next(c for row in wb.active.iter_rows() for c in row if c.value == "'=CMD('/c calc')A1")
+    assert article_cell.data_type != "f"
+    assert name_cell.data_type != "f"
 
 
 def test_excludes_pending_and_rejected_matches(app, tmp_path):
@@ -147,7 +214,9 @@ def test_excludes_pending_and_rejected_matches(app, tmp_path):
     assert any("Одобренная деталь" in str(c) for c in flat)
     assert not any("Ожидающая деталь" in str(c) for c in flat)
     assert not any("Отклонённая деталь" in str(c) for c in flat)
-    assert (None, None, None, None, None, None, "Итого запчасти:", 100.0) in _rows(path)
+    assert any(
+        r[:9] == (None, None, None, None, None, None, None, "Итого запчасти:", 100.0) for r in _rows(path)
+    )
 
 
 def test_includes_company_profile_when_set(app, tmp_path):
@@ -197,7 +266,7 @@ def test_zero_matches_gives_zero_totals_not_crash(app, tmp_path):
         path = generate_repair_order_document(order)
 
     rows = _rows(path)
-    assert (None, None, None, None, None, None, "ИТОГО:", 0.0) in rows
+    assert any(r[:9] == (None, None, None, None, None, None, None, "ИТОГО:", 0.0) for r in rows)
 
 
 def test_build_template_context_computes_totals_and_items(app, tmp_path):
@@ -244,7 +313,9 @@ def test_build_template_context_computes_totals_and_items(app, tmp_path):
             "name": "Деталь",
             "manufacturer": "LUZAR",
             "unit": "",
+            "qty": 1.0,
             "price": 500.0,
+            "total": 500.0,
             "warehouse": "",
         }
     ]

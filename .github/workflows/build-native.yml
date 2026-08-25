@@ -111,11 +111,6 @@ jobs:
           sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
       - name: Build native Linux binary
-        env:
-          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
-          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-          OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
-          OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
         run: ./scripts/build-native-linux.sh
 
       - name: Build native .deb
@@ -182,11 +177,6 @@ jobs:
           echo "TESSERACT_DIR=$tessDir" >> $env:GITHUB_ENV
 
       - name: Build native Windows exe
-        env:
-          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
-          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-          OZON_PERFORMANCE_CLIENT_ID: ${{ secrets.OZON_PERFORMANCE_CLIENT_ID }}
-          OZON_PERFORMANCE_CLIENT_SECRET: ${{ secrets.OZON_PERFORMANCE_CLIENT_SECRET }}
         run: pwsh -File scripts\build-native-windows.ps1
 
       - name: Install Inno Setup
@@ -252,8 +242,22 @@ jobs:
 
       - uses: actions/download-artifact@v4
 
+      # update_checker.py сверяет sha256 скачанного файла с этим списком
+      # ПЕРЕД установкой — без него скачанный бинарник ставился (и на Linux
+      # запускался через pkexec ROOT'ом) без единой проверки, что он не
+      # повреждён по дороге и не подменён (см. её собственный докстринг).
+      - name: Generate checksums
+        run: |
+          sha256sum \
+            autosync-linux/native-linux/autosync \
+            autosync-linux/autosync-desktop_*_amd64.deb \
+            autosync-windows/native-windows/autosync.exe \
+            autosync-windows/native-windows-installer/*.exe \
+            > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Update "latest" pre-release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: latest
           name: Latest build (main)
@@ -265,6 +269,7 @@ jobs:
             autosync-linux/autosync-desktop_*_amd64.deb
             autosync-windows/native-windows/autosync.exe
             autosync-windows/native-windows-installer/*.exe
+            SHA256SUMS.txt
 
   release:
     needs: [build-linux, build-windows]
@@ -273,11 +278,24 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
 
+      # см. тот же шаг в release-latest выше — update_checker.py требует его
+      # для проверки целостности перед установкой.
+      - name: Generate checksums
+        run: |
+          sha256sum \
+            autosync-linux/native-linux/autosync \
+            autosync-linux/autosync-desktop_*_amd64.deb \
+            autosync-windows/native-windows/autosync.exe \
+            autosync-windows/native-windows-installer/*.exe \
+            > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             autosync-linux/native-linux/autosync
             autosync-linux/autosync-desktop_*_amd64.deb
             autosync-windows/native-windows/autosync.exe
             autosync-windows/native-windows-installer/*.exe
+            SHA256SUMS.txt

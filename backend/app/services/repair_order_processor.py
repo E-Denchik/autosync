@@ -26,6 +26,7 @@ from app.models import (
     RepairOrderStatus,
 )
 from app.services.autodata_client import AutoDataClient
+from app.services.brand_normalizer import normalize_brand_with_ai_fallback
 from app.services.contract_catalog_import import import_contract_files
 from app.services.document_parser import DocumentParseError, parse_document_with_ocr_fallback, parse_repair_order_export
 from app.services.history import log_change
@@ -40,6 +41,7 @@ from app.services.matcher import match_all_against_contract
 from app.services.nomenclature_client import NomenclatureClient
 from app.services.nomenclature_matcher import enrich_all
 from app.services.parts_supplier_client import build_configured_supplier_client
+from app.services.raw_import_staging import mark_rows_moved, stage_raw_rows
 
 logger = logging.getLogger(__name__)
 
@@ -195,14 +197,46 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             _repair_order_paths(repair_order), llm_client
         )
         repair_order.vehicle_make = repair_order.vehicle_make or meta.get("vehicle_make")
+        # Марка самого заказ-наряда раньше нигде не нормализовалась —
+        # бралась как есть из текста файла ("Автомобиль: Шевроле Лачетти")
+        # и в таком виде шла и в фильтр по марке при сопоставлении
+        # (matcher._contract_candidate_pool), и в поиск ставки/нормо-часов
+        # ниже — там сравнение со справочником/каталогом ТОЧНОЕ, так что
+        # кириллица или опечатка в самом заказ-наряде не находились, даже
+        # если каталог был уже правильно затегирован. Тот же принцип
+        # "ИИ проверяет и адаптирует данные перед сопоставлением", что и
+        # для каталога (см. contract_catalog_import._normalize_unresolved_brands),
+        # только для одной конкретной марки, а не пакета сразу.
+        repair_order.vehicle_make = normalize_brand_with_ai_fallback(repair_order.vehicle_make, llm_client)
         repair_order.vehicle_model = repair_order.vehicle_model or meta.get("vehicle_model")
         repair_order.vehicle_vin = repair_order.vehicle_vin or meta.get("vehicle_vin")
         repair_order.vehicle_year = repair_order.vehicle_year or meta.get("vehicle_year")
         repair_order.order_number = repair_order.order_number or meta.get("order_number")
         repair_order.order_date = repair_order.order_date or meta.get("order_date")
         repair_order.parsed_lines = part_lines
+        # Сохраняем строки как они были распознаны в файле — ДО
+        # сопоставления (см. raw_import_staging.py: то же самое "сырые
+        # данные, потом постоянные таблицы", что и для каталога договора
+        # выше). Не в parsed_lines (то поле — только запчасти, и не
+        # переживает повторный анализ), а отдельно и разом с работами.
+        stage_raw_rows(part_lines, row_kind="order_part", repair_order_id=repair_order.id)
+        stage_raw_rows(labor_lines_raw, row_kind="order_labor", repair_order_id=repair_order.id)
     except DocumentParseError as exc:
         message = f"Не удалось прочитать заказ-наряд: {exc}"
+        repair_order.status = RepairOrderStatus.FAILED
+        repair_order.error_message = message
+        log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
+        db.session.commit()
+        return {"status": "failed", "error": message}
+    except Exception as exc:
+        # Как и для import_contract_files ниже: непредвиденная ошибка (не
+        # формат файла, а, например, сбой БД или необработанное исключение
+        # ИИ-нормализации марки) не должна оставлять заказ-наряд в статусе
+        # "parsing" навсегда без единого сообщения — job_queue.py ловит
+        # Exception только чтобы не уронить воркер-поток, но не трогает
+        # статус записи, поэтому это нужно сделать здесь.
+        logger.exception("_parse_repair_order_files упал для repair_order_id=%s", repair_order_id)
+        message = f"Не удалось разобрать заказ-наряд: {exc}"
         repair_order.status = RepairOrderStatus.FAILED
         repair_order.error_message = message
         log_change("repair_order", repair_order.id, "failed", details={"error": message, "stage": "parsing"})
@@ -358,6 +392,8 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         )
 
     repair_order.review_summary = _generate_review_summary(repair_order, results, labor_results, llm_client)
+    mark_rows_moved(repair_order_id=repair_order.id, row_kind="order_part")
+    mark_rows_moved(repair_order_id=repair_order.id, row_kind="order_labor")
     repair_order.status = RepairOrderStatus.NEEDS_REVIEW
     log_change(
         "repair_order",

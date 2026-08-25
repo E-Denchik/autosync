@@ -121,6 +121,40 @@ def test_import_creates_and_updates_by_code(app, tmp_path):
         assert float(entry.stock_qty) == 7.0
 
 
+def test_reimport_without_a_column_does_not_clobber_previously_known_data(app, tmp_path):
+    """Регрессия: формат периодической выгрузки заказчика не гарантирован
+    (см. модуль-докстринг) — если СЛЕДУЮЩАЯ выгрузка того же кода не содержит,
+    например, колонки "Производитель"/"Склад" вовсе (сократили набор полей
+    в отчёте 1С), это не значит, что деталь лишилась производителя — раньше
+    None из отсутствующей колонки затирал уже сохранённое значение."""
+    path = tmp_path / "nomenclature.xlsx"
+    pd.DataFrame(ROWS).to_excel(path, index=False, engine="openpyxl")
+
+    with app.app_context():
+        import_nomenclature_file(str(path))
+        entry = NomenclatureEntry.query.filter_by(code="PN-1").first()
+        assert entry.manufacturer == "Bosch"
+        assert entry.warehouse == "Основной"
+
+        # Повторная выгрузка того же кода БЕЗ колонок "Производитель"/"Склад" вовсе.
+        partial_row = {
+            "Код": "PN-1",
+            "Номенклатура": "Рычаг развальный С/У",
+            "Остаток": 5,
+        }
+        path2 = tmp_path / "nomenclature2.xlsx"
+        pd.DataFrame([partial_row]).to_excel(path2, index=False, engine="openpyxl")
+
+        summary2 = import_nomenclature_file(str(path2))
+        assert summary2 == {"rows_parsed": 1, "created": 0, "updated": 1}
+
+        entry = NomenclatureEntry.query.filter_by(code="PN-1").first()
+        assert float(entry.stock_qty) == 5.0  # новое значение применилось
+        assert entry.manufacturer == "Bosch"  # старое значение не затёрлось
+        assert entry.warehouse == "Основной"  # старое значение не затёрлось
+        assert entry.cat_number == "CAT-1"  # старое значение не затёрлось
+
+
 def test_import_merges_duplicate_code_within_same_batch(app, tmp_path):
     path = tmp_path / "nomenclature.xlsx"
     rows = [dict(ROWS[0], Остаток=1), dict(ROWS[0], Остаток=99)]

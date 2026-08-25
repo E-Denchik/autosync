@@ -26,6 +26,7 @@ def create_app(config_class=Config):
     from app.api.contragents import bp as contragents_bp
     from app.api.labor_catalog import bp as labor_catalog_bp
     from app.api.nomenclature import bp as nomenclature_bp
+    from app.api.brand_aliases import bp as brand_aliases_bp
     from app.api.company_profile import bp as company_profile_bp
     from app.api.document_templates import bp as document_templates_bp
     from app.api.file_preview import bp as file_preview_bp
@@ -46,6 +47,7 @@ def create_app(config_class=Config):
     app.register_blueprint(contragents_bp, url_prefix="/api/contragents")
     app.register_blueprint(labor_catalog_bp, url_prefix="/api/labor-catalog")
     app.register_blueprint(nomenclature_bp, url_prefix="/api/nomenclature")
+    app.register_blueprint(brand_aliases_bp, url_prefix="/api/brand-aliases")
     app.register_blueprint(company_profile_bp, url_prefix="/api/company-profile")
     app.register_blueprint(document_templates_bp, url_prefix="/api/document-templates")
     app.register_blueprint(file_preview_bp, url_prefix="/api/file-preview")
@@ -92,7 +94,7 @@ def create_app(config_class=Config):
     _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, llm_setting, history, integration_setting, document_template  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, llm_setting, history, integration_setting, document_template, brand_alias, raw_import_row  # noqa: F401
 
     return app
 

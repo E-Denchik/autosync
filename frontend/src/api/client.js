@@ -211,6 +211,20 @@ export const api = {
   },
   downloadNomenclatureTemplate: () => request("/nomenclature/template"),
 
+  // Справочник марок (кириллица/опечатка -> каноничная марка, как в
+  // заказ-наряде — см. document_parser._normalize_brand_label)
+  listBrandAliases: (q = "", params = {}) => request(`/brand-aliases${withPaging({ q, ...params })}`),
+  createBrandAlias: (data) => request("/brand-aliases", { method: "POST", body: JSON.stringify(data) }),
+  updateBrandAlias: (id, data) =>
+    request(`/brand-aliases/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteBrandAlias: (id) => request(`/brand-aliases/${id}`, { method: "DELETE" }),
+  uploadBrandAliasesFile: (files) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((f) => formData.append("file", f));
+    return request("/brand-aliases/upload", { method: "POST", body: formData });
+  },
+  normalizeBrandAliases: () => request("/brand-aliases/normalize", { method: "POST" }),
+
   getCompanyProfile: () => request("/company-profile"),
   updateCompanyProfile: (data) => request("/company-profile", { method: "PUT", body: JSON.stringify(data) }),
 

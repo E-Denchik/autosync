@@ -30,6 +30,11 @@ class PartMatch(db.Model):
 
     contract_article = db.Column(db.String(128))
     contract_name = db.Column(db.String(512))
+    # Количество из строки заказ-наряда — используется при расчёте итоговой
+    # суммы документа (matched_price * contract_qty). None (а не 0) значит
+    # "количество не распознано в исходном файле" — считаем как 1, а не 0,
+    # чтобы позиция не обнулялась в документе.
+    contract_qty = db.Column(db.Numeric(12, 3))
 
     matched_article = db.Column(db.String(128))
     matched_name = db.Column(db.String(512))

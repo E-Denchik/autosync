@@ -232,6 +232,14 @@ def import_nomenclature_file(file_path: str, llm_client=None) -> dict:
             updated += 1
 
         for field, value in row.items():
+            # Формат выгрузки не гарантирован (см. модуль-докстринг) — если в
+            # этом конкретном файле нет, скажем, колонки "производитель" или
+            # "склад", это значит "файл ничего не знает про это поле", а не
+            # "поле нужно очистить". Раньше None затирал уже известное хорошее
+            # значение из предыдущей, более полной загрузки — тот же принцип,
+            # что и для vehicle_make в contract_catalog_import._bulk_insert_parts.
+            if value is None:
+                continue
             setattr(entry, field, value)
 
     db.session.add_all(new_entries)

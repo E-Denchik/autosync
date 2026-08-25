@@ -15,11 +15,6 @@ build/
 .env.*
 !.env.example
 
-# Сгенерированные в CI из GitHub Secrets ключи, вшиваемые в сборку для
-# заказчика (см. app/services/settings_store.py: seed_baked_defaults) —
-# никогда не должны попасть в git.
-backend/app/_baked_integration_keys.json
-
 # commit SHA сборки, вшиваемый через --add-data (см. scripts/write_build_info.py,
 # app/services/update_checker.py) — генерируется заново при каждой сборке.
 backend/app/_build_info.json

@@ -3,6 +3,37 @@ import openpyxl
 from app.services.document_template_engine import build_starter_template, render_template
 
 
+def test_render_template_neutralizes_formula_injection_in_part_name(tmp_path):
+    """Регрессия: {{part.name}}/{{part.article}} и т.п. приходят из данных
+    ЗАГРУЖЕННОГО заказчиком файла (название детали из заказ-наряда, догадка
+    LLM) — строка вида "=CMD('/c calc')" в наименовании раньше попадала в
+    ячейку как есть, и openpyxl сам помечает такую ячейку как формулу по
+    ведущему "=" — она бы выполнилась при открытии готового документа в
+    Excel. См. app/services/xlsx_safety.py."""
+    template_path = tmp_path / "template.xlsx"
+    output_path = tmp_path / "output.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["№", "Артикул", "Наименование"])
+    ws.append(["{{part.n}}", "{{part.article}}", "{{part.name}}"])
+    wb.save(template_path)
+
+    render_template(
+        str(template_path),
+        str(output_path),
+        {},
+        part_items=[{"article": "=1+1", "name": "=CMD('/c calc')A1"}],
+        labor_items=[],
+    )
+
+    wb_out = openpyxl.load_workbook(output_path)
+    ws_out = wb_out.active
+    article_cell = next(c for row in ws_out.iter_rows() for c in row if c.value == "'=1+1")
+    name_cell = next(c for row in ws_out.iter_rows() for c in row if c.value == "'=CMD('/c calc')A1")
+    assert article_cell.data_type != "f"
+    assert name_cell.data_type != "f"
+
+
 def _build_template(path):
     wb = openpyxl.Workbook()
     ws = wb.active

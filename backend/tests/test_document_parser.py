@@ -6,8 +6,12 @@ import pytest
 
 from app.services.document_parser import (
     DocumentParseError,
+    _normalize_brand_label,
     parse_document,
+    parse_document_with_ocr_fallback,
     parse_hourly_rate_table,
+    parse_price_catalog_by_brand,
+    parse_price_catalog_single_sheet_sections,
     parse_repair_order_export,
 )
 
@@ -80,6 +84,96 @@ def test_parse_docx(tmp_path):
         for cell, key in zip(cells, ["Артикул", "Наименование", "Кол-во", "Цена"]):
             cell.text = str(row_data[key])
     path = tmp_path / "order.docx"
+    document.save(path)
+
+    assert parse_document(str(path)) == _expected()
+
+
+def test_ocr_fallback_not_needed_llm_client_untouched_for_normal_xlsx(tmp_path):
+    """Regression guard: обычный, распознаваемый жёсткими алиасами файл не
+    должен вообще трогать LLM — фоллбэк только для того, что жёсткий разбор
+    не осилил."""
+    from unittest.mock import MagicMock
+
+    path = tmp_path / "contract.xlsx"
+    pd.DataFrame(ROWS).to_excel(path, index=False, engine="openpyxl")
+
+    llm_client = MagicMock()
+    result = parse_document_with_ocr_fallback(str(path), llm_client, ["article", "name", "qty", "price"])
+
+    assert result == _expected()
+    llm_client.extract_table_from_text.assert_not_called()
+
+
+def test_ocr_fallback_kicks_in_when_xlsx_headers_are_not_recognized(tmp_path):
+    """Заказчик: "чтобы файлы с любым содержимым считывались" — раньше
+    нестандартная шапка (не совпавшая ни с одним алиасом в
+    NAME_COLUMN_ALIASES) сразу роняла DocumentParseError, даже если файл
+    вполне читаемый xlsx с данными внутри. Теперь вместо немедленного отказа
+    сырой текст файла (df.to_csv) уходит на LLM-извлечение — тем же путём,
+    что уже был для сканов/фото."""
+    from unittest.mock import MagicMock
+
+    path = tmp_path / "weird.xlsx"
+    pd.DataFrame(
+        [{"Поз.": "ABC-1", "Что за деталь": "Тормозной диск", "N": 2, "Руб.": 1500.5}]
+    ).to_excel(path, index=False, engine="openpyxl")
+
+    with pytest.raises(DocumentParseError):
+        parse_document(str(path))  # жёсткий разбор действительно не справляется — база теста верна
+
+    llm_client = MagicMock()
+    llm_client.extract_table_from_text.return_value = [
+        {"article": "ABC-1", "name": "Тормозной диск", "qty": 2, "price": 1500.5}
+    ]
+
+    result = parse_document_with_ocr_fallback(str(path), llm_client, ["article", "name", "qty", "price"])
+
+    assert result == [{"article": "ABC-1", "name": "Тормозной диск", "qty": 2.0, "price": 1500.5}]
+    passed_text = llm_client.extract_table_from_text.call_args[0][0]
+    assert "ABC-1" in passed_text and "Тормозной диск" in passed_text
+
+
+def test_ocr_fallback_raises_original_error_when_raw_text_extraction_also_empty(tmp_path):
+    """Если и сырой текст достать не из чего (документ и правда пустой —
+    ни таблиц, ни абзацев) — показываем исходную, более конкретную ошибку
+    жёсткого парсера, а не глотаем её ради LLM-фоллбэка, которому нечего
+    было бы передать."""
+    from docx import Document
+    from unittest.mock import MagicMock
+
+    path = tmp_path / "empty.docx"
+    Document().save(path)  # ни абзацев с текстом, ни таблиц
+
+    llm_client = MagicMock()
+    with pytest.raises(DocumentParseError, match="таблиц"):
+        parse_document_with_ocr_fallback(str(path), llm_client, ["article", "name", "qty", "price"])
+    llm_client.extract_table_from_text.assert_not_called()
+
+
+def test_docx_with_one_bad_table_and_one_good_table_keeps_the_good_one(tmp_path):
+    """Regression: docx с несколькими таблицами (нужная ведомость +,
+    например, служебная таблица реквизитов) раньше падал целиком, если
+    ХОТЯ БЫ одна таблица не имела узнаваемой колонки "наименование" — даже
+    если нужная таблица была прочитана бы нормально."""
+    from docx import Document
+
+    document = Document()
+
+    # "Служебная" таблица без узнаваемых колонок.
+    junk = document.add_table(rows=1, cols=2)
+    junk.rows[0].cells[0].text = "ИНН"
+    junk.rows[0].cells[1].text = "770000000"
+
+    good = document.add_table(rows=1, cols=4)
+    for cell, header in zip(good.rows[0].cells, ["Артикул", "Наименование", "Кол-во", "Цена"]):
+        cell.text = header
+    for row_data in ROWS:
+        cells = good.add_row().cells
+        for cell, key in zip(cells, ["Артикул", "Наименование", "Кол-во", "Цена"]):
+            cell.text = str(row_data[key])
+
+    path = tmp_path / "mixed.docx"
     document.save(path)
 
     assert parse_document(str(path)) == _expected()
@@ -484,3 +578,164 @@ def test_parse_hourly_rate_table_pdf_without_text_layer_falls_back_to_ocr(tmp_pa
 
     result = parse_hourly_rate_table(str(path), llm_client=llm_client)
     assert result == [{"vehicle_make": "Hyundai", "vehicle_model": "IX35", "hourly_rate": 810.0}]
+
+
+def test_normalize_brand_label_translits_cyrillic_to_latin(app):
+    """Каталоги заказчика пишут марку то латиницей (как в заказ-наряде),
+    то кириллицей — без транслитерации сравнение в
+    matcher._contract_candidate_pool никогда бы не совпало. Справочник —
+    таблица BrandAlias в БД (засеяна миграцией из старого хардкода), не
+    константа в коде — поэтому вызов требует app_context."""
+    with app.app_context():
+        assert _normalize_brand_label("Шевроле") == "CHEVROLET"
+        assert _normalize_brand_label("TOYOTA") == "TOYOTA"  # уже латиница — не трогаем
+
+
+def test_normalize_brand_label_extracts_from_parentheses(app):
+    """Реальный ярлык раздела каталога заказчика: "GM (Шевроле, Опель)" —
+    берём первое узнанное название из скобок, а не бесполезную аббревиатуру
+    концерна снаружи."""
+    with app.app_context():
+        assert _normalize_brand_label("GM (Шевроле, Опель)") == "CHEVROLET"
+
+
+def test_normalize_brand_label_takes_first_word_of_brand_plus_model(app):
+    """"ЛАДА Гранта"/"ВАЗ 2131" — марка+модель одной строкой (нет отдельной
+    колонки модели в этом формате) — для ContractPart.vehicle_make нужна
+    только марка, и разные модели одной марки должны сходиться к одному
+    значению, а не плодить несовпадающие варианты."""
+    with app.app_context():
+        assert _normalize_brand_label("ЛАДА Гранта") == "LADA"
+        assert _normalize_brand_label("ВАЗ 2131") == "LADA"
+        assert _normalize_brand_label("Лада Самара") == "LADA"
+
+
+def test_parse_price_catalog_by_brand_strips_leading_dash_from_brand_token(app):
+    """Регрессия по реальному файлу заказчика (testdata/Приложение ГП10 №3
+    с падением 75.xlsx, лист "Ваз,Нива"): заголовок листа — "Марка (модель)
+    технического средства - ChevrolNiva ,ЛАДА Гранта, ...", и до фикса
+    первый бренд-токен после маркера сохранялся как "- CHEVROLNIVA" (тире
+    не пробельный символ, .strip() его не убирал) — такой ключ никогда не
+    совпадал бы с маркой "CHEVROLET" из реального заказ-наряда. Это и есть
+    техническая причина жалобы заказчика "по Ниве ничего не находит"."""
+    path = os.path.join(TESTDATA_DIR, "Приложение ГП10 №3 с падением 75.xlsx")
+    with app.app_context():
+        lines = parse_price_catalog_by_brand(path, None)
+
+    makes = {line["vehicle_make"] for line in lines}
+    assert not any(m and m.startswith("-") for m in makes)
+    assert "TOYOTA" in makes
+    assert "NISSAN" in makes
+    assert "HYUNDAI" in makes
+
+
+def test_parse_price_catalog_by_brand_recognizes_alternate_title_marker_and_odd_column_order(app):
+    """Регрессия по реальному файлу заказчика (testdata/Приложение ГП10 №3
+    с падением 75.xlsx, листы "Dewoo"/"газ"): заголовок листа не "Марка
+    (модель) технического средства X", а "Запчасти на автомобиль X" — до
+    фикса такие листы вообще не попадали в brand_sheets и терялись целиком
+    при импорте (0 позиций марки Daewoo/ГАЗ). Плюс у этих листов цена и
+    артикул НЕ на тех позициях, что у остальных марок того же файла
+    (Ед.изм. вместо артикула, артикула нет вовсе) — жёстко зашитая позиция
+    колонки перепутала бы цену со служебным полем."""
+    path = os.path.join(TESTDATA_DIR, "Приложение ГП10 №3 с падением 75.xlsx")
+    with app.app_context():
+        lines = parse_price_catalog_by_brand(path, None)
+
+    daewoo = [l for l in lines if l["vehicle_make"] == "DAEWOO"]
+    gaz = [l for l in lines if l["vehicle_make"] == "GAZ"]
+    assert len(daewoo) > 0
+    assert len(gaz) > 0
+
+    # У этих двух листов в принципе нет колонки с артикулом — не должно
+    # задваивать туда цену/номер по умолчанию под видом артикула.
+    assert all(l["article"] is None for l in daewoo)
+    assert all(l["article"] is None for l in gaz)
+    # А цена — настоящая цена (число из своей колонки), не строка "шт."/"к-т".
+    assert all(l["price"] is not None and l["price"] > 0 for l in daewoo)
+    assert all(l["price"] is not None and l["price"] > 0 for l in gaz)
+
+
+def test_sheet_title_detected_even_when_not_in_first_column(app):
+    """testdata/.../Dewoo: 'Запчасти на автомобиль Daewoo Nexia' лежит во
+    ВТОРОЙ ячейке первой строки (первая — пустая), не в колонке A — раньше
+    заголовок листа читался только из первой ячейки."""
+    path = os.path.join(TESTDATA_DIR, "Приложение ГП10 №3 с падением 75.xlsx")
+    with app.app_context():
+        lines = parse_price_catalog_by_brand(path, "DAEWOO")
+    assert lines is not None
+    assert len(lines) > 0
+    assert all(l["vehicle_make"] == "DAEWOO" for l in lines if l["name"])
+
+
+@pytest.mark.parametrize(
+    "cyrillic,expected_latin",
+    [
+        ("Чери", "CHERY"),
+        ("Джили", "GEELY"),
+        ("Хавал", "HAVAL"),
+        ("Дунфэн", "DONGFENG"),
+        ("Ссангйонг", "SSANGYONG"),
+        ("Пежо", "PEUGEOT"),
+        ("Ленд Ровер", "LAND ROVER"),
+    ],
+)
+def test_normalize_brand_label_covers_common_market_brands(app, cyrillic, expected_latin):
+    """Заказчик не ограничится маркой из уже присланных файлов — справочник
+    должен покрывать массовые марки рынка РФ (китайские бренды быстро
+    растут долю продаж), не только то, что уже встретилось."""
+    with app.app_context():
+        assert _normalize_brand_label(cyrillic) == expected_latin
+
+
+def test_parse_price_catalog_single_sheet_sections_real_customer_file(app):
+    """testdata/Приложение №1 ИП Даянова З.Р..xlsx — реальный файл
+    заказчика: ОДИН лист, 25000+ строк, разделы марок не отдельными
+    листами (см. parse_price_catalog_by_brand), а строками-маркерами
+    внутри листа (LADA (ВАЗ) / УАЗ / ГАЗ / ПАЗ / TOYOTA / GM (Шевроле,
+    Опель) / Неоригинальные запчасти / Масла...), причём шапка колонок —
+    третья строка листа, а не первая. Это и есть каталог, парный
+    реальному тестовому заказ-наряду (волжская ркб.xlsx, CHEVROLET
+    LACETTI) из этой же поставки тестовых файлов."""
+    path = os.path.join(TESTDATA_DIR, "Приложение №1 ИП Даянова З.Р..xlsx")
+
+    # До фикса это падало DocumentParseError — шапка pandas по умолчанию
+    # берёт первую строку листа ("Приложение №1"), под алиасы не подходит.
+    with pytest.raises(DocumentParseError):
+        parse_document(path)
+
+    with app.app_context():
+        lines = parse_price_catalog_single_sheet_sections(path)
+
+    assert lines is not None
+    assert len(lines) > 20000
+
+    by_make = {}
+    for line in lines:
+        by_make.setdefault(line["vehicle_make"], 0)
+        by_make[line["vehicle_make"]] += 1
+
+    # GM (Шевроле, Опель) -> CHEVROLET — ровно та марка, что в реальном
+    # заказ-наряде на CHEVROLET LACETTI из этой же поставки.
+    assert by_make.get("CHEVROLET", 0) > 0
+    assert by_make.get("LADA", 0) > 10000  # больше половины каталога — ВАЗ
+    assert by_make.get("TOYOTA", 0) > 0
+
+    # "Неоригинальные запчасти"/"Масла..." — общие для всех марок разделы,
+    # не должны превращаться в фиктивную "марку", по которой ни один
+    # реальный заказ-наряд никогда не совпадёт.
+    assert by_make.get(None, 0) > 0
+    assert not any(m and "МАСЛ" in m for m in by_make)
+    assert not any(m and "НЕОРИГИНАЛ" in m for m in by_make)
+
+    sample = next(line for line in lines if line["vehicle_make"] == "CHEVROLET")
+    assert sample["price"] is not None
+    assert sample["price"] > 0
+
+
+def test_parse_price_catalog_single_sheet_sections_returns_none_for_unrelated_file():
+    """Обычный (не однолистовой-многобрендовый) файл не должен ошибочно
+    распознаваться этим парсером — иначе он "съест" файл раньше, чем до
+    него дойдёт правильный, более специфичный парсер."""
+    path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    assert parse_price_catalog_single_sheet_sections(path) is None

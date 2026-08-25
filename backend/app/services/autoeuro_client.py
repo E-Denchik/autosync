@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import requests
 
+from app.services.secret_redaction import redact_secrets
+
 BASE_URL = "https://api.autoeuro.ru/api/v2/json"
 
 
@@ -39,9 +41,15 @@ class AutoEuroClient:
                 timeout=self.timeout,
             )
         except requests.exceptions.RequestException as exc:
-            raise AutoEuroError(f"АвтоЕвро недоступен: {exc}") from exc
+            # Ключ — часть URL пути (см. модуль-докстринг), а requests/urllib3
+            # включают полный URL запроса в текст сетевой ошибки — без
+            # вычистки ключ утёк бы и в лог (parts_supplier_client.py), и в
+            # ответ фронту (search_all не глотает ошибку намеренно).
+            raise AutoEuroError(redact_secrets(f"АвтоЕвро недоступен: {exc}", [self.api_key])) from exc
         if not resp.ok:
-            raise AutoEuroError(f"АвтоЕвро -> {resp.status_code}: {resp.text[:300]}")
+            raise AutoEuroError(
+                redact_secrets(f"АвтоЕвро -> {resp.status_code}: {resp.text[:300]}", [self.api_key])
+            )
         body = resp.json()
         meta = body.get("META", {})
         if "ERROR" in body:

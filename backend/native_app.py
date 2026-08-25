@@ -444,8 +444,6 @@ def main() -> None:
         # локального мока Ozon API) остаётся приоритетнее сохранённого в БД.
         from app.services import settings_store
 
-        settings_store.seed_baked_defaults()
-
         for key, value in settings_store.load_all().items():
             os.environ.setdefault(key, value)
             app.config[key] = os.environ[key]

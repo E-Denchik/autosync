@@ -45,6 +45,29 @@ def test_search_articles_splits_login_password_and_sends_them(monkeypatch):
     assert items[0]["price"] == 5399
 
 
+def test_network_error_does_not_leak_credentials_in_message(monkeypatch):
+    """Регрессия: userlogin/userpsw — query-параметры (см. класс выше), а
+    requests/urllib3 включают полный URL запроса (с параметрами) в текст
+    сетевой ошибки — без вычистки логин/пароль утекли бы в лог
+    (logger.warning в parts_supplier_client.py) и в ответ фронту (search_all
+    не глотает ошибку намеренно)."""
+    import requests
+
+    client = MoskvorechyeClient(base_url="https://example.abcp2b.ru", api_key="JjDAUI1jnzWX:50mKreI7N24uoZyA")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        raise requests.exceptions.ConnectionError(
+            f"Max retries exceeded with url: /search/articles/?userlogin=JjDAUI1jnzWX&userpsw=50mKreI7N24uoZyA"
+        )
+
+    monkeypatch.setattr("app.services.moskvorechye_client.requests.get", fake_get)
+    with pytest.raises(MoskvorechyeError) as exc_info:
+        client.search_articles("333114")
+    assert "JjDAUI1jnzWX" not in str(exc_info.value)
+    assert "50mKreI7N24uoZyA" not in str(exc_info.value)
+    assert "***" in str(exc_info.value)
+
+
 def test_find_cross_references_maps_fields(monkeypatch):
     client = MoskvorechyeClient(base_url="https://example.abcp2b.ru", api_key="login:pass")
 

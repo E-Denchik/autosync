@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import UpdateChecker from "./components/UpdateChecker.jsx";
 import UpdateProgressWindow from "./pages/UpdateProgressWindow.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -14,6 +15,7 @@ import Integrations from "./pages/admin/Integrations.jsx";
 import Contragents from "./pages/admin/Contragents.jsx";
 import LaborCatalog from "./pages/admin/LaborCatalog.jsx";
 import NomenclatureCatalog from "./pages/admin/NomenclatureCatalog.jsx";
+import BrandAliases from "./pages/admin/BrandAliases.jsx";
 import DocumentTemplates from "./pages/admin/DocumentTemplates.jsx";
 import CompanyProfile from "./pages/admin/CompanyProfile.jsx";
 import ContractCatalogs from "./pages/admin/ContractCatalogs.jsx";
@@ -96,6 +98,9 @@ export default function App() {
           <NavLink to="/admin/nomenclature">
             <BoxIcon /> Номенклатура
           </NavLink>
+          <NavLink to="/admin/brand-aliases">
+            <TagIcon /> Марки автомобилей
+          </NavLink>
           <NavLink to="/admin/document-templates">
             <FileTextIcon /> Шаблоны документов
           </NavLink>
@@ -120,6 +125,7 @@ export default function App() {
 
       <div className="content">
         <div className="content-inner">
+          <ErrorBoundary key={location.pathname}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/ozon/pricing" element={<PricingDashboard />} />
@@ -133,6 +139,7 @@ export default function App() {
             <Route path="/admin/contracts/:contractId" element={<ContractCatalogDetail />} />
             <Route path="/admin/labor-catalog" element={<LaborCatalog />} />
             <Route path="/admin/nomenclature" element={<NomenclatureCatalog />} />
+            <Route path="/admin/brand-aliases" element={<BrandAliases />} />
             <Route path="/admin/document-templates" element={<DocumentTemplates />} />
             <Route path="/admin/company-profile" element={<CompanyProfile />} />
             <Route path="/admin/llm" element={<LlmSettings />} />
@@ -140,6 +147,7 @@ export default function App() {
             <Route path="/admin/history" element={<History />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </ErrorBoundary>
         </div>
       </div>
     </div>

@@ -75,9 +75,6 @@ if ! python3 -c "import gi" 2>/tmp/gi-import-error.log; then
 fi
 rm -f /tmp/gi-import-error.log
 
-echo "==> Готовлю ключи интеграций для вшивания в сборку"
-python3 "$REPO_ROOT/scripts/bake_integration_keys.py"
-
 echo "==> Записываю commit сборки (для проверки обновлений)"
 python3 "$REPO_ROOT/scripts/write_build_info.py"
 
@@ -99,7 +96,6 @@ pyinstaller \
   --add-data "$REPO_ROOT/llm-service:llm_service_src" \
   --add-data "$REPO_ROOT/backend/migrations:migrations" \
   --add-data "$REPO_ROOT/packaging/icon:icon" \
-  --add-data "$REPO_ROOT/backend/app/_baked_integration_keys.json:app" \
   --add-data "$REPO_ROOT/backend/app/_build_info.json:app" \
   --hidden-import=waitress \
   --hidden-import=apscheduler.schedulers.background \

@@ -378,7 +378,7 @@ export default function ReviewMatches() {
   const laborByCategory = countByCategory(laborLines);
   const partsApprovedSum = matches
     .filter((m) => m.review_status === "approved")
-    .reduce((sum, m) => sum + (m.matched_price || 0), 0);
+    .reduce((sum, m) => sum + (m.matched_price || 0) * (m.contract_qty ?? 1), 0);
   const laborApprovedSum = laborLines
     .filter((l) => l.review_status === "approved")
     .reduce((sum, l) => sum + (l.total_cost || 0), 0);
@@ -601,7 +601,9 @@ export default function ReviewMatches() {
                   </th>
                   <th>Договор: артикул / название</th>
                   <th>Сопоставлено с</th>
+                  <th>Кол-во</th>
                   <th>Цена</th>
+                  <th>Сумма</th>
                   <th>Уверенность</th>
                   <th>Статус</th>
                   <th></th>
@@ -646,7 +648,9 @@ export default function ReviewMatches() {
                         </div>
                       )}
                     </td>
+                    <td>{m.contract_qty ?? 1}</td>
                     <td>{m.matched_price ?? "—"}</td>
+                    <td>{m.matched_price != null ? formatRub(m.matched_price * (m.contract_qty ?? 1)) : "—"}</td>
                     <td>
                       <ConfidenceBadge
                         level={m.confidence_level}

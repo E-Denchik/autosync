@@ -32,6 +32,28 @@ def test_get_balance_success(monkeypatch):
     assert balance["balance"] == -100.0
 
 
+def test_network_error_does_not_leak_api_key_in_message(monkeypatch):
+    """Регрессия: ключ — часть URL пути (см. модуль-докстринг), а
+    requests/urllib3 включают полный URL запроса в текст сетевой ошибки —
+    без вычистки ключ утёк бы в лог (см. logger.warning в
+    parts_supplier_client.py) и в ответ фронту (search_all не глотает
+    ошибку намеренно, см. её докстринг)."""
+    import requests
+
+    client = AutoEuroClient(api_key="SECRET-KEY-123")
+
+    def fake_get(url, params=None, timeout=None):
+        raise requests.exceptions.ConnectionError(
+            f"HTTPSConnectionPool(host='api.autoeuro.ru'): Max retries exceeded with url: /api/v2/json/get_balance/SECRET-KEY-123/"
+        )
+
+    monkeypatch.setattr("app.services.autoeuro_client.requests.get", fake_get)
+    with pytest.raises(AutoEuroError) as exc_info:
+        client.get_balance()
+    assert "SECRET-KEY-123" not in str(exc_info.value)
+    assert "***" in str(exc_info.value)
+
+
 def test_call_raises_on_error_branch(monkeypatch):
     client = AutoEuroClient(api_key="k")
 

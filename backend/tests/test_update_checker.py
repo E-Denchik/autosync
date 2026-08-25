@@ -176,10 +176,20 @@ def test_start_download_completes_and_reports_final_progress(monkeypatch, tmp_pa
     def fake_get(url, headers=None, timeout=None, stream=None):
         if "releases/tags/latest" in url:
             return _FakeResponse(
-                200, {"assets": [{"name": "autosync", "browser_download_url": "http://example/autosync"}]}
+                200,
+                {
+                    "assets": [
+                        {"name": "autosync", "browser_download_url": "http://example/autosync"},
+                        {"name": "SHA256SUMS.txt", "browser_download_url": "http://example/SHA256SUMS.txt"},
+                    ]
+                },
             )
         if url == "http://example/autosync":
             return _FakeStreamResponse(payload, headers={"Content-Length": str(total)})
+        if url == "http://example/SHA256SUMS.txt":
+            return _FakeResponse(
+                200, "3b4cedeece31fc04a81e748a562921a77dc9636517577c3ddb68e27e08e99289  native-linux/autosync\n"
+            )
         raise AssertionError(f"unexpected url {url}")
 
     monkeypatch.setattr(update_checker.requests, "get", fake_get)
@@ -212,11 +222,18 @@ def test_start_download_picks_deb_asset_for_deb_install(monkeypatch, tmp_path):
                             "name": "autosync-desktop_0.1.0_amd64.deb",
                             "browser_download_url": "http://example/autosync.deb",
                         },
+                        {"name": "SHA256SUMS.txt", "browser_download_url": "http://example/SHA256SUMS.txt"},
                     ]
                 },
             )
         if url == "http://example/autosync.deb":
             return _FakeStreamResponse([b"deb-bytes"], headers={"Content-Length": "9"})
+        if url == "http://example/SHA256SUMS.txt":
+            return _FakeResponse(
+                200,
+                "3adc870b6595ccbffaa9ccaa6fa5653652136fbeea99ffd754c52960bd0b9ea9  "
+                "autosync-desktop_0.1.0_amd64.deb\n",
+            )
         raise AssertionError(f"unexpected url {url}")
 
     monkeypatch.setattr(update_checker.requests, "get", fake_get)
@@ -226,6 +243,70 @@ def test_start_download_picks_deb_asset_for_deb_install(monkeypatch, tmp_path):
 
     assert state["phase"] == "downloaded"
     assert state["asset_name"] == "autosync-desktop_0.1.0_amd64.deb"
+
+
+def test_start_download_fails_and_deletes_file_on_checksum_mismatch(monkeypatch, tmp_path):
+    """Регрессия: раньше скачанный файл ставился (на Linux — через pkexec
+    ROOT'ом) без единой проверки целостности — повреждённая при скачивании
+    или подменённая на сервере раздачи сборка ставилась бы как есть."""
+    _reset_download_state()
+    _fake_build_info(monkeypatch, tmp_path, "old-sha")
+    monkeypatch.setattr(update_checker.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(update_checker, "_running_binary_path", lambda: "/home/user/autosync")
+
+    def fake_get(url, headers=None, timeout=None, stream=None):
+        if "releases/tags/latest" in url:
+            return _FakeResponse(
+                200,
+                {
+                    "assets": [
+                        {"name": "autosync", "browser_download_url": "http://example/autosync"},
+                        {"name": "SHA256SUMS.txt", "browser_download_url": "http://example/SHA256SUMS.txt"},
+                    ]
+                },
+            )
+        if url == "http://example/autosync":
+            return _FakeStreamResponse([b"actual-content"], headers={"Content-Length": "14"})
+        if url == "http://example/SHA256SUMS.txt":
+            # Контрольная сумма для ДРУГОГО содержимого — не совпадёт с тем,
+            # что реально скачано.
+            return _FakeResponse(200, "0" * 64 + "  native-linux/autosync\n")
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(update_checker.requests, "get", fake_get)
+
+    update_checker.start_download()
+    state = _wait_until_phase_leaves("downloading")
+
+    assert state["phase"] == "error"
+    assert "контрольная сумма" in state["error"].lower() or "повреждён" in state["error"].lower()
+
+
+def test_start_download_fails_when_checksums_file_missing_from_release(monkeypatch, tmp_path):
+    """Отсутствие SHA256SUMS.txt в релизе (например, старый релиз, собранный
+    до появления проверки) должно так же останавливать установку, как и
+    несовпадение — не откатываться на "разрешить, раз нечего сверить"."""
+    _reset_download_state()
+    _fake_build_info(monkeypatch, tmp_path, "old-sha")
+    monkeypatch.setattr(update_checker.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(update_checker, "_running_binary_path", lambda: "/home/user/autosync")
+
+    def fake_get(url, headers=None, timeout=None, stream=None):
+        if "releases/tags/latest" in url:
+            return _FakeResponse(
+                200, {"assets": [{"name": "autosync", "browser_download_url": "http://example/autosync"}]}
+            )
+        if url == "http://example/autosync":
+            return _FakeStreamResponse([b"some-content"], headers={"Content-Length": "12"})
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(update_checker.requests, "get", fake_get)
+
+    update_checker.start_download()
+    state = _wait_until_phase_leaves("downloading")
+
+    assert state["phase"] == "error"
+    assert "не найдена" in state["error"].lower()
 
 
 def test_start_download_sets_error_state_when_asset_missing(monkeypatch, tmp_path):

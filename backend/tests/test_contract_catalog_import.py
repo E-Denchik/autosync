@@ -4,11 +4,13 @@ import pytest
 
 from app.extensions import db
 from app.models import (
+    BrandAlias,
     Contract,
     ContractHourlyRate,
     ContractLaborNorm,
     ContractPart,
     DocumentProcessingStatus,
+    RawImportRow,
     RepairOrder,
     RepairOrderStatus,
 )
@@ -49,6 +51,36 @@ def test_import_from_repair_order_shaped_file_extracts_parts_and_labor_norms(app
         assert any(n.operation_name == "ДВС снятие" for n in norms)
         assert all(n.vehicle_make == "HYUNDAI" for n in norms)
         assert all(n.vehicle_model == "IX35" for n in norms)
+
+        # Заказчик: сырые строки каталога — в БД ДО того, как они стали
+        # ContractPart (см. raw_import_staging.py), помечены перенесёнными
+        # после того, как реально там оказались.
+        staged = RawImportRow.query.filter_by(contract_id=contract_id, row_kind="catalog_part").all()
+        assert len(staged) == len(parts)
+        assert all(r.status == "moved" for r in staged)
+        assert all(r.source_filename == "тест 1 (исходник).xlsx" for r in staged)
+
+
+def test_import_from_single_sheet_section_catalog_real_customer_file(app):
+    """Реальный файл заказчика (см. document_parser.
+    parse_price_catalog_single_sheet_sections) — один лист вместо листа на
+    марку, шапка колонок не в первой строке. import_contract_files должен
+    дойти до этого парсера через цепочку фоллбэков (сначала
+    parse_price_catalog_by_brand — не подходит формату, вернёт None) и
+    корректно затегать позиции маркой из раздела."""
+    path = os.path.join(TESTDATA_DIR, "Приложение №1 ИП Даянова З.Р..xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_files(contract_id, [path], "CHEVROLET", llm_client=None)
+
+        assert result["parts_created"] > 20000
+
+        chevrolet_part = ContractPart.query.filter_by(contract_id=contract_id, vehicle_make="CHEVROLET").first()
+        assert chevrolet_part is not None
+        assert chevrolet_part.price is not None
+
+        lada_count = ContractPart.query.filter_by(contract_id=contract_id, vehicle_make="LADA").count()
+        assert lada_count > 10000
 
 
 def test_import_from_brand_catalog_file_imports_all_brands_and_tags_each_row(app):
@@ -105,6 +137,87 @@ def test_import_from_brand_catalog_file_without_brand_imports_all_brands(app):
         assert kia_article.vehicle_make == "KIA"
 
 
+def test_import_normalizes_unresolved_brand_via_llm_and_caches_to_brand_alias(app):
+    """Заказчик: сохранённые данные должна проверить и адаптировать под наш
+    стандарт выбранная им ИИ, а уже ПОТОМ идти сопоставление. "МАРКА XYZ" —
+    заведомо нет в справочнике BrandAlias (см. builtin_brand_aliases.py) —
+    после импорта ИИ должна была её нормализовать: и в ContractPart, и в
+    самом справочнике (source="llm"), чтобы при следующем импорте (у ЛЮБОГО
+    заказчика) это уже не требовало нового обращения к ИИ."""
+    from unittest.mock import MagicMock
+
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="X-1", name="Деталь", price=100.0, vehicle_make="МАРКА XYZ")
+        )
+        db.session.commit()
+
+        llm_client = MagicMock()
+        llm_client.normalize_brand_labels.return_value = {"МАРКА XYZ": "SOME BRAND"}
+
+        from app.services.contract_catalog_import import _normalize_unresolved_brands
+
+        normalized = _normalize_unresolved_brands(contract_id, llm_client)
+        db.session.commit()
+
+        assert normalized == 1
+        llm_client.normalize_brand_labels.assert_called_once_with(["МАРКА XYZ"])
+
+        part = ContractPart.query.filter_by(contract_id=contract_id, article="X-1").first()
+        assert part.vehicle_make == "SOME BRAND"
+
+        alias = BrandAlias.query.filter_by(alias="МАРКА XYZ").first()
+        assert alias is not None
+        assert alias.canonical_make == "SOME BRAND"
+        assert alias.source == "llm"
+
+
+def test_import_skips_llm_normalization_when_no_client_or_nothing_unresolved(app):
+    """Нет LLM под рукой (или всё и так распознано builtin-справочником) —
+    не должно падать и не должно звать LLM зря."""
+    from unittest.mock import MagicMock
+
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="X-1", name="Деталь", price=100.0, vehicle_make="TOYOTA")
+        )
+        db.session.commit()
+
+        from app.services.contract_catalog_import import _normalize_unresolved_brands
+
+        assert _normalize_unresolved_brands(contract_id, llm_client=None) == 0
+
+        llm_client = MagicMock()
+        assert _normalize_unresolved_brands(contract_id, llm_client) == 0
+        llm_client.normalize_brand_labels.assert_not_called()  # TOYOTA уже известна
+
+
+def test_import_llm_normalization_failure_does_not_raise(app):
+    """ИИ недоступна/вернула ошибку — та же деградация, что и везде в этом
+    проекте (см. matcher.py/labor_matcher.py): марка остаётся как есть,
+    импорт не падает."""
+    from unittest.mock import MagicMock
+
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="X-1", name="Деталь", price=100.0, vehicle_make="МАРКА XYZ")
+        )
+        db.session.commit()
+
+        llm_client = MagicMock()
+        llm_client.normalize_brand_labels.side_effect = RuntimeError("llm-service недоступен")
+
+        from app.services.contract_catalog_import import _normalize_unresolved_brands
+
+        assert _normalize_unresolved_brands(contract_id, llm_client) == 0
+
+        part = ContractPart.query.filter_by(contract_id=contract_id, article="X-1").first()
+        assert part.vehicle_make == "МАРКА XYZ"  # не тронуто
+
+
 def test_import_supplier_price_list_xlsx(app):
     """Простой прайс-лист поставщика (Артикул/Наименование/Цена, без разбивки
     по маркам) — testdata/Тест 1 (договор - прайс-лист поставщика).xlsx,
@@ -159,6 +272,45 @@ def test_reimporting_the_same_file_updates_in_place_instead_of_duplicating(app):
         parts_without_article = ContractPart.query.filter_by(contract_id=contract_id, article=None).count()
         assert second_result["parts_created"] == parts_without_article
         assert second_result["parts_updated"] == first_result["parts_created"] - parts_without_article
+
+
+def test_reimporting_the_same_file_updates_labor_norms_in_place_instead_of_duplicating(app):
+    """Регрессия: в отличие от ContractPart, ContractLaborNorm при повторной
+    загрузке файла норм (например, через «Добавить ещё файлы» —
+    app/api/contracts.py::import_more_files) всегда только вставлялся заново,
+    без проверки на уже существующую норму — список норм удваивался бы при
+    каждой повторной загрузке того же файла."""
+    path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        first_result = import_contract_files(contract_id, [path], None, llm_client=None)
+        first_count = ContractLaborNorm.query.filter_by(contract_id=contract_id).count()
+        assert first_result["labor_norms_created"] > 0
+        assert first_result["labor_norms_updated"] == 0
+
+        second_result = import_contract_files(contract_id, [path], None, llm_client=None)
+        second_count = ContractLaborNorm.query.filter_by(contract_id=contract_id).count()
+
+        assert second_count == first_count
+        assert second_result["labor_norms_created"] == 0
+        assert second_result["labor_norms_updated"] == first_count
+
+
+def test_reimport_updates_labor_norm_hours_when_changed_upstream(app):
+    path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        import_contract_files(contract_id, [path], None, llm_client=None)
+
+        norm = ContractLaborNorm.query.filter_by(contract_id=contract_id).first()
+        original_hours = norm.norm_hours
+        norm.norm_hours = (original_hours or 0) + 999
+        db.session.commit()
+
+        import_contract_files(contract_id, [path], None, llm_client=None)
+
+        db.session.refresh(norm)
+        assert norm.norm_hours == original_hours
 
 
 def test_reimport_updates_price_when_it_changed_upstream(app):

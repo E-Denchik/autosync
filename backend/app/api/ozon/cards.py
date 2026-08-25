@@ -137,6 +137,8 @@ def sync_catalog():
     except Exception as exc:  # неожиданный формат ответа Ozon и т.п. — тоже "не удалось", не 500
         current_app.logger.exception("Ozon catalog sync упал неожиданно")
         return jsonify(ok=False, message=f"Не удалось синхронизировать: {exc}")
+    if result["status"] == "skipped":
+        return jsonify(ok=True, skipped=True, message="Синхронизация уже выполняется — подождите её завершения.")
     if result["status"] == "failed":
         return jsonify(ok=False, message=result["error"])
     return jsonify(ok=True, created=result["created"], updated=result["updated"])

@@ -83,7 +83,9 @@ export default function CardGenerator() {
     setSyncing(true);
     try {
       const res = await api.syncOzonCatalog();
-      if (res.ok) {
+      if (res.skipped) {
+        toast.info(res.message);
+      } else if (res.ok) {
         toast.success(`Синхронизировано: добавлено ${res.created}, обновлено ${res.updated}`);
         load();
       } else {
