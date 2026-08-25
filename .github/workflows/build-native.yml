@@ -85,10 +85,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -99,6 +95,17 @@ jobs:
         # build-native-linux.sh наследует его из системного Python через
         # --system-site-packages, поэтому раннеру нужны эти apt-пакеты ДО
         # сборки, иначе PyInstaller не найдёт модуль gi (--collect-all gi).
+        #
+        # ВАЖНО: намеренно НЕ используем actions/setup-python здесь — сборке
+        # нужен именно системный /usr/bin/python3 (см. build-native-linux.sh),
+        # для которого apt ставит python3-gi. actions/setup-python не только
+        # подменяет python3 в PATH своей отдельной сборкой, но и прописывает
+        # LD_LIBRARY_PATH на свою /opt/hostedtoolcache/.../lib — из-за этого
+        # PyInstaller при линковке подхватывал ЧУЖУЮ libpython (не ту, под
+        # которой шёл анализ), бинарник собирался рассинхронизированным и не
+        # мог найти gi в рантайме, хотя на этапе анализа модуль находился
+        # нормально. Убрали шаг — используем python3.12, который уже есть в
+        # образе ubuntu-latest.
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
