@@ -31,7 +31,15 @@ class LLMClientError(RuntimeError):
 
 
 class LLMClient:
-    def __init__(self, base_url: str, timeout: int = 120):
+    # Должен быть БОЛЬШЕ таймаута, с которым llm-service сам ждёт ответа от
+    # Ollama/LM Studio (см. llm-service/server.py: requests.post(..., timeout=180))
+    # — раньше здесь стояло 120, то есть backend сдавался и рвал соединение
+    # РАНЬШЕ, чем llm-service успевал сам получить (или не получить) ответ
+    # от раннера. На медленной машине/холодной загрузке крупной модели это
+    # выглядело как случайное "llm-service недоступен", хотя раннер просто
+    # ещё считал — 200с даёт llm-service возможность честно дождаться своих
+    # 180с и вернуть внятную ошибку вместо обрыва с нашей стороны.
+    def __init__(self, base_url: str, timeout: int = 200):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
@@ -88,8 +96,29 @@ class LLMClient:
                         time.sleep(retry_delay)
                     continue
                 raise LLMClientError(f"llm-service недоступен: {exc}") from last_exc
-            else:
-                break
+
+            # 5xx от самого llm-service (не разрыв соединения, а ответ с
+            # ошибкой) — обычно значит, что раннер (Ollama/LM Studio) не
+            # успел ответить вовремя, пока грузил модель в память, или был
+            # занят другим запросом. Это ровно тот же временный сбой, что и
+            # ConnectionError выше — раньше не ретраился и сразу ронял
+            # позицию в "не найдено", хотя со второй попытки чаще всего
+            # проходит нормально.
+            if resp.status_code >= 500:
+                if attempt < _MAX_ATTEMPTS:
+                    logger.warning(
+                        "llm-service вернул %s (попытка %s/%s): %s — повтор через %sс",
+                        resp.status_code,
+                        attempt,
+                        _MAX_ATTEMPTS,
+                        resp.text,
+                        retry_delay,
+                    )
+                    if retry_delay:
+                        time.sleep(retry_delay)
+                    continue
+                raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
+            break
 
         if not resp.ok:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")

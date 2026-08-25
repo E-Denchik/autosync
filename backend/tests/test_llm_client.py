@@ -136,6 +136,54 @@ def test_generate_raises_after_exhausting_all_retries(app, monkeypatch):
     assert calls["n"] == 3  # не больше и не меньше настроенного числа попыток
 
 
+def test_generate_retries_transient_5xx_from_llm_service_before_succeeding(app, monkeypatch):
+    """Регрессия: llm-service мог вернуть 500/502 (Ollama/LM Studio не
+    ответил вовремя, пока грузил модель в память — см. llm-service/server.py)
+    — раньше это НЕ ретраилось (ретраился только обрыв соединения к самому
+    llm-service), хотя со второй попытки раннер обычно уже прогрелся и
+    отвечает нормально. Реальный симптом у заказчика: "llm-service -> 500:
+    The server encountered an internal error..." при каждой обработке
+    заказ-наряда, хотя ИИ в целом работает."""
+    calls = {"n": 0}
+
+    def flaky_post(url, json=None, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return _FakeResponse(False, {}, status_code=502, text="ollama не ответил вовремя")
+        return _FakeResponse(True, {"text": '{"suggested_price": 100, "reasoning": "ок"}'})
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", flaky_post)
+    monkeypatch.setattr("app.services.llm_client.time.sleep", lambda *_: None)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        result = client.suggest_price({"name": "x", "sku": "s", "cost_price": 1.0}, {})
+
+    assert result == {"suggested_price": 100, "reasoning": "ок"}
+    assert calls["n"] == 3
+
+
+def test_generate_raises_after_exhausting_retries_on_persistent_5xx(app, monkeypatch):
+    calls = {"n": 0}
+
+    def always_fails(url, json=None, timeout=None):
+        calls["n"] += 1
+        return _FakeResponse(False, {}, status_code=500, text="internal error")
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", always_fails)
+    monkeypatch.setattr("app.services.llm_client.time.sleep", lambda *_: None)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        try:
+            client.suggest_price({"name": "x", "sku": "s", "cost_price": 1.0}, {})
+            assert False, "expected LLMClientError"
+        except LLMClientError as exc:
+            assert "500" in str(exc)
+
+    assert calls["n"] == 3  # не больше и не меньше настроенного числа попыток
+
+
 def test_generate_does_not_retry_on_clean_http_error_response(app, monkeypatch):
     """Ошибка вида "модель не найдена"/400 — не сетевой сбой, повтор её не
     исправит, только зря тратит время (до 3 x таймаут)."""

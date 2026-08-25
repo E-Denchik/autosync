@@ -152,6 +152,25 @@ def generate():
             text = _generate_ollama(model, prompt, json_response)
     except RuntimeError as exc:
         return jsonify(error=str(exc)), 502
+    except requests.exceptions.RequestException as exc:
+        # Таймаут/обрыв соединения к Ollama/LM Studio (модель ещё грузится в
+        # память на первом запросе после простоя, раннер занят другим
+        # запросом и т.п.) — не RuntimeError, поэтому раньше пролетало мимо
+        # except выше и падало как НЕПОЙМАННОЕ исключение: Flask отдавал
+        # голую стандартную страницу 500 без единого объяснения причины, а
+        # backend (llm_client.py) эту страницу видел как "llm-service -> 500:
+        # The server encountered an internal error..." и ретраи для нём не
+        # делал (ретраит только полную недоступность llm-service, а тут
+        # llm-service отвечает нормально — это раннер внутри подвёл).
+        # Теперь это понятная ошибка с 502, которую backend вдобавок
+        # ретраит (см. LLMClient._generate).
+        return jsonify(error=f"{provider} не ответил вовремя: {exc}"), 502
+    except (ValueError, KeyError, IndexError) as exc:
+        # resp.json() / ["choices"][0]["message"]["content"] — раннер
+        # ответил 200, но с телом не той формы, которую мы ожидаем (другая
+        # версия API, пустой ответ и т.п.). Тоже не RuntimeError — та же
+        # история с голой страницей 500 без объяснения.
+        return jsonify(error=f"{provider} вернул неожиданный ответ: {exc}"), 502
 
     return jsonify(text=text)
 
