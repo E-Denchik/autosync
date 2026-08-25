@@ -147,6 +147,7 @@ export default function UploadPage() {
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleVin, setVehicleVin] = useState("");
   const [showMatchingInfo, setShowMatchingInfo] = useState(true);
+  const [showVehicleFields, setShowVehicleFields] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -346,6 +347,23 @@ export default function UploadPage() {
             ))}
           </div>
 
+          <div style={{ marginBottom: 18 }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowVehicleFields((v) => !v)}
+            >
+              {showVehicleFields ? "Скрыть" : "Указать контрагента и автомобиль вручную"}
+            </button>
+            {!showVehicleFields && (
+              <p className="text-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+                Необязательно — контрагент, марка и модель определятся автоматически после разбора
+                файла заказ-наряда. Откройте это поле только если хотите указать их сами заранее.
+              </p>
+            )}
+          </div>
+
+          {showVehicleFields && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
             <div className="field">
               <label htmlFor="contragent">Контрагент</label>
@@ -405,8 +423,9 @@ export default function UploadPage() {
               />
             </div>
           </div>
+          )}
 
-          {showNewContragentForm && (
+          {showVehicleFields && showNewContragentForm && (
             <div className="panel" style={{ marginBottom: 18, background: "var(--bg-sunken)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto auto", gap: 8, alignItems: "end" }}>
                 <div className="field" style={{ marginBottom: 0 }}>
@@ -449,10 +468,12 @@ export default function UploadPage() {
             </div>
           )}
 
+          {showVehicleFields && (
           <p className="text-muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 18 }}>
             Марка/модель нужны, чтобы автоматически подтянуть нормо-часы для работ из заказ-наряда;
             контрагент — чтобы посчитать их стоимость по его ставке.
           </p>
+          )}
 
           <button
             className="btn btn-primary"

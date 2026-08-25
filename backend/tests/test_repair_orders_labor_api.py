@@ -5,6 +5,7 @@ import pytest
 from app.extensions import db
 from app.models import (
     Contract,
+    Contragent,
     ConfidenceLevel,
     DocumentProcessingStatus,
     LaborLine,
@@ -373,3 +374,69 @@ def test_history_logs_edit_and_approve(client, admin_headers, app):
     entries = history.get_json()
     assert len(entries) == 1
     assert entries[0]["action"] == "edited"
+
+
+def test_add_labor_line_creates_new_approved_line_with_resolved_rate(client, admin_headers, app):
+    """Ручное добавление строки работ (см. matching.py::add_part — тот же
+    принцип для запчастей) — заказчик просил свободную форму добавления,
+    когда ни каталог, ни AutoData операцию не нашли ни по одной марке."""
+    with app.app_context():
+        contragent = Contragent(name="СТО Восток", hourly_rate=1500)
+        db.session.add(contragent)
+        db.session.flush()
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.flush()
+        order = RepairOrder(
+            contract_id=contract.id,
+            contragent_id=contragent.id,
+            original_filename="o.xlsx",
+            storage_path="/tmp/o.xlsx",
+            status=RepairOrderStatus.NEEDS_REVIEW,
+        )
+        db.session.add(order)
+        db.session.commit()
+        order_id = order.id
+
+    resp = client.post(
+        f"/api/repair-orders/labor/{order_id}",
+        headers=admin_headers,
+        json={"matched_operation_name": "Замена ремня ГРМ", "norm_hours": 2.5},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["matched_operation_name"] == "Замена ремня ГРМ"
+    assert float(body["norm_hours"]) == 2.5
+    assert float(body["hourly_rate"]) == 1500
+    assert float(body["total_cost"]) == 3750
+    assert body["review_status"] == "approved"
+    assert body["manually_edited"] is True
+
+    listed = client.get(f"/api/repair-orders/labor/{order_id}", headers=admin_headers)
+    assert len(listed.get_json()) == 1
+
+
+def test_add_labor_line_requires_operation_name_and_positive_hours(client, admin_headers, app):
+    with app.app_context():
+        order_id = _make_repair_order(app)
+
+    missing_name = client.post(
+        f"/api/repair-orders/labor/{order_id}", headers=admin_headers, json={"norm_hours": 1}
+    )
+    assert missing_name.status_code == 400
+
+    bad_hours = client.post(
+        f"/api/repair-orders/labor/{order_id}",
+        headers=admin_headers,
+        json={"matched_operation_name": "Диагностика", "norm_hours": 0},
+    )
+    assert bad_hours.status_code == 400
+
+
+def test_add_labor_line_requires_valid_repair_order(client, admin_headers):
+    resp = client.post(
+        "/api/repair-orders/labor/999999",
+        headers=admin_headers,
+        json={"matched_operation_name": "Диагностика", "norm_hours": 1},
+    )
+    assert resp.status_code == 404

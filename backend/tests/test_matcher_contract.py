@@ -103,6 +103,60 @@ def test_falls_back_to_llm_when_no_exact_or_cross_ref(app):
         assert result["confidence_score"] == 0.8
 
 
+def test_llm_candidate_pool_excludes_other_brand_when_vehicle_make_known(app):
+    """Регрессия: многобрендовый каталог (см. document_parser.
+    parse_price_catalog_by_brand) хранит запчасти разных марок в ОДНОМ
+    договоре, помеченные ContractPart.vehicle_make — без фильтрации по
+    марке LLM-подбор по названию для Hyundai мог получить в кандидаты
+    деталь с вкладки Toyota того же файла."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(
+                contract_id=contract_id, article="TOY-1", name="Прокладка клапанной крышки", price=500.0, vehicle_make="TOYOTA"
+            )
+        )
+        db.session.add(
+            ContractPart(
+                contract_id=contract_id, article="HYU-1", name="Прокладка клапанной крышки", price=600.0, vehicle_make="HYUNDAI"
+            )
+        )
+        db.session.commit()
+
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = []
+        llm_client = MagicMock()
+        llm_client.match_part_by_name.return_value = {"matched_index": 0, "confidence": 0.7, "reasoning": "совпадение"}
+
+        order_line = {"article": None, "name": "прокладка клапанной крышки"}
+        match_line_against_contract(order_line, contract_id, supplier_client, llm_client, vehicle_make="Hyundai")
+
+        shortlist = llm_client.match_part_by_name.call_args[0][1]
+        assert all(c["article"] != "TOY-1" for c in shortlist)
+        assert any(c["article"] == "HYU-1" for c in shortlist)
+
+
+def test_llm_candidate_pool_keeps_unbranded_rows_alongside_known_make(app):
+    """Расходники/общие позиции без марки (лист "Расходные материалы") не
+    должны выпадать из подбора для заказ-наряда любой конкретной марки."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractPart(contract_id=contract_id, article="GEN-1", name="Хомут универсальный", price=100.0, vehicle_make=None)
+        )
+        db.session.commit()
+
+        supplier_client = MagicMock()
+        supplier_client.find_cross_references.return_value = []
+        llm_client = MagicMock()
+        llm_client.match_part_by_name.return_value = {"matched_index": 0, "confidence": 0.6, "reasoning": "совпадение"}
+
+        order_line = {"article": None, "name": "хомут"}
+        result = match_line_against_contract(order_line, contract_id, supplier_client, llm_client, vehicle_make="Hyundai")
+
+        assert result["matched_article"] == "GEN-1"
+
+
 def test_returns_no_match_when_contract_catalog_is_empty(app):
     with app.app_context():
         contract_id = _make_contract(app)

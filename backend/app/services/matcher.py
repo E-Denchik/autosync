@@ -16,6 +16,7 @@ import difflib
 import logging
 import re
 
+from app.extensions import db
 from app.models import ConfidenceLevel, ContractPart
 from app.services.llm_client import LLMClient
 from app.services.parts_supplier_client import PartsSupplierClient
@@ -199,8 +200,24 @@ def match_all(
     ]
 
 
-def _contract_candidate_pool(contract_id: int, name: str | None, limit: int = CONTRACT_CANDIDATE_POOL_LIMIT) -> list[ContractPart]:
+def _contract_candidate_pool(
+    contract_id: int,
+    name: str | None,
+    vehicle_make: str | None = None,
+    limit: int = CONTRACT_CANDIDATE_POOL_LIMIT,
+) -> list[ContractPart]:
     base = ContractPart.query.filter_by(contract_id=contract_id)
+    # Многобрендовый каталог (см. document_parser.parse_price_catalog_by_brand)
+    # хранит запчасти разных марок в одном договоре, помеченные vehicle_make —
+    # без этого фильтра LLM-подбор по названию мог бы предложить механику
+    # деталь с вкладки Toyota для заказ-наряда на Hyundai. Строки без марки
+    # (однобрендовые/старые договоры, где vehicle_make всегда NULL) фильтр не
+    # затрагивает — тот же приём, что в labor_matcher._contract_labor_candidates.
+    if vehicle_make:
+        base = base.filter(
+            ContractPart.vehicle_make.is_(None)
+            | (db.func.lower(ContractPart.vehicle_make) == vehicle_make.lower())
+        )
     if name:
         for word in [w for w in name.strip().split() if len(w) >= 3][:3]:
             filtered = base.filter(ContractPart.name.ilike(f"%{word}%")).limit(limit).all()
@@ -214,6 +231,7 @@ def match_line_against_contract(
     contract_id: int,
     supplier_client: PartsSupplierClient,
     llm_client: LLMClient,
+    vehicle_make: str | None = None,
 ) -> dict:
     article = order_line.get("article")
     name = order_line.get("name")
@@ -275,7 +293,7 @@ def match_line_against_contract(
                 }
 
     llm_error = None
-    candidates = _contract_candidate_pool(contract_id, name)
+    candidates = _contract_candidate_pool(contract_id, name, vehicle_make)
     if candidates:
         pool = [
             {"article": c.article, "name": c.name, "price": float(c.price) if c.price is not None else None}
@@ -321,8 +339,9 @@ def match_all_against_contract(
     contract_id: int,
     supplier_client: PartsSupplierClient,
     llm_client: LLMClient,
+    vehicle_make: str | None = None,
 ) -> list[dict]:
     return [
-        match_line_against_contract(line, contract_id, supplier_client, llm_client)
+        match_line_against_contract(line, contract_id, supplier_client, llm_client, vehicle_make)
         for line in order_lines
     ]

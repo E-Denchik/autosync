@@ -62,6 +62,12 @@ class ContractPart(db.Model):
     name = db.Column(db.String(512), nullable=False)
     qty = db.Column(db.Numeric(12, 2))
     price = db.Column(db.Numeric(12, 2))
+    # Марка, которой принадлежит эта строка — заполняется, когда каталог был
+    # многобрендовым файлом (лист "KIA"/"Hyundai"/... — см.
+    # document_parser.parse_price_catalog_by_brand). NULL для общих
+    # каталогов/расходников без деления по маркам (см. ContractLaborNorm.vehicle_make —
+    # тот же приём для нормо-часов).
+    vehicle_make = db.Column(db.String(128), index=True)
 
     contract = db.relationship("Contract", back_populates="parts")
 

@@ -850,10 +850,21 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
                 seen_sheets.add(sheet_name)
                 matched_sheets.append(sheet_name)
 
+    # Лист -> марка(и), которые на нём объявлены (обратный словарь к
+    # brand_sheets) — один лист может быть на несколько марок сразу
+    # ("Hyundai/Kia"), тогда строки помечаем первой из них: разделять один
+    # физический прайс-лист на несколько идентичных копий ради тега не имеет
+    # смысла, а для фильтрации в matcher._contract_candidate_pool важно лишь
+    # не перепутать лист одной марки с листом другой.
+    sheet_brand: dict[str, str] = {}
+    for brand, sheet_name in brand_sheets.items():
+        sheet_brand.setdefault(sheet_name, brand)
+
     results: list[dict] = []
 
     for matched_sheet in matched_sheets:
         ws = wb[matched_sheet]
+        row_brand = sheet_brand.get(matched_sheet)
         for row in ws.iter_rows(min_row=3, values_only=True):
             name = _clean(row[1]) if len(row) > 1 else None
             if not name:
@@ -864,6 +875,7 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
                     "name": name,
                     "qty": None,
                     "price": _to_float(row[2]) if len(row) > 2 else None,
+                    "vehicle_make": row_brand,
                 }
             )
 
@@ -879,6 +891,8 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> li
                     "name": name,
                     "qty": None,
                     "price": _to_float(row[3]) if len(row) > 3 else None,
+                    # Расходники общие для всех марок — не привязываем.
+                    "vehicle_make": None,
                 }
             )
 

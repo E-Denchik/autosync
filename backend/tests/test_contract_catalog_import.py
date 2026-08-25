@@ -51,20 +51,32 @@ def test_import_from_repair_order_shaped_file_extracts_parts_and_labor_norms(app
         assert all(n.vehicle_model == "IX35" for n in norms)
 
 
-def test_import_from_brand_catalog_file_scoped_to_requested_brand(app):
+def test_import_from_brand_catalog_file_imports_all_brands_and_tags_each_row(app):
+    """Регрессия: передача конкретной марки раньше ОГРАНИЧИВАЛА импорт только
+    её листом — договор помечался PARSED и повторно уже не разбирался (см.
+    repair_order_processor.process_upload_job: contract.status == PARSED
+    пропускает import_contract_files), поэтому заказ-наряд другой марки,
+    использующий тот же самый (многобрендовый!) договор, оставался вообще
+    без единой запчасти для сопоставления, хотя её лист физически лежал в
+    файле — реальный кейс заказчика с Lada Niva. Теперь разбираются ВСЕ
+    листы сразу при любом переданном vehicle_make, и каждая строка помечена
+    СВОЕЙ маркой (см. document_parser.parse_price_catalog_by_brand) — это и
+    даёт matcher._contract_candidate_pool возможность не путать вкладку
+    одной марки с другой при подборе по названию."""
     path = os.path.join(TESTDATA_DIR, "Приложение со списком запчастей.xlsx")
     with app.app_context():
         contract_id = _make_contract(app)
         result = import_contract_files(contract_id, [path], "Chevrolet", llm_client=None)
 
         assert result["parts_created"] > 0
-        assert result["labor_norms_created"] == 0
 
-        count = ContractPart.query.filter_by(contract_id=contract_id).count()
-        assert count == result["parts_created"]
+        # Лист другой марки (Volkswagen) тоже импортирован, а не отброшен.
+        vw_article = ContractPart.query.filter_by(contract_id=contract_id, article="04E129620A").first()
+        assert vw_article is not None
+        assert vw_article.vehicle_make == "VOLKSWAGEN"
 
-        vw_only_article = ContractPart.query.filter_by(contract_id=contract_id, article="04E129620A").first()
-        assert vw_only_article is None
+        chevrolet_parts = ContractPart.query.filter_by(contract_id=contract_id, vehicle_make="CHEVROLET").all()
+        assert len(chevrolet_parts) > 0
 
 
 def test_import_from_brand_catalog_file_without_brand_imports_all_brands(app):
@@ -86,9 +98,11 @@ def test_import_from_brand_catalog_file_without_brand_imports_all_brands(app):
 
         vw_article = ContractPart.query.filter_by(contract_id=contract_id, article="04E129620A").first()
         assert vw_article is not None  # Volkswagen-лист учтён
+        assert vw_article.vehicle_make == "VOLKSWAGEN"
 
         kia_article = ContractPart.query.filter_by(contract_id=contract_id, article="AA100101A0").first()
         assert kia_article is not None  # KIA-лист тоже учтён
+        assert kia_article.vehicle_make == "KIA"
 
 
 def test_import_supplier_price_list_xlsx(app):

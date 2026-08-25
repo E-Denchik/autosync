@@ -91,6 +91,7 @@ export default function ReviewMatches() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [generatedPreview, setGeneratedPreview] = useState(null);
   const [showSupplierSearch, setShowSupplierSearch] = useState(false);
+  const [addingLaborLine, setAddingLaborLine] = useState(false);
   const [suppliersConfigured, setSuppliersConfigured] = useState(true); // оптимистично, пока не пришёл ответ
   const toast = useToast();
   const pollRef = useRef(null);
@@ -294,6 +295,20 @@ export default function ReviewMatches() {
     }
   };
 
+  const handleAddLaborLine = async (patch) => {
+    setLaborBusyId("new");
+    try {
+      const created = await api.addLaborLine(repairOrderId, patch);
+      setLaborLines((prev) => [...prev, created]);
+      toast.success("Работа добавлена вручную");
+      setAddingLaborLine(false);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLaborBusyId(null);
+    }
+  };
+
   const handleExportCsv = async () => {
     setExporting(true);
     try {
@@ -369,6 +384,14 @@ export default function ReviewMatches() {
     .reduce((sum, l) => sum + (l.total_cost || 0), 0);
   const partsApprovedCount = matches.filter((m) => m.review_status === "approved").length;
   const laborApprovedCount = laborLines.filter((l) => l.review_status === "approved").length;
+  // Позиция без цены в итоговом документе просто останется с пустой ячейкой
+  // (см. document_generator.py) — не потому, что что-то потерялось в коде, а
+  // потому, что у поставщика в исходном прайсе цены не было. Молча это не
+  // проходит незамеченным — подсказка ДО генерации, чтобы проверить/вписать
+  // цену руками, а не находить пробел уже в готовом заказ-наряде.
+  const partsApprovedNoPriceCount = matches.filter(
+    (m) => m.review_status === "approved" && (m.matched_price === null || m.matched_price === undefined)
+  ).length;
 
   return (
     <div>
@@ -403,6 +426,9 @@ export default function ReviewMatches() {
             <button className="btn btn-secondary" onClick={() => setShowSupplierSearch(true)}>
               <SearchIcon /> Добавить запчасть у поставщика
             </button>
+            <button className="btn btn-secondary" onClick={() => setAddingLaborLine(true)}>
+              <SearchIcon /> Добавить работу вручную
+            </button>
             {matches.length > 0 && (
               <button className="btn btn-secondary" disabled={exporting} onClick={handleExportCsv}>
                 <DownloadIcon /> {exporting ? "Экспорт…" : "Экспорт CSV"}
@@ -419,6 +445,7 @@ export default function ReviewMatches() {
           "Кнопка «Сгенерировать итоговый документ» станет активной, только когда не останется непроверенных позиций и работ.",
           "Перед генерацией можно выбрать свой шаблон документа (Администрирование → Шаблоны документов) вместо встроенного формата.",
           "Если нужной запчасти нет в заказ-наряде вовсе, нажмите «Добавить запчасть у поставщика» — найдёт её у Rossco/АвтоЕвро/Москворечье и добавит уже подтверждённой строкой, которая попадёт в итоговый документ.",
+          "Если для работы не нашлось ни каталога, ни нормо-часов — нажмите «Добавить работу вручную» и впишите операцию и часы в свободной форме.",
         ]}
       />
 
@@ -442,6 +469,17 @@ export default function ReviewMatches() {
             позиций ниже «не найдено» с догадкой LLM 0%, скорее всего дело в этом, а не в самих
             запчастях. <Link to="/admin/integrations">Настроить ключи →</Link>, затем загрузите
             заказ-наряд заново.
+          </span>
+        </div>
+      )}
+
+      {partsApprovedNoPriceCount > 0 && !isProcessing && (
+        <div className="hint-banner hint-warning">
+          <AlertCircleIcon />
+          <span>
+            {partsApprovedNoPriceCount} одобренн{partsApprovedNoPriceCount === 1 ? "ая позиция" : "ых позиции"} без
+            цены — у поставщика в прайсе цена не указана, в итоговом документе ячейка останется пустой.
+            Проверьте перед генерацией и, если нужно, впишите цену через «Изменить».
           </span>
         </div>
       )}
@@ -514,13 +552,13 @@ export default function ReviewMatches() {
         <div className="table-wrap">
           <Spinner label="Парсим документы и сопоставляем позиции — обычно это занимает несколько секунд…" />
         </div>
-      ) : matches.length === 0 ? (
+      ) : matches.length === 0 && laborLines.length === 0 ? (
         <div className="table-wrap">
           <EmptyState title="Не удалось найти позиции" hint="Проверьте формат загруженных файлов." />
         </div>
       ) : (
         <>
-          {selected.size > 0 && (
+          {matches.length > 0 && selected.size > 0 && (
             <div
               className="panel"
               style={{
@@ -548,6 +586,7 @@ export default function ReviewMatches() {
             </div>
           )}
 
+          {matches.length > 0 && (
           <div className="table-wrap">
             <table>
               <thead>
@@ -659,6 +698,7 @@ export default function ReviewMatches() {
               </tbody>
             </table>
           </div>
+          )}
 
           {laborLines.length > 0 && (
             <div className="table-wrap" style={{ marginTop: 18 }}>
@@ -754,6 +794,21 @@ export default function ReviewMatches() {
                           <span className="text-muted" style={{ fontSize: 11, marginLeft: 6 }} title={l.llm_error}>
                             (сервис ИИ не ответил, а не "не найдено")
                           </span>
+                        )}
+                        {l.match_category === "no_match" && (
+                          <a
+                            href={`https://yandex.ru/search/?text=${encodeURIComponent(
+                              [orderInfo?.vehicle_make, orderInfo?.vehicle_model, l.description, "нормо-часы трудоёмкость"]
+                                .filter(Boolean)
+                                .join(" ")
+                            )}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ fontSize: 11, marginLeft: 6 }}
+                            title="Ни в одном каталоге норма не найдена — поискать вручную в интернете (цифру ИИ не подставляет)"
+                          >
+                            найти в интернете →
+                          </a>
                         )}
                         {l.manually_edited && (
                           <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
@@ -925,6 +980,16 @@ export default function ReviewMatches() {
           saving={laborBusyId === editingLaborLine.id}
           onClose={() => setEditingLaborLine(null)}
           onSave={handleSaveLaborEdit}
+        />
+      )}
+
+      {addingLaborLine && (
+        <LaborEditModal
+          line={{ description: "Добавлено вручную", matched_operation_name: "", norm_hours: "" }}
+          catalog={laborCatalog}
+          saving={laborBusyId === "new"}
+          onClose={() => setAddingLaborLine(false)}
+          onSave={handleAddLaborLine}
         />
       )}
 

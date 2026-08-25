@@ -156,6 +156,8 @@ export const api = {
 
   // Заказ-наряды: работы (нормо-часы)
   listLaborLines: (repairOrderId) => request(`/repair-orders/labor/${repairOrderId}`),
+  addLaborLine: (repairOrderId, data) =>
+    request(`/repair-orders/labor/${repairOrderId}`, { method: "POST", body: JSON.stringify(data) }),
   editLaborLine: (laborLineId, data) =>
     request(`/repair-orders/labor/${laborLineId}`, { method: "PATCH", body: JSON.stringify(data) }),
   approveLaborLine: (laborLineId) => request(`/repair-orders/labor/${laborLineId}/approve`, { method: "POST" }),

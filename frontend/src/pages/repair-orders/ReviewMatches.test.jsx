@@ -15,6 +15,7 @@ vi.mock("../../api/client.js", () => ({
     listMatches: vi.fn(),
     listLaborLines: vi.fn(),
     listLaborCatalog: vi.fn(),
+    addLaborLine: vi.fn(),
     generateDocument: vi.fn(),
     previewFile: vi.fn(),
   },
@@ -152,6 +153,113 @@ describe("ReviewMatches — статистика проверки (реальн�
     renderPage();
 
     expect(await screen.findByText("Статистика проверки")).toBeInTheDocument();
+  });
+});
+
+describe("ReviewMatches — ручное добавление работы", () => {
+  it("кнопка «Добавить работу вручную» открывает форму и после сохранения строка появляется в списке", async () => {
+    // Заказчик просил свободную форму добавления работ (по аналогии с уже
+    // существующим «Добавить запчасть у поставщика») — когда ни каталог,
+    // ни AutoData операцию не находят ни по одной марке.
+    api.getUploadStatus.mockResolvedValue({ status: "needs_review", contragent_name: null, vehicle_make: null });
+    api.listMatches.mockResolvedValue([]);
+    api.listLaborLines.mockResolvedValue([]);
+    api.addLaborLine.mockResolvedValue({
+      id: 5,
+      description: "Добавлено вручную",
+      matched_operation_name: "Диагностика ходовой",
+      norm_hours: 1.5,
+      hourly_rate: 1000,
+      total_cost: 1500,
+      review_status: "approved",
+      manually_edited: true,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.queryByText("Проверяем статус обработки…")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("Добавить работу вручную"));
+    await userEvent.type(screen.getByLabelText("Операция"), "Диагностика ходовой");
+    await userEvent.type(screen.getByLabelText("Нормо-часы"), "1.5");
+    await userEvent.click(screen.getByText("Сохранить"));
+
+    await waitFor(() =>
+      expect(api.addLaborLine).toHaveBeenCalledWith("1", {
+        matched_operation_name: "Диагностика ходовой",
+        norm_hours: 1.5,
+      })
+    );
+    expect(await screen.findByText("Диагностика ходовой")).toBeInTheDocument();
+  });
+});
+
+describe("ReviewMatches — видимость цены и подсказка по нормо-часам", () => {
+  it("показывает баннер, когда у одобренной запчасти нет цены", async () => {
+    // У поставщика в исходном прайсе цена была пустой — matched_price
+    // остаётся null (см. document_generator.py), и в итоговом документе
+    // ячейка так и будет пустой. Раньше это никак не было заметно ДО
+    // генерации документа.
+    api.getUploadStatus.mockResolvedValue({ status: "needs_review", contragent_name: null, vehicle_make: null });
+    api.listMatches.mockResolvedValue([
+      {
+        id: 1,
+        review_status: "approved",
+        contract_article: "A1",
+        contract_name: "Деталь",
+        matched_name: "Деталь",
+        matched_price: null,
+        match_category: "exact",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText(/1 одобренная позиция без цены/)).toBeInTheDocument();
+  });
+
+  it("не показывает баннер, когда у всех одобренных позиций есть цена", async () => {
+    api.getUploadStatus.mockResolvedValue({ status: "needs_review", contragent_name: null, vehicle_make: null });
+    api.listMatches.mockResolvedValue([
+      {
+        id: 1,
+        review_status: "approved",
+        contract_article: "A1",
+        contract_name: "Деталь",
+        matched_name: "Деталь",
+        matched_price: 500,
+        match_category: "exact",
+      },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.queryByText("Проверяем статус обработки…")).not.toBeInTheDocument());
+    expect(screen.queryByText(/позици[яи] без цены/)).not.toBeInTheDocument();
+  });
+
+  it("для работы без единого совпадения показывает ссылку на поиск в интернете, а не подставляет цифру сама", async () => {
+    api.getUploadStatus.mockResolvedValue({
+      status: "needs_review",
+      contragent_name: null,
+      vehicle_make: "ВАЗ",
+    });
+    api.listMatches.mockResolvedValue([]);
+    api.listLaborLines.mockResolvedValue([
+      {
+        id: 1,
+        review_status: "pending",
+        description: "Снятие ДВС",
+        matched_operation_name: null,
+        match_category: "no_match",
+      },
+    ]);
+
+    renderPage();
+
+    const link = await screen.findByText("найти в интернете →");
+    expect(link.closest("a")).toHaveAttribute("href", expect.stringContaining("yandex.ru/search"));
+    expect(link.closest("a")).toHaveAttribute("target", "_blank");
   });
 });
 

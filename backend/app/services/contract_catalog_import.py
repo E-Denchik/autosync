@@ -35,8 +35,8 @@ def _bulk_insert_parts(contract_id: int, lines: list[dict]) -> dict:
     поставщика и т.п.) удваивала бы список запчастей при каждой загрузке.
     У строк без артикула нет естественного ключа — они всегда создаются
     заново (как и раньше)."""
-    existing_ids_by_article = {
-        p.article: p.id
+    existing_by_article = {
+        p.article: (p.id, p.vehicle_make)
         for p in ContractPart.query.filter(
             ContractPart.contract_id == contract_id, ContractPart.article.isnot(None)
         ).all()
@@ -50,6 +50,12 @@ def _bulk_insert_parts(contract_id: int, lines: list[dict]) -> dict:
         if not line.get("name"):
             continue
         article = line.get("article")
+        existing_id, existing_make = existing_by_article.get(article, (None, None))
+        # Не затираем уже проставленную марку, если ЭТА строка её не знает
+        # (например, повторный импорт через формат "экспорт заказ-наряда",
+        # который бренд не определяет) — иначе разметка по марке из
+        # первого, брендового импорта терялась бы при любом последующем.
+        vehicle_make = line.get("vehicle_make") if line.get("vehicle_make") is not None else existing_make
         row = {
             "contract_id": contract_id,
             "article": article,
@@ -57,9 +63,10 @@ def _bulk_insert_parts(contract_id: int, lines: list[dict]) -> dict:
             "name": line.get("name"),
             "qty": line.get("qty"),
             "price": line.get("price"),
+            "vehicle_make": vehicle_make,
         }
-        if article and article in existing_ids_by_article:
-            to_update.append({**row, "id": existing_ids_by_article[article]})
+        if article and existing_id is not None:
+            to_update.append({**row, "id": existing_id})
         elif article and article in index_in_batch:
             # Тот же артикул несколько раз в одном файле — оставляем последнюю строку.
             to_insert[index_in_batch[article]] = row
@@ -113,11 +120,17 @@ def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str 
             )
             continue
 
-        # Без vehicle_make функция сама разбирает файл целиком по всем найденным
-        # маркам (см. её докстринг про причину) — раньше здесь она вообще не
-        # вызывалась без явной марки, и такой файл уходил в общий парсер
-        # одной таблицы, который эту структуру не понимает.
-        lines = parse_price_catalog_by_brand(path, vehicle_make)
+        # Всегда разбираем ВСЕ найденные листы марок разом (vehicle_make=None
+        # заставляет parse_price_catalog_by_brand взять все листы — см. её
+        # докстринг), а не только текущую марку заказ-наряда: договор/прайс
+        # загружается один раз и потом переиспользуется для заказ-нарядов
+        # разных марок (см. contract.status == PARSED в
+        # repair_order_processor.py — повторно этот код для того же
+        # договора уже не выполнится). Раньше при первом использовании
+        # договора для, скажем, Hyundai в БД попадал только лист Hyundai, и
+        # заказ-наряд по другой марке из того же файла (например, ВАЗ/Lada)
+        # оставался вообще без единой запчасти для сопоставления.
+        lines = parse_price_catalog_by_brand(path, None)
         if lines is None:
             lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
         parts_result = _bulk_insert_parts(contract_id, lines)

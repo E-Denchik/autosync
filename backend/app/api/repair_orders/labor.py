@@ -3,8 +3,9 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, request
 
 from app.extensions import db
-from app.models import LaborLine, RepairOrder, ReviewStatus
+from app.models import ConfidenceLevel, LaborLine, RepairOrder, ReviewStatus
 from app.services.history import log_change
+from app.services.repair_order_processor import resolve_hourly_rate
 
 bp = Blueprint("repair_orders_labor", __name__)
 
@@ -97,6 +98,55 @@ def list_labor_lines(repair_order_id: int):
         )
     )
     return jsonify(serialized)
+
+
+@bp.post("/<int:repair_order_id>")
+def add_labor_line(repair_order_id: int):
+    """Добавляет НОВУЮ строку работ вручную — например, операцию, которую
+    ни каталог договора, ни AutoData не нашли ни по одной марке (см.
+    labor_matcher.py). Сразу approved: раз оператор осознанно вписал
+    операцию и часы, дальнейшего подтверждения не нужно (тот же принцип,
+    что и в matching.py::add_part)."""
+    repair_order = db.get_or_404(RepairOrder, repair_order_id)
+    body = request.get_json(force=True) or {}
+
+    operation_name = (body.get("matched_operation_name") or "").strip()
+    if not operation_name:
+        return jsonify(error="'matched_operation_name' обязателен"), 400
+    try:
+        norm_hours = float(body.get("norm_hours"))
+    except (TypeError, ValueError):
+        return jsonify(error="'norm_hours' должен быть числом"), 400
+    if norm_hours <= 0:
+        return jsonify(error="'norm_hours' должен быть положительным"), 400
+
+    hourly_rate = resolve_hourly_rate(repair_order)
+    total_cost = norm_hours * hourly_rate if hourly_rate is not None else None
+
+    line = LaborLine(
+        repair_order_id=repair_order_id,
+        description=operation_name,
+        matched_operation_name=operation_name,
+        norm_hours=norm_hours,
+        hourly_rate=hourly_rate,
+        total_cost=total_cost,
+        confidence_level=ConfidenceLevel.EXACT,
+        confidence_score=1.0,
+        review_status=ReviewStatus.APPROVED,
+        manually_edited=True,
+        reviewed_at=datetime.utcnow(),
+        raw_match_data={"source": "manual_add"},
+    )
+    db.session.add(line)
+    db.session.flush()
+    log_change(
+        "labor_line",
+        line.id,
+        "created",
+        details={"matched_operation_name": operation_name, "norm_hours": norm_hours, "source": "manual_add"},
+    )
+    db.session.commit()
+    return jsonify(_serialize(line)), 201
 
 
 @bp.patch("/<int:labor_line_id>")

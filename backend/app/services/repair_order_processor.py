@@ -73,6 +73,33 @@ def _find_hourly_rate(model_cls, fk_field: str, fk_value: int, vehicle_make: str
     return query.filter(model_cls.vehicle_model.is_(None)).first()
 
 
+def resolve_hourly_rate(repair_order: RepairOrder) -> float | None:
+    """Ставка за нормо-час для заказ-наряда: сначала по марке+модели в самом
+    договоре, затем по марке+модели у контрагента (общей, вне привязки к
+    конкретному договору), затем — общая ставка контрагента. Общая логика
+    для автосопоставления (process_upload_job) и для ручного добавления
+    строки работ (см. app/api/repair_orders/labor.py::add_labor_line)."""
+    contract_rate = None
+    contragent_make_rate = None
+    if repair_order.vehicle_make and repair_order.contract_id:
+        contract_rate = _find_hourly_rate(
+            ContractHourlyRate, "contract_id", repair_order.contract_id, repair_order.vehicle_make, repair_order.vehicle_model
+        )
+        if contract_rate is None and repair_order.contragent:
+            contragent_make_rate = _find_hourly_rate(
+                ContragentHourlyRate,
+                "contragent_id",
+                repair_order.contragent.id,
+                repair_order.vehicle_make,
+                repair_order.vehicle_model,
+            )
+    if contract_rate is not None:
+        return float(contract_rate.hourly_rate)
+    if contragent_make_rate is not None:
+        return float(contragent_make_rate.hourly_rate)
+    return float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
+
+
 def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[dict, list[dict], list[dict]]:
     meta = {
         "order_number": None,
@@ -219,7 +246,9 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     supplier_client = build_configured_supplier_client(current_app.config)
 
     try:
-        results = match_all_against_contract(part_lines, contract.id, supplier_client, llm_client)
+        results = match_all_against_contract(
+            part_lines, contract.id, supplier_client, llm_client, repair_order.vehicle_make
+        )
     except Exception as exc:
         logger.exception("match_all_against_contract упал для repair_order_id=%s", repair_order_id)
         repair_order.status = RepairOrderStatus.FAILED
@@ -250,26 +279,7 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             details={"confidence_level": match.confidence_level.value, "source": "auto-match"},
         )
 
-    contract_rate = None
-    contragent_make_rate = None
-    if repair_order.vehicle_make:
-        contract_rate = _find_hourly_rate(
-            ContractHourlyRate, "contract_id", contract.id, repair_order.vehicle_make, repair_order.vehicle_model
-        )
-        if contract_rate is None and repair_order.contragent:
-            contragent_make_rate = _find_hourly_rate(
-                ContragentHourlyRate,
-                "contragent_id",
-                repair_order.contragent.id,
-                repair_order.vehicle_make,
-                repair_order.vehicle_model,
-            )
-    if contract_rate is not None:
-        hourly_rate = float(contract_rate.hourly_rate)
-    elif contragent_make_rate is not None:
-        hourly_rate = float(contragent_make_rate.hourly_rate)
-    else:
-        hourly_rate = float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
+    hourly_rate = resolve_hourly_rate(repair_order)
     has_contract_labor_norms = ContractLaborNorm.query.filter_by(contract_id=contract.id).first() is not None
     descriptions = [line["name"] for line in labor_lines_raw]
 
