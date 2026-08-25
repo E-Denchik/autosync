@@ -1,4 +1,5 @@
 import os
+from unittest.mock import MagicMock
 
 from app.extensions import db
 from app.models import (
@@ -13,7 +14,8 @@ from app.models import (
     RepairOrder,
     RepairOrderStatus,
 )
-from app.services.repair_order_processor import process_upload_job
+from app.services.llm_client import LLMClient
+from app.services.repair_order_processor import _generate_review_summary, process_upload_job
 
 TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
 REPAIR_ORDER_FILE = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
@@ -477,3 +479,230 @@ def test_process_upload_job_marks_contract_failed_instead_of_hanging_on_unexpect
         assert contract.status == DocumentProcessingStatus.FAILED
         repair_order = db.session.get(RepairOrder, repair_order_id)
         assert repair_order.status == RepairOrderStatus.FAILED
+
+
+def test_process_upload_job_persists_order_number_and_date_from_source_file(app):
+    """Регрессия: номер/дата заказ-наряда распознавались парсером (см.
+    parse_repair_order_export), но нигде не сохранялись — итоговый документ
+    (см. test_document_generator.py) подставлял вместо них id записи и дату
+    загрузки."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(contract)
+        db.session.flush()
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.order_number == "0000010749"
+        assert repair_order.order_date == "14.01.2026"
+
+
+def test_process_upload_job_does_not_overwrite_manually_set_order_number(app):
+    """Как и с маркой/моделью — если номер/дату уже задали вручную ДО
+    обработки, распознанное из файла их не перезаписывает."""
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(contract)
+        db.session.flush()
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+            order_number="RUCHNOY-1",
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.order_number == "RUCHNOY-1"
+
+
+def test_process_upload_job_handles_repair_order_with_only_parts_section(app):
+    """Реальный случай: просто замена детали без отдельно учтённой работы —
+    в заказ-наряде есть только "Расходная накладная", раздела "Выполненные
+    работы" нет вовсе (см. testdata/Тест 3 (заказ-наряд без работ).xlsx).
+    Раньше это не было явно проверено — важно, что отсутствие одного из
+    двух разделов не считается ошибкой парсинга."""
+    path = os.path.join(TESTDATA_DIR, "Тест 3 (заказ-наряд без работ).xlsx")
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(contract)
+        db.session.flush()
+        repair_order = RepairOrder(
+            contract_id=contract.id, original_filename="order.xlsx", storage_path=path, status=RepairOrderStatus.UPLOADED
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        contract_id, repair_order_id = contract.id, repair_order.id
+
+        result = process_upload_job(contract_id, repair_order_id)
+
+        assert result["status"] == "ok"
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.status == RepairOrderStatus.NEEDS_REVIEW
+        assert repair_order.vehicle_make == "TOYOTA"
+        assert repair_order.vehicle_model == "CAMRY"
+        assert PartMatch.query.filter_by(repair_order_id=repair_order_id).count() == 2
+        assert LaborLine.query.filter_by(repair_order_id=repair_order_id).count() == 0
+
+
+def test_process_upload_job_handles_repair_order_with_only_labor_section(app):
+    """Обратный случай — диагностика/регулировка без замены деталей, только
+    "Выполненные работы" (см. testdata/Тест 4 (заказ-наряд без запчастей).xlsx)."""
+    path = os.path.join(TESTDATA_DIR, "Тест 4 (заказ-наряд без запчастей).xlsx")
+    with app.app_context():
+        contract = Contract(
+            original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED
+        )
+        db.session.add(contract)
+        db.session.flush()
+        repair_order = RepairOrder(
+            contract_id=contract.id, original_filename="order.xlsx", storage_path=path, status=RepairOrderStatus.UPLOADED
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        contract_id, repair_order_id = contract.id, repair_order.id
+
+        result = process_upload_job(contract_id, repair_order_id)
+
+        assert result["status"] == "ok"
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.status == RepairOrderStatus.NEEDS_REVIEW
+        assert repair_order.vehicle_make == "KIA"
+        assert repair_order.vehicle_model == "RIO"
+        assert PartMatch.query.filter_by(repair_order_id=repair_order_id).count() == 0
+        assert LaborLine.query.filter_by(repair_order_id=repair_order_id).count() == 2
+
+
+def test_generate_review_summary_passes_counted_stats_and_returns_llm_text(app, tmp_path):
+    with app.app_context():
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.flush()
+        order = RepairOrder(
+            contract_id=contract.id, original_filename="o.xlsx", storage_path=str(tmp_path / "o.xlsx"),
+            status=RepairOrderStatus.NEEDS_REVIEW, vehicle_make="HYUNDAI", vehicle_model="IX35",
+        )
+        db.session.add(order)
+        db.session.commit()
+
+        results = [
+            {"raw_match_data": {"source": "exact_article_match"}},
+            {"raw_match_data": {"source": "llm_error", "error": "connection refused"}},
+        ]
+        labor_results = [
+            {"raw_match_data": {"source": "contract_catalog_exact"}},
+            {"raw_match_data": {"source": "llm_fallback_cross_make"}},
+        ]
+        llm_client = MagicMock()
+        llm_client.summarize_review.return_value = {"summary": "Проверьте позицию без совпадения и оценку по другой марке."}
+
+        summary = _generate_review_summary(order, results, labor_results, llm_client)
+
+        assert summary == "Проверьте позицию без совпадения и оценку по другой марке."
+        stats = llm_client.summarize_review.call_args.args[0]
+        assert stats["vehicle_make"] == "HYUNDAI"
+        assert stats["parts_total"] == 2
+        assert stats["parts_exact"] == 1
+        assert stats["parts_llm_error"] == 1
+        assert stats["labor_total"] == 2
+        assert stats["labor_exact"] == 1
+        assert stats["labor_cross_make_estimate"] == 1
+
+
+def test_generate_review_summary_returns_none_for_empty_repair_order(app, tmp_path):
+    with app.app_context():
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.flush()
+        order = RepairOrder(
+            contract_id=contract.id, original_filename="o.xlsx", storage_path=str(tmp_path / "o.xlsx"), status=RepairOrderStatus.NEEDS_REVIEW
+        )
+        db.session.add(order)
+        db.session.commit()
+
+        llm_client = MagicMock()
+        summary = _generate_review_summary(order, [], [], llm_client)
+
+        assert summary is None
+        llm_client.summarize_review.assert_not_called()
+
+
+def test_generate_review_summary_returns_none_and_does_not_raise_when_llm_fails(app, tmp_path):
+    """Сама сводка — необязательное украшение страницы проверки, а не
+    критичный шаг: сбой её генерации не должен ронять обработку всего
+    заказ-наряда."""
+    with app.app_context():
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.flush()
+        order = RepairOrder(
+            contract_id=contract.id, original_filename="o.xlsx", storage_path=str(tmp_path / "o.xlsx"), status=RepairOrderStatus.NEEDS_REVIEW
+        )
+        db.session.add(order)
+        db.session.commit()
+
+        llm_client = MagicMock()
+        llm_client.summarize_review.side_effect = RuntimeError("llm-service недоступен")
+
+        summary = _generate_review_summary(order, [{"raw_match_data": {"source": "exact_article_match"}}], [], llm_client)
+
+        assert summary is None
+
+
+def test_process_upload_job_stores_ai_review_summary(app, monkeypatch):
+    """Интеграционный сценарий: process_upload_job реально сохраняет
+    review_summary в БД по результатам полного прогона сопоставления."""
+    monkeypatch.setattr(
+        LLMClient, "summarize_review", lambda self, stats: {"summary": "Всё сопоставилось точно, проверка формальная."}
+    )
+    with app.app_context():
+        contract = Contract(
+            name="Контракт по HYUNDAI",
+            original_filename="c.xlsx",
+            storage_path="/tmp/c.xlsx",
+            status=DocumentProcessingStatus.PARSED,
+        )
+        db.session.add(contract)
+        db.session.flush()
+        db.session.add(
+            ContractPart(
+                contract_id=contract.id, article="PN32661 [AUTOWELT]", name="Поршень с кольцами", price=9999.0
+            )
+        )
+        db.session.commit()
+
+        repair_order = RepairOrder(
+            contract_id=contract.id,
+            original_filename="order.xlsx",
+            storage_path=REPAIR_ORDER_FILE,
+            status=RepairOrderStatus.UPLOADED,
+        )
+        db.session.add(repair_order)
+        db.session.commit()
+        repair_order_id = repair_order.id
+
+        process_upload_job(contract.id, repair_order.id)
+
+        repair_order = db.session.get(RepairOrder, repair_order_id)
+        assert repair_order.review_summary == "Всё сопоставилось точно, проверка формальная."

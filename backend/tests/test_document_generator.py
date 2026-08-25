@@ -253,6 +253,37 @@ def test_build_template_context_computes_totals_and_items(app, tmp_path):
     ]
 
 
+def test_uses_real_order_number_and_date_from_source_file_when_available(app, tmp_path):
+    """Регрессия: order_number/order_date распознаются из самого файла при
+    загрузке (см. document_parser.parse_repair_order_export), но раньше
+    никуда не сохранялись — итоговый документ вместо реального номера/даты
+    заказ-наряда подставлял внутренний id записи и дату ЗАГРУЗКИ в систему,
+    которые не совпадают с тем, что было написано в файле у заказчика."""
+    with app.app_context():
+        order = _make_repair_order(app, tmp_path, order_number="0000010749", order_date="14.01.2026")
+        path = generate_repair_order_document(order)
+
+    flat = [cell for row in _rows(path) for cell in row if cell is not None]
+    assert any("Заказ-наряд № 0000010749 от 14.01.2026" in str(c) for c in flat)
+    assert not any(f"№ {order.id} от" in str(c) for c in flat)
+
+    context, _, _ = build_template_context(order)
+    assert context["order_number"] == "0000010749"
+    assert context["order_date"] == "14.01.2026"
+
+
+def test_falls_back_to_id_and_created_at_when_order_number_not_recognized(app, tmp_path):
+    """Не у каждого файла получается распознать номер/дату (не 1С-формат,
+    сканы и т.п.) — тогда, как и раньше, используются id записи и дата
+    загрузки, а не пустая строка в документе."""
+    with app.app_context():
+        order = _make_repair_order(app, tmp_path)  # order_number/order_date не заданы
+        path = generate_repair_order_document(order)
+
+    flat = [cell for row in _rows(path) for cell in row if cell is not None]
+    assert any(f"Заказ-наряд № {order.id} от {order.created_at.strftime('%d.%m.%Y')}" in str(c) for c in flat)
+
+
 def test_build_template_context_approved_only_false_includes_pending(app, tmp_path):
     with app.app_context():
         order = _make_repair_order(app, tmp_path)

@@ -65,6 +65,8 @@ export default function RepairOrdersList() {
               contragent_name: updated.contragent_name,
               vehicle_make: updated.vehicle_make,
               vehicle_model: updated.vehicle_model,
+              order_number: updated.order_number,
+              order_date: updated.order_date,
             }
           : o
       )
@@ -127,6 +129,7 @@ export default function RepairOrdersList() {
           <table>
             <thead>
               <tr>
+                <th>№ наряда</th>
                 <th>Заказ-наряд</th>
                 <th>Договор</th>
                 <th>Автомобиль</th>
@@ -140,6 +143,16 @@ export default function RepairOrdersList() {
             <tbody>
               {orders.map((o) => (
                 <tr key={o.id}>
+                  <td className="text-muted">
+                    {o.order_number ? (
+                      <>
+                        № {o.order_number}
+                        {o.order_date && <div style={{ fontSize: 11.5 }}>от {o.order_date}</div>}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>
                     <button
                       type="button"

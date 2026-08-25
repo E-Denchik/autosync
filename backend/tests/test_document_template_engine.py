@@ -109,6 +109,88 @@ def test_render_template_reports_malformed_tokens_left_unresolved(tmp_path):
     assert wb_out.active["A2"].value == "Дата: {{order date}}"
 
 
+def test_merged_cells_below_repeating_rows_do_not_swallow_data(tmp_path):
+    """Регрессия: реальные шаблоны заказчика почти всегда содержат
+    объединённые ячейки (заголовок, строка "ИТОГО" и т.п.). openpyxl
+    insert_rows/delete_rows НЕ сдвигает merged_cells — строка "ИТОГО",
+    объединённая ниже {{part.*}}, оставалась на старых координатах после
+    вставки строк под несколько позиций, и запись данных во "вторую"
+    (не главную) ячейку сдвинувшегося объединения openpyxl тихо
+    игнорирует — часть заказ-наряда (например, артикул) пропадала бы из
+    документа без единой ошибки, только сдвинутый на старое место "хвост"
+    объединения."""
+    template_path = tmp_path / "template.xlsx"
+    output_path = tmp_path / "output.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Заказ-наряд № {{order_number}}"])
+    ws.merge_cells("A1:C1")
+    ws.append(["№", "Артикул", "Цена"])
+    ws.append(["{{part.n}}", "{{part.article}}", "{{part.price}}"])
+    ws.append(["ИТОГО:", "", "{{grand_total}}"])
+    ws.merge_cells("A4:B4")
+    wb.save(template_path)
+
+    render_template(
+        str(template_path),
+        str(output_path),
+        {"order_number": 1, "grand_total": 600},
+        part_items=[
+            {"article": "A-1", "price": 100},
+            {"article": "A-2", "price": 200},
+            {"article": "A-3", "price": 300},
+        ],
+        labor_items=[],
+    )
+
+    wb_out = openpyxl.load_workbook(output_path)
+    rows = list(ws_rows(wb_out.active))
+    parts_rows = {r[1]: r[2] for r in rows if r[1] and r[1].startswith("A-")}
+    assert parts_rows == {"A-1": 100, "A-2": 200, "A-3": 300}  # ни один артикул не потерялся
+
+    itogo_row = next(r for r in rows if r[0] == "ИТОГО:")
+    assert itogo_row[2] == 600
+
+    # Заголовок (не задет вставкой строк) остался объединён как был; "ИТОГО"
+    # сдвинулся вниз на 2 вставленные строки и объединён на новом месте.
+    ranges = {str(r) for r in wb_out.active.merged_cells.ranges}
+    assert "A1:C1" in ranges
+    assert "A6:B6" in ranges
+    assert "A4:B4" not in ranges
+
+
+def test_merged_cells_below_deleted_row_shift_up_when_no_items(tmp_path):
+    """Тот же класс бага, но для случая delete_rows (0 позиций) — merge ниже
+    удаляемой строки тоже должен сдвинуться, а не остаться на старом месте."""
+    template_path = tmp_path / "template.xlsx"
+    output_path = tmp_path / "output.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Заказ-наряд № {{order_number}}"])
+    ws.append(["№", "Артикул", "Цена"])
+    ws.append(["{{part.n}}", "{{part.article}}", "{{part.price}}"])
+    ws.append(["ИТОГО:", "", "{{grand_total}}"])
+    ws.merge_cells("A4:B4")
+    wb.save(template_path)
+
+    render_template(
+        str(template_path),
+        str(output_path),
+        {"order_number": 1, "grand_total": 0},
+        part_items=[],
+        labor_items=[],
+    )
+
+    wb_out = openpyxl.load_workbook(output_path)
+    rows = list(ws_rows(wb_out.active))
+    itogo_row = next(r for r in rows if r[0] == "ИТОГО:")
+    assert itogo_row[2] == 0
+
+    ranges = {str(r) for r in wb_out.active.merged_cells.ranges}
+    assert "A3:B3" in ranges  # сдвинулось на 1 строку вверх после удаления шаблонной строки
+    assert "A4:B4" not in ranges
+
+
 def test_build_starter_template_has_no_leftover_placeholders_after_render(tmp_path):
     template_path = tmp_path / "starter.xlsx"
     output_path = tmp_path / "output.xlsx"

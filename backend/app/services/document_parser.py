@@ -59,7 +59,7 @@ _TOTAL_ROW_MARKERS = ("итого", "всего")
 LABOR_CATALOG_CODE_ALIASES = ARTICLE_COLUMN_ALIASES + ["№ кат"]
 LABOR_DESCRIPTION_ALIASES = NAME_COLUMN_ALIASES + ["работа", "операция"]
 LABOR_HOURLY_RATE_ALIASES = ["цена н/ч", "цена нормо-часа", "цена за час", "стоимость н/ч"]
-LABOR_NORM_HOURS_ALIASES = ["норма"]
+LABOR_NORM_HOURS_ALIASES = ["норма", "нормо-час", "нормочас"]
 LABOR_TOTAL_ALIASES = ["всего", "итого", "сумма"]
 
 MATERIAL_ARTICLE_ALIASES = ARTICLE_COLUMN_ALIASES + ["№ кат"]
@@ -118,16 +118,17 @@ def _split_make_model(text: str) -> tuple[str, str | None]:
     return parts[0], None
 
 
-def _expand_make_cell(make_text: str, rate: float, model_text: str | None = None) -> list[dict]:
-    """Одна "ячейка" с маркой(-ами) + ставка -> одна или несколько строк
-    {vehicle_make, vehicle_model, hourly_rate}. Если модель уже известна
+def _expand_make_cell(make_text: str, value: float, model_text: str | None = None) -> list[dict]:
+    """Одна "ячейка" с маркой(-ами) + число (ставка в рублях ИЛИ норма в
+    часах — вызывающий код сам знает, что это такое) -> одна или несколько
+    строк {vehicle_make, vehicle_model, value}. Если модель уже известна
     отдельно (своя колонка, или её уже выделила LLM при OCR-разборе) —
     доверяем ей как есть. Иначе разбираем make_text сами: одна ячейка может
-    перечислять сразу несколько марок/моделей с одинаковой ставкой через
+    перечислять сразу несколько марок/моделей с одинаковым числом через
     запятую (реальный файл заказчика: "Renault Sandero, Nissan Almera
     Classik, ..., Hyundai Accent, Hyundai Sonata" — все по одной цене)."""
     if model_text:
-        return [{"vehicle_make": make_text, "vehicle_model": model_text, "hourly_rate": rate}]
+        return [{"vehicle_make": make_text, "vehicle_model": model_text, "value": value}]
 
     lines = []
     for segment in make_text.split(","):
@@ -135,7 +136,7 @@ def _expand_make_cell(make_text: str, rate: float, model_text: str | None = None
         if not segment:
             continue
         make, model = _split_make_model(segment)
-        lines.append({"vehicle_make": make, "vehicle_model": model, "hourly_rate": rate})
+        lines.append({"vehicle_make": make, "vehicle_model": model, "value": value})
     return lines
 
 
@@ -169,7 +170,14 @@ def _dataframe_to_rate_lines(df: pd.DataFrame) -> list[dict]:
             continue
 
         model_text = _clean(row.get(model_col)) if model_col else None
-        lines.extend(_expand_make_cell(make_text, rate, model_text))
+        for expanded in _expand_make_cell(make_text, rate, model_text):
+            lines.append(
+                {
+                    "vehicle_make": expanded["vehicle_make"],
+                    "vehicle_model": expanded["vehicle_model"],
+                    "hourly_rate": expanded["value"],
+                }
+            )
     return lines
 
 
@@ -260,10 +268,154 @@ def _parse_rate_table_via_ocr(file_path: str, llm_client) -> list[dict]:
         if rate is None or rate <= 0:
             continue
         model_text = _clean(row.get("vehicle_model"))
-        lines.extend(_expand_make_cell(make_text, rate, model_text))
+        for expanded in _expand_make_cell(make_text, rate, model_text):
+            lines.append(
+                {
+                    "vehicle_make": expanded["vehicle_make"],
+                    "vehicle_model": expanded["vehicle_model"],
+                    "hourly_rate": expanded["value"],
+                }
+            )
 
     if not lines:
         raise DocumentParseError("Не удалось найти ни одной ставки в распознанном тексте")
+    return lines
+
+
+def _dataframe_to_labor_catalog_lines(df: pd.DataFrame) -> list[dict]:
+    columns = list(df.columns)
+    make_col = _match_column(columns, MAKE_COLUMN_ALIASES)
+    model_col = _match_column(columns, MODEL_COLUMN_ALIASES)
+    operation_col = _match_column(columns, LABOR_DESCRIPTION_ALIASES)
+    norm_hours_col = _match_column(columns, LABOR_NORM_HOURS_ALIASES)
+    if model_col == make_col:
+        model_col = None  # "Марка (модель)" одной колонкой — см. _dataframe_to_rate_lines
+
+    if make_col is None:
+        raise DocumentParseError(f"Не удалось найти колонку с маркой ТС среди {columns}")
+    if operation_col is None:
+        raise DocumentParseError(f"Не удалось найти колонку с операцией среди {columns}")
+    if norm_hours_col is None:
+        raise DocumentParseError(f"Не удалось найти колонку с нормо-часами среди {columns}")
+
+    lines = []
+    for _, row in df.iterrows():
+        make_text = _clean(row.get(make_col))
+        operation_text = _clean(row.get(operation_col))
+        if not make_text or not operation_text:
+            continue
+        if any(marker in make_text.lower() for marker in _TOTAL_ROW_MARKERS):
+            continue
+
+        norm_hours = _to_float(row.get(norm_hours_col))
+        if norm_hours is None or norm_hours <= 0:
+            continue
+
+        model_text = _clean(row.get(model_col)) if model_col else None
+        # Марка одной ячейкой может перечислять несколько марок/моделей через
+        # запятую (см. _expand_make_cell) — та же операция и норма относится
+        # к каждой из них.
+        for expanded in _expand_make_cell(make_text, norm_hours, model_text):
+            lines.append(
+                {
+                    "vehicle_make": expanded["vehicle_make"],
+                    "vehicle_model": expanded["vehicle_model"],
+                    "operation_name": operation_text,
+                    "norm_hours": expanded["value"],
+                }
+            )
+    return lines
+
+
+def parse_labor_catalog_table(file_path: str, llm_client=None) -> list[dict]:
+    """Таблица справочника нормо-часов (операция + норма часов по маркам/
+    моделям ТС, см. app/models/labor_catalog.py) — тот же набор форматов и
+    те же эвристики распознавания колонок, что и parse_hourly_rate_table
+    (см. её докстринг), только вместо ставки в рублях — норма в часах, и
+    обязательна колонка с названием операции. Каждая строка:
+    {"vehicle_make": str, "vehicle_model": str | None, "operation_name": str,
+    "norm_hours": float}."""
+    from app.services.ocr import is_image_extension
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if is_image_extension(ext):
+        return _parse_labor_catalog_via_ocr(file_path, llm_client)
+
+    if ext in (".xlsx", ".xlsm", ".xls"):
+        dataframes = [_read_excel_df(file_path)]
+    elif ext == ".ods":
+        dataframes = [_read_ods_df(file_path)]
+    elif ext == ".csv":
+        dataframes = [_read_csv_df(file_path)]
+    elif ext == ".docx":
+        dataframes = extract_docx_tables(file_path)
+    elif ext == ".pdf":
+        dataframes = extract_pdf_tables(file_path)
+    else:
+        raise DocumentParseError(f"Неподдерживаемый формат файла для справочника нормо-часов: {ext}")
+
+    lines: list[dict] = []
+    last_error: DocumentParseError | None = None
+    for df in dataframes:
+        try:
+            lines.extend(_dataframe_to_labor_catalog_lines(df))
+        except DocumentParseError as exc:
+            last_error = exc
+    if lines:
+        return lines
+
+    if ext == ".pdf":
+        return _parse_labor_catalog_via_ocr(file_path, llm_client)
+
+    raise last_error or DocumentParseError("В файле не найдено ни одной строки с нормо-часами")
+
+
+def _parse_labor_catalog_via_ocr(file_path: str, llm_client) -> list[dict]:
+    if llm_client is None:
+        raise DocumentParseError(
+            "Файл похож на скан/фото — чтобы распознать справочник нормо-часов, нужна выбранная LLM-модель"
+        )
+
+    from app.services.ocr import OcrError, extract_text
+
+    try:
+        raw_text = extract_text(file_path)
+    except OcrError as exc:
+        raise DocumentParseError(str(exc)) from exc
+    if not raw_text.strip():
+        raise DocumentParseError("Не удалось распознать текст в файле (пустой результат OCR)")
+
+    try:
+        rows = llm_client.extract_table_from_text(
+            raw_text, ["vehicle_make", "vehicle_model", "operation_name", "norm_hours"]
+        )
+    except Exception as exc:
+        raise DocumentParseError(f"Не удалось извлечь таблицу нормо-часов из распознанного текста: {exc}") from exc
+
+    lines: list[dict] = []
+    for row in rows:
+        make_text = _clean(row.get("vehicle_make"))
+        operation_text = _clean(row.get("operation_name"))
+        if not make_text or not operation_text:
+            continue
+        if any(marker in make_text.lower() for marker in _TOTAL_ROW_MARKERS):
+            continue
+        norm_hours = _to_float(row.get("norm_hours"))
+        if norm_hours is None or norm_hours <= 0:
+            continue
+        model_text = _clean(row.get("vehicle_model"))
+        for expanded in _expand_make_cell(make_text, norm_hours, model_text):
+            lines.append(
+                {
+                    "vehicle_make": expanded["vehicle_make"],
+                    "vehicle_model": expanded["vehicle_model"],
+                    "operation_name": operation_text,
+                    "norm_hours": expanded["value"],
+                }
+            )
+
+    if not lines:
+        raise DocumentParseError("Не удалось найти ни одной строки с нормо-часами в распознанном тексте")
     return lines
 
 
@@ -296,13 +448,26 @@ def _read_ods_df(file_path: str) -> pd.DataFrame:
 
 def _read_csv_df(file_path: str) -> pd.DataFrame:
     """Экспорт из 1С/банк-клиентов чаще всего — Windows-1251 и разделитель
-    ';', а не запятая — поэтому не полагаемся на дефолты pandas."""
+    ';', а не запятая — поэтому не полагаемся на дефолты pandas.
+
+    ';' пробуем ЯВНО первым, а не сразу автоопределение (sep=None): у него
+    сносит крышу, стоит запятой встретиться где-то в самих данных — например
+    в заголовке "Цена, руб." или в ячейке "Renault Sandero, Nissan Almera,
+    ..." (реальный случай — марки через запятую в одной ячейке ставок). На
+    маленькой выборке sep=None иногда решает, что разделитель — запятая, и
+    падает на первой же строке с "лишней" запятой ("Expected N fields...
+    saw M"), хотя реальный разделитель во всём файле — ';'."""
     last_error: Exception | None = None
     for encoding in ("utf-8-sig", "cp1251"):
-        try:
-            return pd.read_csv(file_path, sep=None, engine="python", encoding=encoding, dtype=str)
-        except (UnicodeDecodeError, pd.errors.ParserError) as exc:
-            last_error = exc
+        for sep in (";", None):
+            try:
+                df = pd.read_csv(file_path, sep=sep, engine="python", encoding=encoding, dtype=str)
+            except (UnicodeDecodeError, pd.errors.ParserError) as exc:
+                last_error = exc
+                continue
+            if df.shape[1] > 1:
+                return df
+            last_error = last_error or ValueError("не удалось определить разделитель")
     raise DocumentParseError(f"Не удалось прочитать CSV (кодировка/разделитель): {last_error}")
 
 
@@ -426,8 +591,12 @@ def parse_document_with_ocr_fallback(file_path: str, llm_client, fields: list[st
 
 
 _ORDER_RE = re.compile(r"Заказ-наряд\s*№\s*(\S+)\s*от\s*(\d{2}\.\d{2}\.\d{4})")
-_VEHICLE_RE = re.compile(r"Автомобиль\s*:\s*(.+?)\s+гос\.\s*номер\s*:\s*(\S+)\s+VIN\s*:\s*(\S+)")
-_YEAR_RE = re.compile(r"год\s*вып\.?\s*(\d{4})")
+# "гос. номер: ..." между маркой и VIN есть не во всех выгрузках (см.
+# testdata/repair_order_1_final.xlsx — там просто "Автомобиль: MAKE MODEL
+# VIN: ..."), поэтому этот кусок необязательный.
+_VEHICLE_RE = re.compile(r"Автомобиль\s*:\s*(.+?)\s+(?:гос\.\s*номер\s*:\s*(\S+)\s+)?VIN\s*:\s*(\S+)")
+# Год либо "год вып. 2011", либо просто "2011 г." (см. тот же файл).
+_YEAR_RE = re.compile(r"год\s*вып\.?\s*(\d{4})|(\d{4})\s*г\.?\b")
 
 
 def _find_export_column(header_row: list, aliases: list[str]) -> int | None:
@@ -446,6 +615,34 @@ def _export_cell(row: list, idx: int | None):
     if idx is None or idx >= len(row):
         return None
     return row[idx]
+
+
+def _find_number_column(row: list) -> int | None:
+    """Позиция колонки "№" в строке заголовка раздела — НЕ всегда row[1]:
+    выгрузки 1С обычно вставляют пустую колонку A перед номером (тогда "№"
+    в колонке B/index 1), но встречаются и формы без неё, где "№" сразу в
+    колонке A/index 0 (см. testdata/repair_order_1_final.xlsx). Ищем по
+    всей строке, а не по фиксированному индексу."""
+    for idx, cell in enumerate(row):
+        if _clean(cell) == "№":
+            return idx
+    return None
+
+
+def _looks_like_data_row(row: list, key_col: int | None) -> bool:
+    """Отличает первую строку РЕАЛЬНЫХ данных от необязательной строки-
+    легенды с номерами колонок ("1 2 3 ... 9"), которую некоторые печатные
+    формы 1С вставляют сразу под заголовком раздела, а некоторые — нет (см.
+    testdata/repair_order_1_final.xlsx, где данные идут сразу после
+    заголовка). В строке-легенде интересующая нас колонка (наименование
+    работы/запчасти) содержит такой же короткий номер, как и остальные —
+    отличить можно только по тому, что там не текст, а число."""
+    if key_col is None:
+        return False
+    value = _clean(_export_cell(row, key_col))
+    if not value:
+        return False
+    return not value.replace(".", "", 1).isdigit()
 
 
 def parse_repair_order_export(file_path: str) -> dict | None:
@@ -474,10 +671,11 @@ def parse_repair_order_export(file_path: str) -> dict | None:
     mode = None
     labor_cols: dict[str, int | None] = {}
     material_cols: dict[str, int | None] = {}
+    labor_num_col: int | None = None
+    material_num_col: int | None = None
 
     for row in rows:
         joined = " ".join(c for c in row if isinstance(c, str))
-        c1 = _clean(row[1]) if len(row) > 1 else None
 
         if meta["order_number"] is None:
             m = _ORDER_RE.search(joined)
@@ -494,13 +692,15 @@ def parse_repair_order_export(file_path: str) -> dict | None:
                 meta["vehicle_vin"] = m.group(3)
                 year_m = _YEAR_RE.search(joined)
                 if year_m:
-                    meta["vehicle_year"] = int(year_m.group(1))
+                    meta["vehicle_year"] = int(year_m.group(1) or year_m.group(2))
 
         if "Выполненные работы по заказ-наряду" in joined:
             mode = "await_labor_header"
             continue
         if mode == "await_labor_header":
-            if c1 == "№":
+            num_col = _find_number_column(row)
+            if num_col is not None:
+                labor_num_col = num_col
                 labor_cols = {
                     "catalog_code": _find_export_column(row, LABOR_CATALOG_CODE_ALIASES),
                     "description": _find_export_column(row, LABOR_DESCRIPTION_ALIASES),
@@ -517,13 +717,20 @@ def parse_repair_order_export(file_path: str) -> dict | None:
                 mode = "await_labor_index"
             continue
         if mode == "await_labor_index":
+            # Строка-легенда номеров колонок под заголовком есть не во всех
+            # выгрузках (см. _looks_like_data_row) — если её нет, эта же
+            # строка уже данные, и её нельзя пропускать.
             mode = "labor"
-            continue
+            if _looks_like_data_row(row, labor_cols.get("description")):
+                pass  # не continue — обработать эту же строку как данные ниже
+            else:
+                continue
         if mode == "labor":
-            if c1 and c1.startswith("Итого работ"):
+            if "Итого работ" in joined:
                 mode = None
                 continue
-            if c1 and c1.isdigit() and labor_cols.get("description") is not None:
+            num_val = _clean(_export_cell(row, labor_num_col))
+            if num_val and num_val.isdigit() and labor_cols.get("description") is not None:
                 labor_lines.append(
                     {
                         "description": _clean(_export_cell(row, labor_cols["description"])),
@@ -539,7 +746,9 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             mode = "await_materials_header"
             continue
         if mode == "await_materials_header":
-            if c1 == "№":
+            num_col = _find_number_column(row)
+            if num_col is not None:
+                material_num_col = num_col
                 material_cols = {
                     "article": _find_export_column(row, MATERIAL_ARTICLE_ALIASES),
                     "name": _find_export_column(row, MATERIAL_NAME_ALIASES),
@@ -556,12 +765,19 @@ def parse_repair_order_export(file_path: str) -> dict | None:
             continue
         if mode == "await_materials_index":
             mode = "materials"
-            continue
+            if _looks_like_data_row(row, material_cols.get("name")):
+                pass  # не continue — обработать эту же строку как данные ниже
+            else:
+                continue
         if mode == "materials":
-            if c1 and (c1.startswith("Итого по странице материалов") or c1.startswith("Итого материалов")):
+            if any(
+                marker in joined
+                for marker in ("Итого по странице материалов", "Итого материалов", "Итого запчасти")
+            ):
                 mode = None
                 continue
-            if c1 and c1.isdigit() and material_cols.get("name") is not None:
+            num_val = _clean(_export_cell(row, material_num_col))
+            if num_val and num_val.isdigit() and material_cols.get("name") is not None:
                 part_lines.append(
                     {
                         "article": _clean(_export_cell(row, material_cols["article"])),
@@ -581,7 +797,7 @@ def parse_repair_order_export(file_path: str) -> dict | None:
 _CATALOG_TITLE_MARKER = "Марка (модель) технического средства"
 
 
-def parse_price_catalog_by_brand(file_path: str, vehicle_make: str) -> list[dict] | None:
+def parse_price_catalog_by_brand(file_path: str, vehicle_make: str | None) -> list[dict] | None:
     ext = os.path.splitext(file_path)[1].lower()
     if ext not in (".xlsx", ".xlsm"):
         return None
@@ -607,18 +823,36 @@ def parse_price_catalog_by_brand(file_path: str, vehicle_make: str) -> list[dict
         return None
 
     target = (vehicle_make or "").strip().upper()
-    matched_sheet = brand_sheets.get(target)
-    if not matched_sheet:
-        logger.warning(
-            "Марка %r не найдена в каталоге %s (доступны: %s) — сопоставление пойдёт только по расходным материалам",
-            vehicle_make,
-            file_path,
-            sorted(brand_sheets),
-        )
+    if target:
+        matched_sheets = [brand_sheets[target]] if target in brand_sheets else []
+        if not matched_sheets:
+            logger.warning(
+                "Марка %r не найдена в каталоге %s (доступны: %s) — сопоставление пойдёт только по расходным материалам",
+                vehicle_make,
+                file_path,
+                sorted(brand_sheets),
+            )
+    else:
+        # Марка не задана — файл разом по нескольким маркам (см. sheetnames
+        # выше), и ни одна из них не "более правильная" по умолчанию.
+        # Раньше в этом случае функция вообще не вызывалась (см. вызывающий
+        # код) и разбор уходил в общий парсер одной таблицы, который эту
+        # структуру (строка-заголовок с маркой + отдельная строка с
+        # колонками) не понимает и падает с "не удалось найти колонку с
+        # наименованием" — реальный собранный руками файл заказчика именно
+        # так и падал. Раз колонка "Марка" у ContractPart всё равно не
+        # хранится (запчасти различаются по артикулу, а не по марке), для
+        # запчастей безопасно и правильно просто взять ВСЕ найденные листы.
+        seen_sheets: set[str] = set()
+        matched_sheets = []
+        for sheet_name in brand_sheets.values():
+            if sheet_name not in seen_sheets:
+                seen_sheets.add(sheet_name)
+                matched_sheets.append(sheet_name)
 
     results: list[dict] = []
 
-    if matched_sheet:
+    for matched_sheet in matched_sheets:
         ws = wb[matched_sheet]
         for row in ws.iter_rows(min_row=3, values_only=True):
             name = _clean(row[1]) if len(row) > 1 else None

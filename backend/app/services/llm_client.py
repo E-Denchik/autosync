@@ -8,8 +8,22 @@ HTTP-клиент, чтобы модель/хост можно было заме
 from __future__ import annotations
 
 import json
+import logging
+import time
 
 import requests
+
+logger = logging.getLogger(__name__)
+
+# Локальный llm-service (Ollama и т.п.) нередко на первом запросе после
+# простоя грузит модель в память по несколько секунд, плюс сеть между
+# процессами на одной машине изредка отдаёт мгновенный ConnectionRefused,
+# если процесс ещё не успел забиндить порт (гонка при старте приложения) —
+# оба случая проходят сами со второй попытки. Раньше ЛЮБОЙ сбой сети
+# (даже такой сиюминутный) сразу и безвозвратно ронял конкретную
+# позицию/работу в "не найдено" на весь заказ-наряд.
+_MAX_ATTEMPTS = 3
+_RETRY_DELAY_SECONDS = 2.0
 
 
 class LLMClientError(RuntimeError):
@@ -33,6 +47,8 @@ class LLMClient:
         return resp.json()
 
     def _generate(self, prompt: str, *, json_response: bool = False) -> str:
+        from flask import current_app
+
         from app.services.llm_settings import get_selection
 
         payload = {"prompt": prompt, "json_response": json_response}
@@ -41,14 +57,40 @@ class LLMClient:
             payload["provider"] = selection.provider
             payload["model"] = selection.model_name
 
-        try:
-            resp = requests.post(
-                f"{self.base_url}/generate",
-                json=payload,
-                timeout=self.timeout,
-            )
-        except requests.exceptions.RequestException as exc:
-            raise LLMClientError(f"llm-service недоступен: {exc}") from exc
+        # В тестах (TESTING=True) llm-service обычно не запущен вовсе —
+        # это ОЖИДАЕМЫЙ, мгновенный ConnectionError, а не тот случай
+        # "сервис перегружен/грузит модель", для которого задержка между
+        # попытками вообще имеет смысл. Без этой оговорки ретраи с реальным
+        # sleep(2с) на каждый непойманный вызов LLMClient в десятках тестов
+        # раздули бы весь прогон с ~1 минуты до нескольких (что и
+        # обнаружилось на практике).
+        retry_delay = 0.0 if current_app.config.get("TESTING") else _RETRY_DELAY_SECONDS
+
+        last_exc: requests.exceptions.RequestException | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                resp = requests.post(
+                    f"{self.base_url}/generate",
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            except requests.exceptions.RequestException as exc:
+                last_exc = exc
+                if attempt < _MAX_ATTEMPTS:
+                    logger.warning(
+                        "llm-service недоступен (попытка %s/%s): %s — повтор через %sс",
+                        attempt,
+                        _MAX_ATTEMPTS,
+                        exc,
+                        retry_delay,
+                    )
+                    if retry_delay:
+                        time.sleep(retry_delay)
+                    continue
+                raise LLMClientError(f"llm-service недоступен: {exc}") from last_exc
+            else:
+                break
+
         if not resp.ok:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
         return resp.json()["text"]
@@ -83,13 +125,35 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
 
-    def match_labor_by_name(self, description: str, candidates: list[dict]) -> dict:
+    def summarize_review(self, stats: dict) -> dict:
+        """Короткая сводка "на что смотреть в первую очередь" для человека,
+        проверяющего результаты автосопоставления заказ-наряда (см.
+        repair_order_processor.py: _generate_review_summary). Возвращает
+        {"summary": str}."""
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt("review_summary.md", **stats)
+        text = self._generate(prompt, json_response=True)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
+    def match_labor_by_name(
+        self,
+        description: str,
+        candidates: list[dict],
+        vehicle_make: str | None = None,
+        vehicle_model: str | None = None,
+    ) -> dict:
         from app.services.prompt_loader import render_prompt
 
         prompt = render_prompt(
             "labor_matching.md",
             description=description,
             candidates=candidates,
+            vehicle_make=vehicle_make,
+            vehicle_model=vehicle_model,
         )
         text = self._generate(prompt, json_response=True)
         try:

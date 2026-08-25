@@ -1,3 +1,44 @@
+import os
+
+TESTDATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testdata")
+
+
+def test_import_file_creates_entries(client, admin_headers):
+    path = os.path.join(TESTDATA_DIR, "Нормо-часы (справочник).xlsx")
+    with open(path, "rb") as f:
+        resp = client.post(
+            "/api/labor-catalog/import",
+            headers=admin_headers,
+            data={"file": (f, "Нормо-часы (справочник).xlsx")},
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"created": 6, "updated": 0, "total": 6}
+
+    listed = client.get("/api/labor-catalog", headers=admin_headers).get_json()
+    assert len(listed) == 6
+    assert any(e["source"] == "import" for e in listed)
+
+
+def test_import_requires_file(client, admin_headers):
+    resp = client.post("/api/labor-catalog/import", headers=admin_headers, data={}, content_type="multipart/form-data")
+    assert resp.status_code == 400
+
+
+def test_import_rejects_unparseable_file(client, admin_headers, tmp_path):
+    bad_file = tmp_path / "bad.csv"
+    bad_file.write_text("случайный текст без нужных колонок", encoding="utf-8")
+    with open(bad_file, "rb") as f:
+        resp = client.post(
+            "/api/labor-catalog/import",
+            headers=admin_headers,
+            data={"file": (f, "bad.csv")},
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
 def test_list_empty_by_default(client, admin_headers):
     resp = client.get("/api/labor-catalog", headers=admin_headers)
     assert resp.status_code == 200

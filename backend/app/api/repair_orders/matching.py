@@ -22,6 +22,22 @@ bp = Blueprint("repair_orders_matching", __name__)
 CONTRACT_CANDIDATE_SEARCH_LIMIT = 30
 
 
+def _match_category(match: PartMatch) -> str:
+    """Единая, машиночитаемая категория того, КАК позиция была сопоставлена —
+    для статистики на странице проверки (см. ReviewMatches.jsx), чтобы не
+    пересчитывать её на фронте из нескольких разрозненных полей (и не
+    рассинхронизировать логику классификации между бэком и фронтом)."""
+    if match.confidence_level == ConfidenceLevel.EXACT:
+        return "exact"
+    if match.confidence_level == ConfidenceLevel.CROSS_REF:
+        return "cross_ref"
+    if match.raw_match_data and match.raw_match_data.get("source") == "llm_error":
+        return "llm_error"
+    if match.matched_name is None:
+        return "no_match"
+    return "llm_guess"
+
+
 def _serialize(match: PartMatch) -> dict:
     threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
     return {
@@ -61,6 +77,18 @@ def _serialize(match: PartMatch) -> dict:
         ),
         "nomenclature_warehouse": match.nomenclature_warehouse,
         "nomenclature_source": match.nomenclature_source,
+        # Позиция ушла на ручную проверку не потому, что ИИ честно не нашла
+        # совпадение, а потому, что llm-service вообще не ответил (сервис не
+        # запущен, модель не выбрана и т.п., см. matcher.py) — раньше это
+        # выглядело для проверяющего ТОЧНО так же, как обычное "не найдено",
+        # хотя причина и решение (перезапустить/настроить LLM и загрузить
+        # заново) совсем другие.
+        "llm_error": (
+            match.raw_match_data.get("error")
+            if match.raw_match_data and match.raw_match_data.get("source") == "llm_error"
+            else None
+        ),
+        "match_category": _match_category(match),
     }
 
 

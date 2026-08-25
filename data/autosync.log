@@ -1349,3 +1349,169 @@ ValueError: Excel-файлы (*.xlsx) is not a valid file filter
 2026-08-24 12:32:38,119 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
 2026-08-24 12:32:38,134 ERROR pywebview: Error while processing window.native.widget: unable to get the value
 2026-08-24 13:06:24,378 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-24 22:48:17,997 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-24 22:48:18,451 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-24 22:48:18,451 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-24 22:48:18,451 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-24 22:48:18,452 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-24 22:48:18,452 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-24 22:48:18,452 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-24 22:48:18,809 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-24 22:48:19,310 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-24 22:48:19,331 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-24 22:48:19,331 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-24 22:48:19,331 INFO apscheduler.scheduler: Scheduler started
+2026-08-24 22:48:19,331 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-24 22:48:19,342 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-24 22:48:21,120 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-08-24 22:48:21,123 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-08-24 22:48:21,161 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-08-24 22:48:21,174 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-08-24 22:57:07,526 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-08-24 22:57:07,528 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-08-24 22:57:07,549 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-08-24 22:57:07,557 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-08-24 23:02:36,426 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-24 23:02:36,823 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-24 23:02:37,520 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-24 23:02:37,536 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-24 23:02:37,536 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-24 23:02:37,536 INFO apscheduler.scheduler: Scheduler started
+2026-08-24 23:02:37,536 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-24 23:02:37,557 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-24 23:02:37,571 ERROR pywebview: GTK cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 39, in import_gtk
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/gtk.py", line 28, in <module>
+ModuleNotFoundError: No module named 'gi'
+2026-08-24 23:02:37,572 ERROR pywebview: QT cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 51, in import_qt
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/qt.py", line 14, in <module>
+ModuleNotFoundError: No module named 'qtpy'
+2026-08-24 23:02:37,573 ERROR pywebview: GTK cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 39, in import_gtk
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/gtk.py", line 28, in <module>
+ModuleNotFoundError: No module named 'gi'
+2026-08-24 23:02:37,574 ERROR pywebview: QT cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 51, in import_qt
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/qt.py", line 14, in <module>
+ModuleNotFoundError: No module named 'qtpy'
+2026-08-24 23:02:37,574 ERROR autosync.native: Не удалось открыть системное окно webview.
+Traceback (most recent call last):
+  File "native_app.py", line 401, in run_window
+  File "webview/__init__.py", line 248, in start
+  File "webview/guilib.py", line 124, in initialize
+webview.errors.WebViewException: You must have either QT or GTK with Python extensions installed in order to use pywebview.
+2026-08-24 23:03:14,930 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-24 23:03:15,300 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.checkconstraint_byname
+2026-08-24 23:03:16,009 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-24 23:03:16,023 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-24 23:03:16,023 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-24 23:03:16,023 INFO apscheduler.scheduler: Scheduler started
+2026-08-24 23:03:16,024 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-24 23:03:16,045 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-24 23:03:16,059 ERROR pywebview: GTK cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 39, in import_gtk
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/gtk.py", line 28, in <module>
+ModuleNotFoundError: No module named 'gi'
+2026-08-24 23:03:16,060 ERROR pywebview: QT cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 51, in import_qt
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/qt.py", line 14, in <module>
+ModuleNotFoundError: No module named 'qtpy'
+2026-08-24 23:03:16,061 ERROR pywebview: GTK cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 39, in import_gtk
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/gtk.py", line 28, in <module>
+ModuleNotFoundError: No module named 'gi'
+2026-08-24 23:03:16,062 ERROR pywebview: QT cannot be loaded
+Traceback (most recent call last):
+  File "webview/guilib.py", line 51, in import_qt
+  File "PyInstaller/loader/pyimod02_importers.py", line 378, in exec_module
+  File "webview/platforms/qt.py", line 14, in <module>
+ModuleNotFoundError: No module named 'qtpy'
+2026-08-24 23:03:16,062 ERROR autosync.native: Не удалось открыть системное окно webview.
+Traceback (most recent call last):
+  File "native_app.py", line 401, in run_window
+  File "webview/__init__.py", line 248, in start
+  File "webview/guilib.py", line 124, in initialize
+webview.errors.WebViewException: You must have either QT or GTK with Python extensions installed in order to use pywebview.
+2026-08-24 23:13:52,258 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-24 23:13:52,794 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-24 23:13:52,794 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-24 23:13:52,794 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-24 23:13:52,795 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-24 23:13:52,795 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-24 23:13:52,795 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-24 23:13:53,174 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-24 23:13:53,740 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-24 23:13:53,765 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-24 23:13:53,765 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-24 23:13:53,765 INFO apscheduler.scheduler: Scheduler started
+2026-08-24 23:13:53,766 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-24 23:13:53,775 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-24 23:13:54,895 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-08-24 23:13:54,898 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-08-24 23:13:54,926 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-08-24 23:13:54,937 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-08-24 23:28:21,959 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-24 23:28:22,406 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-24 23:28:22,740 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-24 23:28:23,228 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-24 23:28:23,249 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-24 23:28:23,249 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-24 23:28:23,249 INFO apscheduler.scheduler: Scheduler started
+2026-08-24 23:28:23,249 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-24 23:28:23,259 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-24 23:28:24,390 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-08-24 23:28:24,392 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-08-24 23:28:24,426 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-08-24 23:28:24,441 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-08-25 00:35:47,042 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-08-25 00:45:20,842 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-08-25 00:45:21,244 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-08-25 00:45:21,596 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-08-25 00:45:22,095 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-08-25 00:45:22,114 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-25 00:45:22,115 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-08-25 00:45:22,115 INFO apscheduler.scheduler: Scheduler started
+2026-08-25 00:45:22,115 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-08-25 00:45:22,122 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-08-25 00:45:23,603 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-08-25 00:45:23,605 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-08-25 00:45:23,650 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-08-25 00:45:23,672 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-08-25 00:46:20,284 INFO autosync.native: Окно закрыто — завершение работы AutoSync

@@ -48,7 +48,13 @@ def generate_repair_order_document(repair_order: RepairOrder) -> str:
         ws.append([details])
     ws.append([])
 
-    ws.append([f"Заказ-наряд № {repair_order.id} от {repair_order.created_at.strftime('%d.%m.%Y')}"])
+    # Номер/дата исходного наряда, если их удалось распознать при загрузке
+    # (см. RepairOrder.order_number/order_date) — иначе, как и раньше, id
+    # записи и дата загрузки (не всегда совпадают с тем, что было в файле
+    # у заказчика, но это лучше, чем ничего).
+    order_number = repair_order.order_number or str(repair_order.id)
+    order_date = repair_order.order_date or repair_order.created_at.strftime("%d.%m.%Y")
+    ws.append([f"Заказ-наряд № {order_number} от {order_date}"])
     ws[f"A{ws.max_row}"].font = bold
     ws.append([])
     if repair_order.contragent:
@@ -138,8 +144,8 @@ def build_template_context(repair_order: RepairOrder, *, approved_only: bool = T
         "company_inn": profile["COMPANY_INN"],
         "company_address": profile["COMPANY_ADDRESS"],
         "company_phone": profile["COMPANY_PHONE"],
-        "order_number": repair_order.id,
-        "order_date": repair_order.created_at.strftime("%d.%m.%Y"),
+        "order_number": repair_order.order_number or repair_order.id,
+        "order_date": repair_order.order_date or repair_order.created_at.strftime("%d.%m.%Y"),
         "client_name": repair_order.contragent.name if repair_order.contragent else "",
         "vehicle_make": repair_order.vehicle_make or "",
         "vehicle_model": repair_order.vehicle_model or "",

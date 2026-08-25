@@ -185,6 +185,11 @@ export const api = {
   updateLaborCatalogEntry: (id, data) =>
     request(`/labor-catalog/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteLaborCatalogEntry: (id) => request(`/labor-catalog/${id}`, { method: "DELETE" }),
+  importLaborCatalog: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/labor-catalog/import", { method: "POST", body: formData });
+  },
 
   // Ozon: статистика/инфографика
   ozonStatsSummary: () => request("/ozon/stats/summary"),

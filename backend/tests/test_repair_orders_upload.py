@@ -232,6 +232,14 @@ def test_status_reports_contragent_and_vehicle_so_ui_can_confirm_they_were_saved
     assert body["vehicle_model"] == "Rio"
 
 
+def test_status_exposes_ai_review_summary(client, admin_headers, app):
+    repair_order_id = _create_repair_order(app, review_summary="Проверьте позицию без совпадения в первую очередь.")
+
+    status = client.get(f"/api/repair-orders/upload/{repair_order_id}/status", headers=admin_headers).get_json()
+
+    assert status["review_summary"] == "Проверьте позицию без совпадения в первую очередь."
+
+
 def _create_repair_order(app, **overrides):
     with app.app_context():
         contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
@@ -282,6 +290,24 @@ def test_update_repair_order_metadata(client, admin_headers, app):
     with app.app_context():
         order = db.session.get(RepairOrder, repair_order_id)
         assert order.vehicle_make == "KIA"
+
+
+def test_update_repair_order_order_number_and_date(client, admin_headers, app):
+    repair_order_id = _create_repair_order(app)
+
+    resp = client.patch(
+        f"/api/repair-orders/upload/{repair_order_id}",
+        headers=admin_headers,
+        json={"order_number": "0000010749", "order_date": "14.01.2026"},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["order_number"] == "0000010749"
+    assert body["order_date"] == "14.01.2026"
+
+    status = client.get(f"/api/repair-orders/upload/{repair_order_id}/status", headers=admin_headers).get_json()
+    assert status["order_number"] == "0000010749"
+    assert status["order_date"] == "14.01.2026"
 
 
 def test_update_repair_order_clears_contragent_when_set_to_empty(client, admin_headers, app):

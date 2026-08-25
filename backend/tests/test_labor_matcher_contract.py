@@ -147,6 +147,36 @@ def test_falls_back_to_llm_for_worded_differently_operation(app):
         assert result["norm_hours"] == 0.5
 
 
+def test_no_entries_for_make_in_this_contract_still_tries_llm_with_other_makes(app):
+    """Тот же запасной ход, что и в test_labor_matcher.py, но для каталога
+    конкретного контракта: точной марки в НЁМ нет, но LLM всё равно
+    получает шанс поработать с операциями по другим маркам этого контракта
+    вместо немедленного "не найдено"."""
+    with app.app_context():
+        contract_id = _make_contract(app)
+        db.session.add(
+            ContractLaborNorm(
+                contract_id=contract_id, operation_name="Замена масла в двигателе", vehicle_make="TOYOTA", norm_hours=0.5
+            )
+        )
+        db.session.commit()
+
+        llm_client = MagicMock()
+        llm_client.match_labor_by_name.return_value = {"matched_index": 0, "confidence": 0.55}
+
+        result = match_labor_line_against_contract(
+            "Замена масла в двигателе", contract_id, "KIA", "Rio", llm_client
+        )
+
+        llm_client.match_labor_by_name.assert_called_once()
+        candidates_arg = llm_client.match_labor_by_name.call_args.args[1]
+        assert any(c["vehicle_make"] == "TOYOTA" for c in candidates_arg)
+
+        assert result["confidence_level"] == ConfidenceLevel.LLM_GUESS
+        assert result["norm_hours"] == 0.5
+        assert result["raw_match_data"]["source"] == "llm_fallback_cross_make_contract_catalog"
+
+
 def test_match_all_labor_against_contract(app):
     with app.app_context():
         contract_id = _make_contract(app)

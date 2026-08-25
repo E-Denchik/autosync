@@ -44,6 +44,24 @@ def test_parse_csv_semicolon_cp1251(tmp_path):
     assert parse_document(str(path)) == _expected()
 
 
+def test_parse_csv_semicolon_with_comma_inside_header_and_cells(tmp_path):
+    """Регрессия: pd.read_csv(sep=None) автоопределяет разделитель по
+    небольшой выборке строк и путается, если запятая встречается прямо в
+    данных — например, в заголовке "Цена, руб." или в ячейке со списком
+    марок через запятую ("Renault Sandero, Nissan Almera, ...", реальный
+    случай из testdata/Нормочасы.csv — 8 строк, часть с несколькими марками
+    через запятую в одной ячейке). Раньше это падало с "Expected N fields...
+    saw M", потому что sep=None на части файла решал, будто разделитель —
+    запятая, хотя весь файл на самом деле разделён ';'."""
+    path = os.path.join(TESTDATA_DIR, "Нормочасы.csv")
+    lines = parse_hourly_rate_table(path)
+
+    assert len(lines) == 15  # одна ячейка "Renault Sandero, Nissan Almera, ..." разворачивается в 5 строк
+    rates = {(line["vehicle_make"], line["vehicle_model"]): line["hourly_rate"] for line in lines}
+    assert rates[("Chevrolet", "Niva")] == 540.0
+    assert rates[("Hyundai", "Accent")] == 720.0
+
+
 def test_parse_ods(tmp_path):
     path = tmp_path / "contract.ods"
     pd.DataFrame(ROWS).to_excel(path, index=False, engine="odf")
@@ -195,6 +213,44 @@ def test_parse_repair_order_export_adapts_to_reordered_material_columns(tmp_path
     assert result["part_lines"] == [
         {"article": "2231125013", "name": "Прокладка головки блока цилиндров", "qty": 1.0, "price": 3100.0}
     ]
+
+
+def test_parse_repair_order_export_handles_layout_without_leading_blank_column(tmp_path):
+    """Реальный файл заказчика (testdata/repair_order_1_final.xlsx) устроен
+    иначе, чем печатная форма 1С, под которую был написан парсер изначально:
+    - "№" сразу в колонке A (не в B — раньше жёстко бралась row[1]);
+    - данные идут сразу после заголовка, без строки-легенды "1 2 3 ... 9";
+    - "Автомобиль: MAKE MODEL VIN: ... YYYY г." без "гос. номер:" и без
+      "год вып.";
+    - раздел запчастей завершается "Итого запчасти:", а не "Итого
+      материалов:".
+    Раньше это приводило к тому, что parse_repair_order_export не находил
+    вообще ничего и возвращал None, а загрузка падала с "не удалось найти
+    колонку с наименованием" в общем однотабличном парсере."""
+    path = os.path.join(TESTDATA_DIR, "repair_order_1_final.xlsx")
+    result = parse_repair_order_export(path)
+
+    assert result is not None
+    assert result["meta"]["order_number"] == "1"
+    assert result["meta"]["order_date"] == "17.08.2026"
+    assert result["meta"]["vehicle_make"] == "HYUNDAI"
+    assert result["meta"]["vehicle_model"] == "IX35"
+    assert result["meta"]["vehicle_vin"] == "TMAJU81BCCJ238125"
+    assert result["meta"]["vehicle_year"] == 2011
+
+    assert len(result["labor_lines"]) == 3
+    assert result["labor_lines"][0] == {
+        "description": "ДВС снятие",
+        "catalog_code": None,
+        "hourly_rate": 1170.0,
+        "norm_hours": 28.0,
+        "total": 32760.0,
+    }
+
+    assert len(result["part_lines"]) == 3
+    names = [p["name"] for p in result["part_lines"]]
+    assert "Расходные материалы" in names
+    assert any("поршень с кольцами" in n.lower() for n in names)
 
 
 def test_parse_hourly_rate_table_xlsx(tmp_path):

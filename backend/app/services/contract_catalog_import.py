@@ -113,7 +113,11 @@ def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str 
             )
             continue
 
-        lines = parse_price_catalog_by_brand(path, vehicle_make) if vehicle_make else None
+        # Без vehicle_make функция сама разбирает файл целиком по всем найденным
+        # маркам (см. её докстринг про причину) — раньше здесь она вообще не
+        # вызывалась без явной марки, и такой файл уходил в общий парсер
+        # одной таблицы, который эту структуру не понимает.
+        lines = parse_price_catalog_by_brand(path, vehicle_make)
         if lines is None:
             lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
         parts_result = _bulk_insert_parts(contract_id, lines)

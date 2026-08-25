@@ -36,10 +36,26 @@ def match_labor_line(
                 "raw_match_data": {"source": "autodata_exact"},
             }
 
+    # Точной марки в справочнике нет вовсе (частый случай для бизнеса без
+    # 1С/AutoData, который только начал вести свой список) — раньше это
+    # значило, что LLM даже не звали, и работа сразу уходила в "не найдено".
+    # Пробуем более широкий пул (другие марки) как материал для LLM —
+    # см. prompts/labor_matching.md про то, когда переносить норму уместно.
+    cross_make = False
+    if not candidates:
+        try:
+            candidates = autodata_client.find_norm_hours_any_make()
+            cross_make = bool(candidates)
+        except AutoDataError as exc:
+            candidates = []
+            logger.warning("AutoData (общий пул) недоступен для %r: %s", description, exc)
+
     llm_error = None
     if candidates:
         try:
-            llm_result = llm_client.match_labor_by_name(description, candidates)
+            llm_result = llm_client.match_labor_by_name(
+                description, candidates, vehicle_make=vehicle_make, vehicle_model=vehicle_model
+            )
         except Exception as exc:
             llm_result = None
             llm_error = str(exc)
@@ -49,13 +65,25 @@ def match_labor_line(
             idx = llm_result.get("matched_index")
             if idx is not None and 0 <= idx < len(candidates):
                 candidate = candidates[idx]
+                source = "llm_fallback_cross_make" if cross_make else "llm_fallback"
                 return {
                     "description": description,
                     "matched_operation_name": candidate["operation_name"],
                     "norm_hours": candidate["norm_hours"],
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
                     "confidence_score": llm_result.get("confidence", 0.0),
-                    "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
+                    "raw_match_data": {
+                        "source": source,
+                        "reasoning": llm_result.get("reasoning"),
+                        **(
+                            {
+                                "estimate_from_make": candidate.get("vehicle_make"),
+                                "estimate_from_model": candidate.get("vehicle_model"),
+                            }
+                            if cross_make
+                            else {}
+                        ),
+                    },
                 }
 
     return {
@@ -138,6 +166,22 @@ def suggest_missing_labor_operations(
     return suggestions
 
 
+def _contract_labor_candidates_any_make(contract_id: int, limit: int = 200) -> list[dict]:
+    """Как _contract_labor_candidates, но без фильтра по марке — запасной
+    пул для LLM, когда по точной марке в каталоге ЭТОГО контракта нет ни
+    одной операции (см. match_labor_line_against_contract)."""
+    rows = ContractLaborNorm.query.filter_by(contract_id=contract_id).limit(limit).all()
+    return [
+        {
+            "operation_name": r.operation_name,
+            "norm_hours": float(r.norm_hours),
+            "vehicle_make": r.vehicle_make,
+            "vehicle_model": r.vehicle_model,
+        }
+        for r in rows
+    ]
+
+
 def _contract_labor_candidates(contract_id: int, vehicle_make: str | None, vehicle_model: str | None) -> list[dict]:
     query = ContractLaborNorm.query.filter_by(contract_id=contract_id)
     if vehicle_make:
@@ -184,10 +228,19 @@ def match_labor_line_against_contract(
             "raw_match_data": {"source": "contract_catalog_exact"},
         }
 
+    # Точной марки в каталоге ЭТОГО контракта нет вовсе — тот же запасной
+    # ход, что и в match_labor_line (см. её комментарий).
+    cross_make = False
+    if not candidates:
+        candidates = _contract_labor_candidates_any_make(contract_id)
+        cross_make = bool(candidates)
+
     llm_error = None
     if candidates:
         try:
-            llm_result = llm_client.match_labor_by_name(description, candidates)
+            llm_result = llm_client.match_labor_by_name(
+                description, candidates, vehicle_make=vehicle_make, vehicle_model=vehicle_model
+            )
         except Exception as exc:
             llm_result = None
             llm_error = str(exc)
@@ -197,13 +250,25 @@ def match_labor_line_against_contract(
             idx = llm_result.get("matched_index")
             if idx is not None and 0 <= idx < len(candidates):
                 candidate = candidates[idx]
+                source = "llm_fallback_cross_make_contract_catalog" if cross_make else "llm_fallback_contract_catalog"
                 return {
                     "description": description,
                     "matched_operation_name": candidate["operation_name"],
                     "norm_hours": candidate["norm_hours"],
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
                     "confidence_score": llm_result.get("confidence", 0.0),
-                    "raw_match_data": {"source": "llm_fallback_contract_catalog", "reasoning": llm_result.get("reasoning")},
+                    "raw_match_data": {
+                        "source": source,
+                        "reasoning": llm_result.get("reasoning"),
+                        **(
+                            {
+                                "estimate_from_make": candidate.get("vehicle_make"),
+                                "estimate_from_model": candidate.get("vehicle_model"),
+                            }
+                            if cross_make
+                            else {}
+                        ),
+                    },
                 }
 
     return {

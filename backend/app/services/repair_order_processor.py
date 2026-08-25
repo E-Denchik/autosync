@@ -9,6 +9,7 @@ services/contract_catalog_import.py).
 from __future__ import annotations
 
 import logging
+from collections import Counter
 
 from flask import current_app
 
@@ -73,7 +74,14 @@ def _find_hourly_rate(model_cls, fk_field: str, fk_value: int, vehicle_make: str
 
 
 def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[dict, list[dict], list[dict]]:
-    meta = {"vehicle_make": None, "vehicle_model": None, "vehicle_vin": None, "vehicle_year": None}
+    meta = {
+        "order_number": None,
+        "order_date": None,
+        "vehicle_make": None,
+        "vehicle_model": None,
+        "vehicle_vin": None,
+        "vehicle_year": None,
+    }
     part_lines: list[dict] = []
     labor_lines_raw: list[dict] = []
     for path in paths:
@@ -96,6 +104,54 @@ def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[
     return meta, part_lines, labor_lines_raw
 
 
+def _generate_review_summary(
+    repair_order: RepairOrder, results: list[dict], labor_results: list[dict], llm_client: LLMClient
+) -> str | None:
+    """Короткая AI-сводка "на что смотреть в первую очередь" на странице
+    проверки — считается один раз сразу после сопоставления, по уже
+    готовым results/labor_results (см. process_upload_job), не отдельным
+    запросом по требованию. Возвращает None, если сводок нечего строить
+    (пустой заказ-наряд) или сама генерация не удалась — это не должно
+    ронять обработку заказ-наряда целиком, просто панель на странице
+    проверки останется без сводки."""
+    if not results and not labor_results:
+        return None
+
+    parts_by_source = Counter((r.get("raw_match_data") or {}).get("source") for r in results)
+    labor_by_source = Counter((r.get("raw_match_data") or {}).get("source") for r in labor_results)
+
+    stats = {
+        "vehicle_make": repair_order.vehicle_make,
+        "vehicle_model": repair_order.vehicle_model,
+        "contragent_name": repair_order.contragent.name if repair_order.contragent else None,
+        "parts_total": len(results),
+        "parts_exact": parts_by_source.get("exact_article_match", 0),
+        "parts_cross_ref": parts_by_source.get("parts_supplier_cross_reference", 0),
+        "parts_llm_guess": parts_by_source.get("llm_fallback", 0),
+        "parts_no_match": parts_by_source.get("no_match_found", 0),
+        "parts_llm_error": parts_by_source.get("llm_error", 0),
+        "labor_total": len(labor_results),
+        "labor_exact": labor_by_source.get("autodata_exact", 0) + labor_by_source.get("contract_catalog_exact", 0),
+        "labor_llm_guess": labor_by_source.get("llm_fallback", 0) + labor_by_source.get("llm_fallback_contract_catalog", 0),
+        "labor_cross_make_estimate": (
+            labor_by_source.get("llm_fallback_cross_make", 0)
+            + labor_by_source.get("llm_fallback_cross_make_contract_catalog", 0)
+        ),
+        "labor_from_repair_order_itself": labor_by_source.get("repair_order_stated_value", 0),
+        "labor_no_match": labor_by_source.get("no_match_found", 0),
+        "labor_llm_error": labor_by_source.get("llm_error", 0),
+    }
+
+    try:
+        result = llm_client.summarize_review(stats)
+    except Exception as exc:
+        logger.warning("Не удалось получить AI-сводку для repair_order_id=%s: %s", repair_order.id, exc)
+        return None
+
+    summary = result.get("summary") if isinstance(result, dict) else None
+    return summary.strip() if isinstance(summary, str) and summary.strip() else None
+
+
 def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
     contract = db.session.get(Contract, contract_id)
     repair_order = db.session.get(RepairOrder, repair_order_id)
@@ -115,6 +171,8 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
         repair_order.vehicle_model = repair_order.vehicle_model or meta.get("vehicle_model")
         repair_order.vehicle_vin = repair_order.vehicle_vin or meta.get("vehicle_vin")
         repair_order.vehicle_year = repair_order.vehicle_year or meta.get("vehicle_year")
+        repair_order.order_number = repair_order.order_number or meta.get("order_number")
+        repair_order.order_date = repair_order.order_date or meta.get("order_date")
         repair_order.parsed_lines = part_lines
     except DocumentParseError as exc:
         message = f"Не удалось прочитать заказ-наряд: {exc}"
@@ -289,6 +347,7 @@ def process_upload_job(contract_id: int, repair_order_id: int) -> dict:
             details={"confidence_level": labor_line.confidence_level.value, "source": "auto-match"},
         )
 
+    repair_order.review_summary = _generate_review_summary(repair_order, results, labor_results, llm_client)
     repair_order.status = RepairOrderStatus.NEEDS_REVIEW
     log_change(
         "repair_order",

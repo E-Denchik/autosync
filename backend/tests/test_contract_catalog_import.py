@@ -67,6 +67,46 @@ def test_import_from_brand_catalog_file_scoped_to_requested_brand(app):
         assert vw_only_article is None
 
 
+def test_import_from_brand_catalog_file_without_brand_imports_all_brands(app):
+    """Регрессия: файл со списком запчастей по нескольким маркам одним
+    файлом (разные листы Volkswagen/FORD/KIA/...) раньше разбирался
+    ТОЛЬКО если явно указать марку — без неё parse_price_catalog_by_brand
+    вообще не вызывалась, и разбор уходил в общий однотабличный парсер,
+    который падал с "не удалось найти колонку с наименованием" (реальный
+    файл заказчика так и падал). У ContractPart нет колонки "марка" —
+    запчасти различаются по артикулу, поэтому без указанной марки правильно
+    и безопасно взять все найденные листы сразу, а не требовать от
+    пользователя по одному разу на каждую марку."""
+    path = os.path.join(TESTDATA_DIR, "Приложение со списком запчастей.xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_files(contract_id, [path], None, llm_client=None)
+
+        assert result["parts_created"] > 0
+
+        vw_article = ContractPart.query.filter_by(contract_id=contract_id, article="04E129620A").first()
+        assert vw_article is not None  # Volkswagen-лист учтён
+
+        kia_article = ContractPart.query.filter_by(contract_id=contract_id, article="AA100101A0").first()
+        assert kia_article is not None  # KIA-лист тоже учтён
+
+
+def test_import_supplier_price_list_xlsx(app):
+    """Простой прайс-лист поставщика (Артикул/Наименование/Цена, без разбивки
+    по маркам) — testdata/Тест 1 (договор - прайс-лист поставщика).xlsx,
+    раньше без выделенного теста."""
+    path = os.path.join(TESTDATA_DIR, "Тест 1 (договор - прайс-лист поставщика).xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_files(contract_id, [path], None, llm_client=None)
+
+        assert result["parts_created"] == 47
+        part = ContractPart.query.filter_by(contract_id=contract_id, article="0RF0323802B").first()
+        assert part is not None
+        assert part.name == "МАСЛЯНЫЙ ФИЛЬТР ДВИГАТЕЛЯ"
+        assert float(part.price) == 479.9
+
+
 def test_bulk_insert_parts_populates_article_normalized(app):
     """_bulk_insert_parts идёt в обход ORM (bulk_insert_mappings) — валидатор
     ContractPart._sync_article_normalized при этом не срабатывает, поэтому

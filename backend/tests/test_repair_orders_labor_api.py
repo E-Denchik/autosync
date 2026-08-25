@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from app.extensions import db
 from app.models import (
     Contract,
@@ -46,6 +48,109 @@ def _make_labor_line(app, repair_order_id, **overrides) -> int:
 def test_list_requires_valid_repair_order(client, admin_headers):
     resp = client.get("/api/repair-orders/labor/999999", headers=admin_headers)
     assert resp.status_code == 404
+
+
+def test_list_exposes_cross_make_estimate(client, admin_headers, app):
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=0.5,
+            raw_match_data={
+                "source": "llm_fallback_cross_make",
+                "reasoning": "похожая операция",
+                "estimate_from_make": "TOYOTA",
+                "estimate_from_model": None,
+            },
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["cross_make_estimate"] == {"from_make": "TOYOTA", "from_model": None}
+
+
+def test_list_cross_make_estimate_is_none_for_ordinary_llm_guess(client, admin_headers, app):
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=0.5,
+            raw_match_data={"source": "llm_fallback", "reasoning": "обычное совпадение"},
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["cross_make_estimate"] is None
+
+
+def test_list_exposes_llm_error_so_reviewer_can_tell_it_apart_from_genuine_no_match(client, admin_headers, app):
+    """Регрессия по прозрачности: раньше "ИИ была недоступна" и "ИИ честно
+    не нашла совпадение" выглядели для проверяющего одинаково — просто
+    "не найдено" без единой подсказки, что дело в самом сервисе, а не в
+    данных."""
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=None,
+            confidence_score=0.0,
+            raw_match_data={"source": "llm_error", "error": "llm-service недоступен: Connection refused"},
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["llm_error"] == "llm-service недоступен: Connection refused"
+
+
+def test_suggested_addition_fires_for_contract_catalog_source_too(client, admin_headers, app):
+    """Регрессия: раньше suggested_addition проверял только источник
+    "llm_suggested_addition" — для контрактов со своим каталогом нормо-часов
+    реальный источник "llm_suggested_addition_contract_catalog", и флаг
+    никогда не срабатывал в этом (частом) случае."""
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=1.0,
+            raw_match_data={"source": "llm_suggested_addition_contract_catalog", "reasoning": "обычно идёт вместе"},
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["suggested_addition"] is True
+
+
+@pytest.mark.parametrize(
+    "raw_match_data,confidence_level,norm_hours,expected_category",
+    [
+        (None, "exact", 1.0, "exact"),
+        ({"source": "llm_error", "error": "x"}, "llm_guess", None, "llm_error"),
+        ({"source": "llm_fallback_cross_make"}, "llm_guess", 1.0, "cross_make_estimate"),
+        ({"source": "llm_fallback_cross_make_contract_catalog"}, "llm_guess", 1.0, "cross_make_estimate"),
+        ({"source": "llm_suggested_addition"}, "llm_guess", 1.0, "suggested_addition"),
+        ({"source": "llm_suggested_addition_contract_catalog"}, "llm_guess", 1.0, "suggested_addition"),
+        ({"source": "repair_order_stated_value"}, "llm_guess", 1.0, "from_repair_order"),
+        ({"source": "no_match_found"}, "llm_guess", None, "no_match"),
+        ({"source": "llm_fallback"}, "llm_guess", 1.0, "llm_guess"),
+    ],
+)
+def test_match_category_classification(
+    client, admin_headers, app, raw_match_data, confidence_level, norm_hours, expected_category
+):
+    from app.models import ConfidenceLevel
+
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=norm_hours,
+            confidence_level=ConfidenceLevel(confidence_level),
+            raw_match_data=raw_match_data,
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["match_category"] == expected_category
 
 
 def test_list_sorts_pending_low_confidence_first(client, admin_headers, app):

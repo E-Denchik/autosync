@@ -92,6 +92,22 @@ pyinstaller \
 
 deactivate
 
+echo "==> Проверяю, что в сборке действительно есть рабочий GUI-бэкенд (gi/WebKit2)"
+# Ловит именно тот класс багов, что уже случался локально: PyInstaller
+# "успешно" собирает бинарник (--collect-all gi отрабатывает без ошибок),
+# но модуль gi в итоге в архив не попадает, и окно на старте падает с
+# ModuleNotFoundError уже у пользователя — при этом при перезапуске после
+# обновления этот вывод никуда не показывается (см. update_checker.py),
+# так что молчаливо собранный битый бинарник — самый опасный вариант.
+# AUTOSYNC_SELFTEST_GUI лишь импортирует GTK-биндинги (см. native_app.py:
+# _selftest_gui) — к дисплею не подключается, поэтому не требует Xvfb.
+if ! AUTOSYNC_SELFTEST_GUI=1 timeout 15 "$OUT_DIR/autosync"; then
+  echo "" >&2
+  echo "ОШИБКА: собранный бинарник не может загрузить GTK/WebKit — см. вывод выше." >&2
+  echo "Обычно помогает пересборка (rm -rf backend/.venv-native и заново)." >&2
+  exit 1
+fi
+
 echo ""
 echo "==> Готово: $OUT_DIR/autosync"
 echo "    Запуск: $OUT_DIR/autosync  (откроет своё окно, backend на http://127.0.0.1:5000/)"

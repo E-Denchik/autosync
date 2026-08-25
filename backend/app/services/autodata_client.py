@@ -77,6 +77,34 @@ class AutoDataClient:
             for entry in query.all()
         ]
 
+    def find_norm_hours_any_make(self, limit: int = 200) -> list[dict]:
+        """Весь локальный справочник, без фильтра по марке — используется
+        ТОЛЬКО как запасной пул кандидатов для LLM, когда по точной марке
+        вообще ничего не нашлось (см. labor_matcher.py). Для маленького
+        бизнеса, который только начал вести свой справочник (не 1С/AutoData),
+        типична ситуация "марка есть в заказ-наряде, а в справочнике её пока
+        нет вовсе" — раньше это значило, что LLM даже не звали, хотя многие
+        рутинные операции (замена масла, диагностика и т.п.) по факту не
+        зависят от марки, и справочник по ДРУГИМ маркам всё равно полезная
+        подсказка (LLM сам решает, уместно ли переносить норму — см.
+        prompts/labor_matching.md).
+
+        Только для локального справочника — при подключённой внешней 1С
+        (self.base_url задан) выгружать её целиком без фильтра небезопасно
+        (может быть огромной), поэтому там просто ничего не возвращаем."""
+        if self.base_url:
+            return []
+        entries = LaborCatalogEntry.query.limit(limit).all()
+        return [
+            {
+                "operation_name": entry.operation_name,
+                "norm_hours": float(entry.norm_hours),
+                "vehicle_make": entry.vehicle_make,
+                "vehicle_model": entry.vehicle_model,
+            }
+            for entry in entries
+        ]
+
     def test_connection(self) -> str:
         if not self.base_url:
             count = LaborCatalogEntry.query.count()

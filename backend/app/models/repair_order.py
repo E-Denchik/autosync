@@ -27,6 +27,15 @@ class RepairOrder(db.Model):
     vehicle_year = db.Column(db.Integer)
     vehicle_vin = db.Column(db.String(32))
 
+    # Номер/дата ИЗ САМОГО заказ-наряда (см. document_parser.parse_repair_order_export,
+    # _ORDER_RE) — не то же самое, что id/created_at этой записи в базе.
+    # Раньше это никуда не сохранялось, и итоговый документ (см.
+    # document_generator.py) подставлял вместо реального номера наряда
+    # внутренний id, а вместо реальной даты — момент загрузки в систему,
+    # что не совпадало с тем, что было в исходном файле у заказчика.
+    order_number = db.Column(db.String(64))
+    order_date = db.Column(db.String(32))
+
     original_filename = db.Column(db.String(512), nullable=False)
     storage_path = db.Column(db.String(1024), nullable=False)
     status = db.Column(db.Enum(RepairOrderStatus), default=RepairOrderStatus.UPLOADED, nullable=False)
@@ -34,6 +43,16 @@ class RepairOrder(db.Model):
     error_message = db.Column(db.Text)
 
     generated_document_path = db.Column(db.String(1024))
+
+    # Короткая AI-сводка "на что смотреть в первую очередь" при проверке —
+    # генерируется один раз в конце сопоставления (см. repair_order_processor.py:
+    # process_upload_job), не по требованию: считать статистику по уже
+    # готовым результатам почти бесплатно, а отдельная кнопка "получить
+    # сводку" на странице проверки — лишний клик и ожидание для того, что и
+    # так может быть готово к моменту, когда человек откроет страницу.
+    # Пусто, если сама генерация не удалась (см. _generate_review_summary) —
+    # это не должно ронять всю обработку заказ-наряда.
+    review_summary = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

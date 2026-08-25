@@ -6,7 +6,7 @@ import ContragentRatesModal from "../../components/ContragentRatesModal.jsx";
 import ContragentEditModal from "../../components/ContragentEditModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, EditIcon, ClockIcon } from "../../components/icons.jsx";
+import { PlusIcon, EditIcon, ClockIcon, UploadIcon } from "../../components/icons.jsx";
 
 const EMPTY_FORM = { name: "", hourly_rate: "", notes: "" };
 
@@ -15,6 +15,7 @@ export default function Contragents() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [ratesFile, setRatesFile] = useState(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -40,9 +41,25 @@ export default function Contragents() {
     e.preventDefault();
     setCreating(true);
     try {
-      await api.createContragent(form);
-      toast.success("Контрагент добавлен");
+      const created = await api.createContragent(form);
+      // Ставки по маркам файлом можно приложить сразу при создании — раньше
+      // это было доступно только отдельным действием после ("Ставки по
+      // маркам" у уже существующего контрагента), и с файлом ставок без
+      // отдельного контрагента было не очевидно, куда его вообще грузить.
+      if (ratesFile) {
+        try {
+          const result = await api.importContragentHourlyRates(created.id, ratesFile);
+          toast.success(
+            `Контрагент добавлен, ставки загружены: ${result.created} новых, ${result.updated} обновлено`
+          );
+        } catch (importErr) {
+          toast.error(`Контрагент добавлен, но файл со ставками не загрузился: ${importErr.message}`);
+        }
+      } else {
+        toast.success("Контрагент добавлен");
+      }
       setForm(EMPTY_FORM);
+      setRatesFile(null);
       setShowForm(false);
       load();
     } catch (e2) {
@@ -138,11 +155,34 @@ export default function Contragents() {
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
           </div>
+          <div className="field">
+            <label htmlFor="rates-file">
+              <UploadIcon style={{ width: 12, height: 12 }} /> Ставки по маркам (файл, необязательно)
+            </label>
+            <input
+              id="rates-file"
+              type="file"
+              accept=".xlsx,.xlsm,.xls,.ods,.csv,.docx,.pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
+              onChange={(e) => setRatesFile(e.target.files?.[0] || null)}
+            />
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              Если для этого контрагента уже есть прайс-лист/таблица с ценами по маркам — приложите его сразу,
+              не нужно потом искать «Ставки по маркам» отдельно. Excel/CSV/Word/PDF/фото — подойдёт любой формат
+              со столбцами «Марка» и «Цена».
+            </span>
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" disabled={creating} type="submit">
               {creating ? "Сохранение…" : "Создать"}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setShowForm(false);
+                setRatesFile(null);
+              }}
+            >
               Отмена
             </button>
           </div>

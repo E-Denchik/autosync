@@ -346,6 +346,69 @@ def test_apply_update_linux_writes_marker_and_launches_detached_script(monkeypat
     assert "args" in captured  # detached apply-script процесс реально запущен
 
 
+def test_apply_update_windows_writes_powershell_script_and_launches_detached(monkeypatch, tmp_path):
+    """_apply_windows раньше не имел тестового покрытия вовсе. Проверяем, что
+    вместо .bat пишется .ps1 (см. update_checker.py про причину — mbcs ломает
+    кириллицу в пути без BOM), с точным отслеживанием PID через
+    Start-Process -PassThru, а не сопоставлением по имени образа."""
+    _reset_download_state()
+    _fake_build_info(monkeypatch, tmp_path, "before-update-sha")
+    monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(update_checker.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(update_checker, "_running_binary_path", lambda: r"C:\Users\Иван\AppData\Local\AutoSync\autosync.exe")
+    monkeypatch.setattr(update_checker, "_schedule_exit", lambda *a, **kw: None)
+    # DETACHED_PROCESS/CREATE_NEW_PROCESS_GROUP существуют только на реальной
+    # Windows — raising=False позволяет завести их и на Linux, где гоняются тесты.
+    monkeypatch.setattr(update_checker.subprocess, "DETACHED_PROCESS", 0x00000008, raising=False)
+    monkeypatch.setattr(update_checker.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
+
+    asset_path = tmp_path / "autosync-setup-1.2.3.exe"
+    asset_path.write_bytes(b"data")
+    update_checker._set_state(phase="downloaded", asset_path=str(asset_path), asset_name=asset_path.name)
+
+    captured = {}
+    monkeypatch.setattr(
+        update_checker.subprocess,
+        "Popen",
+        lambda *a, **kw: captured.setdefault("args", a) or captured.setdefault("kwargs", kw),
+    )
+
+    update_checker.apply_update()
+
+    assert update_checker.get_download_state()["phase"] == "applying"
+    assert "args" in captured
+    popen_args = captured["args"][0]
+    assert popen_args[0] == "powershell"
+    script_path = popen_args[-1]
+    assert script_path.endswith(".ps1")
+
+    content = open(script_path, "r", encoding="utf-8-sig").read()
+    assert "/SILENT" in content
+    assert "/CLOSEAPPLICATIONS" in content
+    assert "Start-Process" in content
+    assert "-PassThru" in content
+    assert "Get-Process -Id $newProc.Id" in content
+    assert "relaunch_failed" in content
+    assert "Иван" in content  # кириллица в пути дошла до скрипта не побитой
+
+
+def test_apply_update_windows_rejects_non_installer_filename(monkeypatch, tmp_path):
+    _reset_download_state()
+    _fake_build_info(monkeypatch, tmp_path, "before-update-sha")
+    monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(update_checker.platform, "system", lambda: "Windows")
+
+    asset_path = tmp_path / "not-an-installer.exe"
+    asset_path.write_bytes(b"data")
+    update_checker._set_state(phase="downloaded", asset_path=str(asset_path), asset_name=asset_path.name)
+
+    try:
+        update_checker.apply_update()
+        assert False, "expected UpdateInstallError"
+    except update_checker.UpdateInstallError as exc:
+        assert "установщик Windows" in str(exc)
+
+
 def test_consume_pending_update_result_reports_success_when_commit_changed(monkeypatch, tmp_path):
     _fake_build_info(monkeypatch, tmp_path, "new-sha")
     monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
@@ -356,6 +419,27 @@ def test_consume_pending_update_result_reports_success_when_commit_changed(monke
 
     assert result == {"success": True, "commit": "new-sha"}
     assert not marker_path.exists()  # маркер одноразовый
+
+
+def test_consume_pending_update_result_handles_bom_from_windows_powershell(monkeypatch, tmp_path):
+    """Регрессия: install_result.txt на Windows пишет PowerShell
+    (Set-Content -Encoding utf8), а Windows PowerShell 5.1 в режиме "utf8"
+    всегда добавляет BOM. С обычным open(..., encoding="utf-8") это давало
+    exit_code "\\ufeff0" вместо "0" — успешную (код 0) установку было не
+    отличить от неудачной, потому что str.strip() BOM не убирает."""
+    _fake_build_info(monkeypatch, tmp_path, "same-sha")  # коммит НЕ поменялся — как будто откат/неудача
+    monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
+    marker_path = tmp_path / "pending_update.json"
+    result_path = tmp_path / "install_result.txt"
+    result_path.write_bytes("0".encode("utf-8-sig"))  # ровно то, что пишет Set-Content -Encoding utf8
+    marker_path.write_text(
+        json.dumps({"previous_commit": "same-sha", "result_path": str(result_path)}), encoding="utf-8"
+    )
+
+    result = update_checker.consume_pending_update_result()
+
+    assert result["exit_code"] == "0"
+    assert "версия приложения не изменилась" in result["message"]
 
 
 def test_consume_pending_update_result_reports_failure_when_commit_unchanged(monkeypatch, tmp_path):
@@ -380,6 +464,50 @@ def test_consume_pending_update_result_reports_failure_when_commit_unchanged(mon
 def test_consume_pending_update_result_returns_none_without_marker(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
     assert update_checker.consume_pending_update_result() is None
+
+
+def test_consume_pending_update_result_reports_rollback_when_new_binary_would_not_start(monkeypatch, tmp_path):
+    """Регрессия: после обновления новый бинарник может не запуститься (см.
+    _apply_linux, ветка не-.deb) — тогда установочный скрипт сам возвращает
+    старую рабочую версию и дописывает вторую строку "rolled_back" в
+    install_result.txt. Раньше это выглядело бы как обычная "установка не
+    применилась" без объяснения, что приложение вообще-то уже само себя
+    починило."""
+    _fake_build_info(monkeypatch, tmp_path, "same-sha")
+    monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
+    marker_path = tmp_path / "pending_update.json"
+    result_path = tmp_path / "install_result.txt"
+    result_path.write_text("0\nrolled_back\n", encoding="utf-8")
+    marker_path.write_text(
+        json.dumps({"previous_commit": "same-sha", "result_path": str(result_path)}), encoding="utf-8"
+    )
+
+    result = update_checker.consume_pending_update_result()
+
+    assert result["success"] is False
+    assert result["exit_code"] == "0"
+    assert "вернулось к предыдущей" in result["message"]
+
+
+def test_consume_pending_update_result_reports_relaunch_failed_without_rollback(monkeypatch, tmp_path):
+    """Та же ситуация, но на .deb/Windows-ветке, где автоматического отката
+    нет (см. _apply_linux/_apply_windows) — сообщение должно отличаться от
+    rolled_back, чтобы не вводить в заблуждение, будто всё уже само
+    исправилось."""
+    _fake_build_info(monkeypatch, tmp_path, "same-sha")
+    monkeypatch.setenv("AUTOSYNC_DATA_DIR", str(tmp_path))
+    marker_path = tmp_path / "pending_update.json"
+    result_path = tmp_path / "install_result.txt"
+    result_path.write_text("0\nrelaunch_failed\n", encoding="utf-8")
+    marker_path.write_text(
+        json.dumps({"previous_commit": "same-sha", "result_path": str(result_path)}), encoding="utf-8"
+    )
+
+    result = update_checker.consume_pending_update_result()
+
+    assert result["success"] is False
+    assert "не запустилась" in result["message"]
+    assert "вернулось к предыдущей" not in result["message"]
 
 
 def test_relaunch_env_strips_pyinstaller_bootstrap_vars(monkeypatch):

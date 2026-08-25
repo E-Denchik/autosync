@@ -5,6 +5,7 @@ from copy import copy
 
 import openpyxl
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 TOKEN_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
 FULL_TOKEN_RE = re.compile(r"^\{\{\s*([\w.]+)\s*\}\}$")
@@ -50,13 +51,18 @@ def _copy_row(ws, src_row: int, dst_row: int) -> None:
         dst.alignment = copy(src.alignment)
 
 
-def _expand_rows(ws, prefix: str, items: list[dict]) -> None:
+def _expand_rows(ws, prefix: str, items: list[dict]) -> tuple[int, int] | None:
+    """Возвращает (номер_строки_шаблона, дельта) — на сколько строк сдвинулось
+    всё, что было ниже неё (+N вставлено, -1 удалена) — или None, если
+    строка с "{{prefix." в шаблоне не найдена вовсе. Вызывающий код
+    использует это, чтобы потом восстановить объединённые ячейки на
+    правильных координатах (см. render_template)."""
     template_row = _find_row(ws, prefix)
     if template_row is None:
-        return
+        return None
     if not items:
         ws.delete_rows(template_row, 1)
-        return
+        return (template_row, -1)
 
     extra = len(items) - 1
     if extra > 0:
@@ -73,6 +79,34 @@ def _expand_rows(ws, prefix: str, items: list[dict]) -> None:
             if isinstance(cell.value, str):
                 _substitute_cell(cell, values)
 
+    return (template_row, extra)
+
+
+def _reapply_shifted_merges(ws, original_ranges: list[tuple[int, int, int, int]], shifts: list[tuple[int, int]]) -> None:
+    """original_ranges — границы объединений ДО вставки/удаления строк
+    (min_row, min_col, max_row, max_col). shifts — в порядке применения:
+    (строка_шаблона, дельта). Диапазон, задевающий саму строку-шаблон
+    ({{part.*}}/{{labor.*}}), не восстанавливаем — после раскрытия в
+    несколько независимых строк данных единого прямоугольника для него уже
+    нет; всё, что было строго ниже, просто сдвигаем на дельту."""
+    for min_row, min_col, max_row, max_col in original_ranges:
+        cur_min, cur_max = min_row, max_row
+        dropped = False
+        for affected_row, delta in shifts:
+            if cur_min <= affected_row <= cur_max:
+                dropped = True
+                break
+            if cur_min > affected_row:
+                cur_min += delta
+                cur_max += delta
+        if dropped or cur_max < cur_min or cur_min < 1:
+            continue
+        rng = f"{get_column_letter(min_col)}{cur_min}:{get_column_letter(max_col)}{cur_max}"
+        try:
+            ws.merge_cells(rng)
+        except ValueError:
+            pass
+
 
 def render_template(
     template_path: str,
@@ -87,13 +121,33 @@ def render_template(
         raise DocumentTemplateError(f"Не удалось открыть файл шаблона: {exc}") from exc
 
     ws = wb.active
-    _expand_rows(ws, "part", part_items)
-    _expand_rows(ws, "labor", labor_items)
+
+    # openpyxl insert_rows/delete_rows не двигает объединённые ячейки — без
+    # этого шага строка "ИТОГО" (или любая другая) с merge ниже
+    # {{part.*}}/{{labor.*}} осталась бы на СТАРЫХ координатах после вставки
+    # строк под несколько позиций, а запись данных в "не главную" ячейку
+    # чужого (сдвинувшегося относительно неё) объединения openpyxl тихо
+    # игнорирует — часть строки заказ-наряда молча пропадала бы из
+    # документа без единой ошибки. Снимаем все объединения перед вставкой,
+    # восстанавливаем на пересчитанных координатах в конце.
+    original_merges = [(r.min_row, r.min_col, r.max_row, r.max_col) for r in list(ws.merged_cells.ranges)]
+    for r in list(ws.merged_cells.ranges):
+        ws.unmerge_cells(str(r))
+
+    shifts: list[tuple[int, int]] = []
+    part_shift = _expand_rows(ws, "part", part_items)
+    if part_shift is not None:
+        shifts.append(part_shift)
+    labor_shift = _expand_rows(ws, "labor", labor_items)
+    if labor_shift is not None:
+        shifts.append(labor_shift)
 
     for row in ws.iter_rows():
         for cell in row:
             if isinstance(cell.value, str) and "{{" in cell.value:
                 _substitute_cell(cell, context)
+
+    _reapply_shifted_merges(ws, original_merges, shifts)
 
     unresolved = set()
     for row in ws.iter_rows():

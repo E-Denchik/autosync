@@ -8,7 +8,7 @@ import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon, ChevronRightIcon, EyeIcon, FileTextIcon } from "../../components/icons.jsx";
+import { PlusIcon, ChevronRightIcon, EyeIcon, FileTextIcon, UploadIcon } from "../../components/icons.jsx";
 
 const EMPTY_FORM = { name: "", contragent_id: "", vehicle_make: "" };
 
@@ -19,6 +19,7 @@ export default function ContractCatalogs() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [files, setFiles] = useState([]);
+  const [ratesFile, setRatesFile] = useState(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -65,13 +66,27 @@ export default function ContractCatalogs() {
     setCreating(true);
     try {
       const result = await api.createContract(files, form);
-      toast.success(
-        result.reused_existing_contract
-          ? `Такой файл уже загружен — переиспользован договор «${result.name || result.original_filename}»`
-          : "Договор загружен — идёт разбор файла(ов)"
-      );
+      let message = result.reused_existing_contract
+        ? `Такой файл уже загружен — переиспользован договор «${result.name || result.original_filename}»`
+        : "Договор загружен — идёт разбор файла(ов)";
+      // Ставки по маркам — отдельный файл от состава контракта (запчасти/
+      // нормо-часы): у файла со ставками другая структура (марка + цена),
+      // общий парсер контракта их не ищет, поэтому раньше единственный
+      // способ загрузить именно ставки был через отдельную вкладку у уже
+      // созданного контракта — легко упустить, особенно если у заказчика
+      // на руках только прайс-лист, без отдельного списка запчастей/работ.
+      if (ratesFile) {
+        try {
+          const rateResult = await api.importContractHourlyRates(result.id, ratesFile);
+          message += `. Ставки по маркам загружены: ${rateResult.created} новых, ${rateResult.updated} обновлено`;
+        } catch (importErr) {
+          message += `. Файл со ставками не загрузился: ${importErr.message}`;
+        }
+      }
+      toast.success(message);
       setForm(EMPTY_FORM);
       setFiles([]);
+      setRatesFile(null);
       setShowForm(false);
       load();
     } catch (e2) {
@@ -159,38 +174,40 @@ export default function ContractCatalogs() {
 
       {showForm && (
         <form className="panel" style={{ marginBottom: 20, maxWidth: 520 }} onSubmit={handleCreate}>
-          <div className="field">
-            <label htmlFor="c-name">Название</label>
-            <input
-              id="c-name"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="Например, Гос. контракт №123 / 2026"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="c-contragent">Контрагент</label>
-            <select
-              id="c-contragent"
-              value={form.contragent_id}
-              onChange={(e) => setForm((f) => ({ ...f, contragent_id: e.target.value }))}
-            >
-              <option value="">Не выбран</option>
-              {contragents.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="c-make">Марка (для файлов-каталогов по маркам)</label>
-            <input
-              id="c-make"
-              value={form.vehicle_make}
-              onChange={(e) => setForm((f) => ({ ...f, vehicle_make: e.target.value }))}
-              placeholder="Необязательно"
-            />
+          <div className="filter-row">
+            <div className="field">
+              <label htmlFor="c-name">Название</label>
+              <input
+                id="c-name"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Например, Гос. контракт №123 / 2026"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="c-contragent">Контрагент</label>
+              <select
+                id="c-contragent"
+                value={form.contragent_id}
+                onChange={(e) => setForm((f) => ({ ...f, contragent_id: e.target.value }))}
+              >
+                <option value="">Не выбран</option>
+                {contragents.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="c-make">Марка (для файлов-каталогов по маркам)</label>
+              <input
+                id="c-make"
+                value={form.vehicle_make}
+                onChange={(e) => setForm((f) => ({ ...f, vehicle_make: e.target.value }))}
+                placeholder="Необязательно"
+              />
+            </div>
           </div>
           <div className="field">
             <label htmlFor="c-file">Файл(ы) договора</label>
@@ -212,11 +229,34 @@ export default function ContractCatalogs() {
               </button>
             )}
           </div>
+          <div className="field">
+            <label htmlFor="c-rates-file">
+              <UploadIcon style={{ width: 12, height: 12 }} /> Ставки по маркам (файл, необязательно)
+            </label>
+            <input
+              id="c-rates-file"
+              type="file"
+              accept=".xlsx,.xlsm,.xls,.ods,.csv,.docx,.pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
+              onChange={(e) => setRatesFile(e.target.files?.[0] || null)}
+            />
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              Отдельный файл с ценой нормо-часа по маркам для этого контракта (не путать с файлом(ами) договора
+              выше — это разные списки). Если он у вас один и тот же с составом договора — не заполняйте, ставки
+              всегда можно добавить позже во вкладке «Ставки по маркам» открытого контракта.
+            </span>
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" disabled={creating} type="submit">
               {creating ? "Загрузка…" : "Загрузить"}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setShowForm(false);
+                setRatesFile(null);
+              }}
+            >
               Отмена
             </button>
           </div>

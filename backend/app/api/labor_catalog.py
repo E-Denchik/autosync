@@ -1,9 +1,18 @@
-from flask import Blueprint, jsonify, request
+import os
+
+from flask import Blueprint, current_app, jsonify, request
 
 from app.extensions import db
 from app.models import LaborCatalogEntry
+from app.services.document_parser import DocumentParseError
+from app.services.labor_catalog_import import import_labor_catalog
+from app.services.llm_client import LLMClient
+from app.services.ocr import IMAGE_EXTENSIONS
+from app.services.upload_helpers import save_upload
 
 bp = Blueprint("labor_catalog", __name__)
+
+RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf"} | IMAGE_EXTENSIONS
 
 
 def _serialize(entry: LaborCatalogEntry) -> dict:
@@ -78,3 +87,30 @@ def delete_entry(entry_id: int):
     db.session.delete(entry)
     db.session.commit()
     return "", 204
+
+
+@bp.post("/import")
+def import_entries_file():
+    """Массовая загрузка справочника нормо-часов файлом — вместо добавления
+    по одной через форму выше. Формат заранее не диктуется: колонки марки/
+    модели/операции/нормы ищутся по синонимам в заголовке (см.
+    document_parser.parse_labor_catalog_table), как и у ставок по маркам."""
+    file = request.files.get("file")
+    if not file:
+        return jsonify(error="Нужен файл 'file'"), 400
+
+    try:
+        path = save_upload(file, RATE_TABLE_EXTENSIONS)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+    llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
+    try:
+        result = import_labor_catalog(path, llm_client=llm_client)
+    except DocumentParseError as exc:
+        return jsonify(error=str(exc)), 400
+    finally:
+        if os.path.isfile(path):
+            os.remove(path)
+
+    return jsonify(result), 200

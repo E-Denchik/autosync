@@ -151,6 +151,8 @@ def list_repair_orders():
         result.append(
             {
                 "id": order.id,
+                "order_number": order.order_number,
+                "order_date": order.order_date,
                 "original_filename": order.original_filename,
                 "extra_file_count": len(order.extra_files),
                 "contract_filename": order.contract.original_filename if order.contract else None,
@@ -194,6 +196,10 @@ def update_repair_order(repair_order_id: int):
             return jsonify(error="'vehicle_year' должен быть числом"), 400
     if "vehicle_vin" in body:
         repair_order.vehicle_vin = (body.get("vehicle_vin") or "").strip() or None
+    if "order_number" in body:
+        repair_order.order_number = (body.get("order_number") or "").strip() or None
+    if "order_date" in body:
+        repair_order.order_date = (body.get("order_date") or "").strip() or None
 
     log_change(
         "repair_order",
@@ -205,6 +211,8 @@ def update_repair_order(repair_order_id: int):
             "vehicle_model": repair_order.vehicle_model,
             "vehicle_year": repair_order.vehicle_year,
             "vehicle_vin": repair_order.vehicle_vin,
+            "order_number": repair_order.order_number,
+            "order_date": repair_order.order_date,
         },
     )
     db.session.commit()
@@ -216,6 +224,8 @@ def update_repair_order(repair_order_id: int):
         vehicle_model=repair_order.vehicle_model,
         vehicle_year=repair_order.vehicle_year,
         vehicle_vin=repair_order.vehicle_vin,
+        order_number=repair_order.order_number,
+        order_date=repair_order.order_date,
     )
 
 
@@ -257,6 +267,9 @@ def upload_status(repair_order_id: int):
         contragent_name=repair_order.contragent.name if repair_order.contragent else None,
         vehicle_make=repair_order.vehicle_make,
         vehicle_model=repair_order.vehicle_model,
+        order_number=repair_order.order_number,
+        order_date=repair_order.order_date,
+        review_summary=repair_order.review_summary,
     )
 
 

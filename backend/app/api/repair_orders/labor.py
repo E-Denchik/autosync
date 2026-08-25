@@ -9,6 +9,29 @@ from app.services.history import log_change
 bp = Blueprint("repair_orders_labor", __name__)
 
 
+_SUGGESTED_ADDITION_SOURCES = ("llm_suggested_addition", "llm_suggested_addition_contract_catalog")
+_CROSS_MAKE_SOURCES = ("llm_fallback_cross_make", "llm_fallback_cross_make_contract_catalog")
+
+
+def _labor_category(line: LaborLine) -> str:
+    """Единая категория того, откуда взялась норма часов — см. тот же
+    комментарий у _match_category в api/repair_orders/matching.py."""
+    source = (line.raw_match_data or {}).get("source")
+    if line.confidence_level.value == "exact":
+        return "exact"
+    if source == "llm_error":
+        return "llm_error"
+    if source in _CROSS_MAKE_SOURCES:
+        return "cross_make_estimate"
+    if source in _SUGGESTED_ADDITION_SOURCES:
+        return "suggested_addition"
+    if source == "repair_order_stated_value":
+        return "from_repair_order"
+    if line.norm_hours is None:
+        return "no_match"
+    return "llm_guess"
+
+
 def _serialize(line: LaborLine) -> dict:
     threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
     return {
@@ -24,13 +47,41 @@ def _serialize(line: LaborLine) -> dict:
         "below_confidence_threshold": line.confidence_score is not None and line.confidence_score < threshold,
         "review_status": line.review_status.value,
         "manually_edited": line.manually_edited,
-        "suggested_addition": bool(line.raw_match_data and line.raw_match_data.get("source") == "llm_suggested_addition"),
+        # Регрессия: раньше проверялся только один из двух возможных
+        # источников ("llm_suggested_addition") — для контрактов со своим
+        # каталогом нормо-часов реальный источник
+        # "llm_suggested_addition_contract_catalog", и флаг никогда не
+        # срабатывал в этом (частом) случае.
+        "suggested_addition": bool(
+            line.raw_match_data and line.raw_match_data.get("source") in _SUGGESTED_ADDITION_SOURCES
+        ),
         # Норма часов не подтверждена каталогом (matched_operation_name всё
         # ещё пуст), но взята из самого заказ-наряда, а не выдумана — фронт
         # должен это показать иначе, чем просто пустую норму.
         "norm_hours_from_repair_order": bool(
             line.raw_match_data and line.raw_match_data.get("source") == "repair_order_stated_value"
         ),
+        # Точной марки в справочнике/каталоге контракта не нашлось вовсе —
+        # LLM перенесла норму с операции по ДРУГОЙ марке (см. labor_matcher.py:
+        # find_norm_hours_any_make/_contract_labor_candidates_any_make).
+        # Менее надёжно, чем обычная LLM-догадка по своей марке — фронт
+        # должен явно это показать, а не просто "догадка LLM".
+        "cross_make_estimate": (
+            {
+                "from_make": line.raw_match_data.get("estimate_from_make"),
+                "from_model": line.raw_match_data.get("estimate_from_model"),
+            }
+            if line.raw_match_data and line.raw_match_data.get("source") in _CROSS_MAKE_SOURCES
+            else None
+        ),
+        # См. тот же комментарий в api/repair_orders/matching.py — отличает
+        # "ИИ честно не нашла совпадение" от "ИИ вообще была недоступна".
+        "llm_error": (
+            line.raw_match_data.get("error")
+            if line.raw_match_data and line.raw_match_data.get("source") == "llm_error"
+            else None
+        ),
+        "match_category": _labor_category(line),
     }
 
 

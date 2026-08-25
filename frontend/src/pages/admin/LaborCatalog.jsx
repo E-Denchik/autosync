@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import ConfirmDialog from "../../components/ConfirmDialog.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { PlusIcon } from "../../components/icons.jsx";
+import { PlusIcon, UploadIcon } from "../../components/icons.jsx";
 
 const EMPTY_FORM = { vehicle_make: "", vehicle_model: "", operation_name: "", norm_hours: "" };
 
-const SOURCE_LABELS = { manual: "вручную", seed: "пример", autodata: "AutoData" };
+const SOURCE_LABELS = { manual: "вручную", seed: "пример", autodata: "AutoData", import: "файлом" };
 
 export default function LaborCatalog() {
   const [entries, setEntries] = useState([]);
@@ -18,6 +18,8 @@ export default function LaborCatalog() {
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
   const toast = useToast();
 
   const load = () => {
@@ -61,6 +63,24 @@ export default function LaborCatalog() {
     }
   };
 
+  const handleFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.importLaborCatalog(file);
+      toast.success(
+        `Загружено: ${result.created} новых, ${result.updated} обновлено (всего строк в файле: ${result.total})`
+      );
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -68,19 +88,35 @@ export default function LaborCatalog() {
           <h2>Нормо-часы</h2>
           <p>
             Справочник операций и нормо-часов по маркам/моделям — используется для автозаполнения работ в
-            заказ-нарядах. Пока нет доступа к внешней базе AutoData, значения ведутся здесь вручную.
+            заказ-нарядах. Пока нет доступа к внешней базе AutoData — заполняется вручную или файлом.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-          <PlusIcon /> Добавить операцию
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-secondary"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <UploadIcon style={{ width: 13, height: 13 }} /> {importing ? "Загрузка…" : "Загрузить файлом"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,.xls,.ods,.csv,.docx,.pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif"
+            style={{ display: "none" }}
+            onChange={handleFilePicked}
+          />
+          <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+            <PlusIcon /> Добавить операцию
+          </button>
+        </div>
       </div>
 
       <HowToUse
         steps={[
           "Здесь справочник операций и норм времени по маркам/моделям — он используется, чтобы автоматически подставлять нормо-часы в загруженные заказ-наряды.",
           "Модель можно не указывать — тогда запись будет действовать для всех моделей этой марки.",
-          "Пополняйте справочник вручную по мере необходимости — если для операции записи нет, соответствующая работа в заказ-наряде уйдёт на ручную проверку.",
+          "«Загрузить файлом» разом добавляет много операций — Excel/CSV/Word/PDF/фото со столбцами марка, (модель — необязательно), операция и нормо-часы, названия колонок могут быть любыми. Операция для той же марки/модели, что уже есть в списке, обновится, а не задвоится.",
         ]}
       />
 

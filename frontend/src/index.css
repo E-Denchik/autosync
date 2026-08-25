@@ -495,9 +495,22 @@ thead .preview-row-gutter {
   color: var(--warning);
 }
 
-.badge-llm_guess {
+.badge-llm_guess,
+.badge-no_match {
   background: var(--danger-soft);
   color: var(--danger-text);
+}
+
+.badge-cross_make_estimate,
+.badge-suggested_addition,
+.badge-llm_error {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.badge-from_repair_order {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .status-pill {

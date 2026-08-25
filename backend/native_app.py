@@ -482,5 +482,36 @@ def main() -> None:
     os._exit(0)
 
 
+def _selftest_gui() -> None:
+    """Проверка при сборке (см. build-native-linux.sh), что pywebview вообще
+    находит рабочий GUI-бэкенд (GTK/WebKit на Linux, WinForms на Windows) —
+    без запуска backend/БД и без реального открытия окна (initialize() лишь
+    импортирует биндинги, к дисплею не подключается, поэтому безопасно и в
+    headless CI). Ловит именно тот баг, что уже случался локально: PyInstaller
+    "успешно" собирает бинарник, из которого при этом выпал модуль gi, и окно
+    падает с ModuleNotFoundError уже у пользователя, без единой подсказки,
+    потому что вывод перезапущенного после обновления процесса никуда не
+    показывается (см. update_checker._apply_linux/_apply_windows)."""
+    try:
+        # Не "import webview.guilib; webview.guilib.initialize()" — сам пакет
+        # webview/__init__.py заводит собственный module-level guilib = None
+        # (для хранения текущего активного бэкенда) и затирает им атрибут
+        # подмодуля на webview, так что webview.guilib после такого импорта
+        # оказывается None, а не модулем. importlib.import_module достаёт
+        # подмодуль из sys.modules напрямую, минуя эту коллизию имён.
+        import importlib
+
+        guilib_module = importlib.import_module("webview.guilib")
+        guilib_module.initialize()
+    except Exception as exc:  # noqa: BLE001 — тут нужен именно любой сбой
+        print(f"SELFTEST_GUI_FAILED: {exc!r}", file=sys.stderr)
+        sys.exit(1)
+    print("SELFTEST_GUI_OK")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
-    main()
+    if os.environ.get("AUTOSYNC_SELFTEST_GUI") == "1":
+        _selftest_gui()
+    else:
+        main()

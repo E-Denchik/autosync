@@ -9,6 +9,8 @@ export default function RepairOrderEditModal({ order, onClose, onSaved }) {
   const [vehicleModel, setVehicleModel] = useState(order.vehicle_model || "");
   const [vehicleYear, setVehicleYear] = useState(order.vehicle_year || "");
   const [vehicleVin, setVehicleVin] = useState(order.vehicle_vin || "");
+  const [orderNumber, setOrderNumber] = useState(order.order_number || "");
+  const [orderDate, setOrderDate] = useState(order.order_date || "");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -26,6 +28,8 @@ export default function RepairOrderEditModal({ order, onClose, onSaved }) {
         vehicle_model: vehicleModel,
         vehicle_year: vehicleYear || null,
         vehicle_vin: vehicleVin,
+        order_number: orderNumber,
+        order_date: orderDate,
       });
       toast.success("Заказ-наряд обновлён");
       onSaved(updated);
@@ -62,6 +66,31 @@ export default function RepairOrderEditModal({ order, onClose, onSaved }) {
           </button>
         </div>
 
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="re-order-number">№ заказ-наряда</label>
+            <input
+              id="re-order-number"
+              value={orderNumber}
+              onChange={(e) => setOrderNumber(e.target.value)}
+              placeholder="как в исходном файле"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="re-order-date">Дата наряда</label>
+            <input
+              id="re-order-date"
+              value={orderDate}
+              onChange={(e) => setOrderDate(e.target.value)}
+              placeholder="например, 14.01.2026"
+            />
+          </div>
+        </div>
+        <p className="text-muted" style={{ fontSize: 12, marginTop: -8 }}>
+          Подставляются в итоговый документ как {"{{order_number}}"}/{"{{order_date}}"} — обычно распознаются из
+          файла сами; поправьте, если не распозналось или его вообще не было в файле.
+        </p>
+
         <div className="field">
           <label htmlFor="re-contragent">Контрагент</label>
           <select id="re-contragent" value={contragentId} onChange={(e) => setContragentId(e.target.value)}>
@@ -73,7 +102,7 @@ export default function RepairOrderEditModal({ order, onClose, onSaved }) {
             ))}
           </select>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="field-row">
           <div className="field">
             <label htmlFor="re-make">Марка</label>
             <input id="re-make" value={vehicleMake} onChange={(e) => setVehicleMake(e.target.value)} />

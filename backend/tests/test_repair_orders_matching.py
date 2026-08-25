@@ -69,6 +69,79 @@ def test_list_matches(client, admin_headers, repair_order_with_matches):
     assert {m["confidence_level"] for m in body} == {"exact", "llm_guess"}
 
 
+def test_list_exposes_llm_error_so_reviewer_can_tell_it_apart_from_genuine_no_match(client, admin_headers, app):
+    """Регрессия по прозрачности: раньше "ИИ была недоступна" и "ИИ честно
+    не нашла совпадение" выглядели для проверяющего одинаково."""
+    with app.app_context():
+        contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+        db.session.add(contract)
+        db.session.flush()
+        order = RepairOrder(
+            contract_id=contract.id, original_filename="o.xlsx", storage_path="/tmp/o.xlsx", status=RepairOrderStatus.NEEDS_REVIEW
+        )
+        db.session.add(order)
+        db.session.flush()
+        db.session.add(
+            PartMatch(
+                repair_order_id=order.id,
+                contract_name="Деталь",
+                confidence_level=ConfidenceLevel.LLM_GUESS,
+                confidence_score=0.0,
+                review_status=ReviewStatus.PENDING,
+                raw_match_data={"source": "llm_error", "error": "llm-service недоступен: Connection refused"},
+            )
+        )
+        db.session.commit()
+        order_id = order.id
+
+    body = client.get(f"/api/repair-orders/matching/{order_id}", headers=admin_headers).get_json()
+    assert body[0]["llm_error"] == "llm-service недоступен: Connection refused"
+
+
+def _make_bare_repair_order(app) -> int:
+    contract = Contract(original_filename="c.xlsx", storage_path="/tmp/c.xlsx", status=DocumentProcessingStatus.PARSED)
+    db.session.add(contract)
+    db.session.flush()
+    order = RepairOrder(
+        contract_id=contract.id, original_filename="o.xlsx", storage_path="/tmp/o.xlsx", status=RepairOrderStatus.NEEDS_REVIEW
+    )
+    db.session.add(order)
+    db.session.commit()
+    return order.id
+
+
+@pytest.mark.parametrize(
+    "confidence_level,matched_name,raw_match_data,expected_category",
+    [
+        (ConfidenceLevel.EXACT, "Деталь", {"source": "exact_article_match"}, "exact"),
+        (ConfidenceLevel.CROSS_REF, "Деталь", {"source": "parts_supplier_cross_reference"}, "cross_ref"),
+        (ConfidenceLevel.LLM_GUESS, None, {"source": "llm_error", "error": "x"}, "llm_error"),
+        (ConfidenceLevel.LLM_GUESS, None, {"source": "no_match_found"}, "no_match"),
+        (ConfidenceLevel.LLM_GUESS, "Деталь", {"source": "llm_fallback"}, "llm_guess"),
+    ],
+)
+def test_match_category_classification(
+    client, admin_headers, app, confidence_level, matched_name, raw_match_data, expected_category
+):
+    with app.app_context():
+        order_id = _make_bare_repair_order(app)
+        db.session.add(
+            PartMatch(
+                repair_order_id=order_id,
+                contract_name="Деталь",
+                matched_name=matched_name,
+                confidence_level=confidence_level,
+                confidence_score=1.0 if confidence_level != ConfidenceLevel.LLM_GUESS else 0.0,
+                review_status=ReviewStatus.PENDING,
+                raw_match_data=raw_match_data,
+            )
+        )
+        db.session.commit()
+
+    body = client.get(f"/api/repair-orders/matching/{order_id}", headers=admin_headers).get_json()
+    assert body[0]["match_category"] == expected_category
+
+
 def test_list_candidates_returns_contract_catalog_not_repair_order_lines(
     client, admin_headers, repair_order_with_matches, app
 ):

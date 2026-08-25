@@ -11,10 +11,61 @@ import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { AlertCircleIcon, CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon } from "../../components/icons.jsx";
+import { AlertCircleIcon, CheckCircleIcon, DownloadIcon, EditIcon, SearchIcon, SparklesIcon } from "../../components/icons.jsx";
 import { saveFile, CSV_FILE_TYPES, XLSX_FILE_TYPES } from "../../utils/saveFile.js";
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
+
+const CATEGORY_LABELS = {
+  exact: "точное совпадение",
+  cross_ref: "кросс-номер",
+  llm_guess: "догадка ИИ",
+  no_match: "не найдено",
+  llm_error: "ошибка ИИ",
+  cross_make_estimate: "оценка ИИ, другая марка",
+  suggested_addition: "предложено ИИ",
+  from_repair_order: "из наряда, не из справочника",
+};
+
+// Порядок важен для чтения — от надёжного к тому, что стоит проверить в
+// первую очередь, а не как попало из Object.entries.
+const CATEGORY_ORDER = [
+  "exact",
+  "cross_ref",
+  "llm_guess",
+  "from_repair_order",
+  "cross_make_estimate",
+  "suggested_addition",
+  "no_match",
+  "llm_error",
+];
+
+function countByCategory(items) {
+  const counts = {};
+  for (const item of items) {
+    if (!item.match_category) continue;
+    counts[item.match_category] = (counts[item.match_category] || 0) + 1;
+  }
+  return counts;
+}
+
+function formatRub(value) {
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+}
+
+function CategoryBreakdown({ counts }) {
+  const present = CATEGORY_ORDER.filter((cat) => counts[cat] > 0);
+  if (present.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+      {present.map((cat) => (
+        <span key={cat} className={`badge badge-${cat}`}>
+          {CATEGORY_LABELS[cat]}: {counts[cat]}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export default function ReviewMatches() {
   const { repairOrderId } = useParams();
@@ -277,6 +328,11 @@ export default function ReviewMatches() {
         );
       }
       setGeneratedPreview({ blob, fileName });
+      // Бэкенд при успешной генерации всегда переводит заказ-наряд в
+      // reviewed (см. api/repair_orders/matching.py: generate_document) —
+      // без этого степпер наверху страницы так и показывал бы "Проверка"
+      // как текущий шаг, хотя документ уже готов.
+      setStatus("reviewed");
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -291,7 +347,28 @@ export default function ReviewMatches() {
   const pendingCount = partsPending + laborPending;
   const pendingIds = matches.filter((m) => m.review_status === "pending").map((m) => m.id);
   const laborPendingIds = laborLines.filter((l) => l.review_status === "pending").map((l) => l.id);
+  // Отличаем "ИИ честно не нашла совпадение" от "ИИ вообще была недоступна"
+  // (llm-service не запущен, модель не выбрана и т.п., см. matcher.py/
+  // labor_matcher.py) — раньше для проверяющего оба случая выглядели
+  // одинаково как голое "не найдено", хотя во втором случае решение —
+  // не разбирать все позиции руками, а починить ИИ и загрузить заново.
+  const llmErrorCount = [...matches, ...laborLines].filter((m) => m.llm_error).length;
   const isProcessing = PROCESSING_STATUSES.has(status);
+
+  // Настоящая, проверяемая статистика вместо голого текста от ИИ — каждое
+  // число здесь можно свести с таблицами ниже (match_category приходит с
+  // бэкенда, см. api/repair_orders/matching.py и labor.py, чтобы не
+  // рассинхронизировать классификацию между фронтом и бэком).
+  const partsByCategory = countByCategory(matches);
+  const laborByCategory = countByCategory(laborLines);
+  const partsApprovedSum = matches
+    .filter((m) => m.review_status === "approved")
+    .reduce((sum, m) => sum + (m.matched_price || 0), 0);
+  const laborApprovedSum = laborLines
+    .filter((l) => l.review_status === "approved")
+    .reduce((sum, l) => sum + (l.total_cost || 0), 0);
+  const partsApprovedCount = matches.filter((m) => m.review_status === "approved").length;
+  const laborApprovedCount = laborLines.filter((l) => l.review_status === "approved").length;
 
   return (
     <div>
@@ -303,8 +380,14 @@ export default function ReviewMatches() {
             совпадение. Проверьте их вручную: примите, отклоните или подберите правильную позицию через
             поиск.
           </p>
-          {orderInfo && (orderInfo.contragent_name || orderInfo.vehicle_make) && (
+          {orderInfo && (orderInfo.order_number || orderInfo.contragent_name || orderInfo.vehicle_make) && (
             <p className="text-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              {orderInfo.order_number && (
+                <>
+                  Заказ-наряд: <strong>№ {orderInfo.order_number}{orderInfo.order_date && ` от ${orderInfo.order_date}`}</strong>
+                </>
+              )}
+              {orderInfo.order_number && (orderInfo.contragent_name || orderInfo.vehicle_make) && " · "}
               {orderInfo.contragent_name && <>Контрагент: <strong>{orderInfo.contragent_name}</strong></>}
               {orderInfo.contragent_name && orderInfo.vehicle_make && " · "}
               {orderInfo.vehicle_make && (
@@ -339,6 +422,18 @@ export default function ReviewMatches() {
         ]}
       />
 
+      {llmErrorCount > 0 && !isProcessing && (
+        <div className="hint-banner hint-warning">
+          <AlertCircleIcon />
+          <span>
+            ИИ-сопоставление по названию было недоступно для {llmErrorCount}{" "}
+            {llmErrorCount === 1 ? "позиции" : "позиций"} — llm-service не ответил (не запущен, не выбрана
+            модель и т.п.), а не потому, что совпадений действительно нет. Проверьте{" "}
+            <Link to="/admin/llm">настройки LLM →</Link> и, если дело было в этом, загрузите заказ-наряд заново.
+          </span>
+        </div>
+      )}
+
       {!suppliersConfigured && !isProcessing && matches.length > 0 && (
         <div className="hint-banner hint-warning">
           <AlertCircleIcon />
@@ -352,6 +447,68 @@ export default function ReviewMatches() {
       )}
 
       <StatusStepper status={status} />
+
+      {!isProcessing && (matches.length > 0 || laborLines.length > 0) && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 650, fontSize: 13, marginBottom: 10 }}>Статистика проверки</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: matches.length > 0 && laborLines.length > 0 ? "1fr 1fr" : "1fr",
+              gap: 18,
+            }}
+          >
+            {matches.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                  Запчасти: {matches.length} всего · одобрено {partsApprovedCount} из {matches.length}
+                </div>
+                <CategoryBreakdown counts={partsByCategory} />
+                {partsApprovedSum > 0 && (
+                  <div style={{ fontSize: 12.5, marginTop: 8 }}>
+                    Сумма одобренного: <strong>{formatRub(partsApprovedSum)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+            {laborLines.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                  Работы: {laborLines.length} всего · одобрено {laborApprovedCount} из {laborLines.length}
+                </div>
+                <CategoryBreakdown counts={laborByCategory} />
+                {laborApprovedSum > 0 && (
+                  <div style={{ fontSize: 12.5, marginTop: 8 }}>
+                    Сумма одобренного: <strong>{formatRub(laborApprovedSum)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {matches.length > 0 && laborLines.length > 0 && partsApprovedSum + laborApprovedSum > 0 && (
+            <div style={{ fontSize: 13, marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              Итого одобрено: <strong>{formatRub(partsApprovedSum + laborApprovedSum)}</strong>
+            </div>
+          )}
+
+          {orderInfo?.review_summary && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+                marginTop: 12,
+                paddingTop: 12,
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <SparklesIcon style={{ width: 14, height: 14, flexShrink: 0, marginTop: 2, color: "var(--accent)" }} />
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{orderInfo.review_summary}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {isProcessing ? (
         <div className="table-wrap">
@@ -427,7 +584,12 @@ export default function ReviewMatches() {
                       {m.contract_article || "—"} / {m.contract_name}
                     </td>
                     <td>
-                      {m.matched_name || "не найдено"}
+                      {m.matched_name || (m.llm_error ? "ИИ недоступна" : "не найдено")}
+                      {m.llm_error && (
+                        <span className="text-muted" style={{ fontSize: 11, marginLeft: 6 }} title={m.llm_error}>
+                          (сервис ИИ не ответил, а не "не найдено")
+                        </span>
+                      )}
                       {m.manually_edited && (
                         <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
                           (ручная правка)
@@ -587,7 +749,12 @@ export default function ReviewMatches() {
                         )}
                       </td>
                       <td>
-                        {l.matched_operation_name || "не найдено"}
+                        {l.matched_operation_name || (l.llm_error ? "ИИ недоступна" : "не найдено")}
+                        {l.llm_error && (
+                          <span className="text-muted" style={{ fontSize: 11, marginLeft: 6 }} title={l.llm_error}>
+                            (сервис ИИ не ответил, а не "не найдено")
+                          </span>
+                        )}
                         {l.manually_edited && (
                           <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
                             (ручная правка)
@@ -625,6 +792,8 @@ export default function ReviewMatches() {
                             title={
                               l.norm_hours == null
                                 ? "Норма часов не указана — без неё работа не попадёт в итоговый документ. Нажмите, чтобы вписать."
+                                : l.cross_make_estimate
+                                ? `Для этой марки в справочнике ничего нет — ИИ перенёс норму с похожей операции по ${[l.cross_make_estimate.from_make, l.cross_make_estimate.from_model].filter(Boolean).join(" ")}. Проверьте внимательнее обычного и нажмите, чтобы поправить.`
                                 : l.norm_hours_from_repair_order
                                 ? "Не найдено в справочнике — норма взята из самого заказ-наряда, как есть. Проверьте и нажмите, чтобы поправить."
                                 : "Изменить нормо-часы вручную"
@@ -642,6 +811,15 @@ export default function ReviewMatches() {
                         {l.norm_hours_from_repair_order && (
                           <span className="text-muted" style={{ fontSize: 11, marginLeft: 6 }}>
                             (из наряда)
+                          </span>
+                        )}
+                        {l.cross_make_estimate && (
+                          <span
+                            className="status-pill"
+                            style={{ marginLeft: 6, fontSize: 11 }}
+                            title={`Норма перенесена с ${[l.cross_make_estimate.from_make, l.cross_make_estimate.from_model].filter(Boolean).join(" ")} — в справочнике для этой марки ничего нет`}
+                          >
+                            оценка ИИ, другая марка
                           </span>
                         )}
                       </td>

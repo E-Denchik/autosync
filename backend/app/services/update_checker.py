@@ -324,7 +324,19 @@ def _write_pending_marker(result_path: str) -> None:
         logger.warning("Не удалось записать маркер ожидаемого обновления", exc_info=True)
 
 
-def _explain_install_failure(exit_code: str | None) -> str:
+def _explain_install_failure(exit_code: str | None, status: str | None = None) -> str:
+    if status == "rolled_back":
+        return (
+            "Новая версия не запустилась после установки — приложение "
+            "автоматически вернулось к предыдущей рабочей версии. Обновление "
+            "не применилось, попробуйте ещё раз позже."
+        )
+    if status == "relaunch_failed":
+        return (
+            "Обновление установилось, но новая версия не запустилась при "
+            "первом старте. Попробуйте запустить приложение вручную ещё раз; "
+            "если не поможет — переустановите вручную с GitHub Releases."
+        )
     if exit_code is None:
         return (
             "Не удалось подтвердить установку обновления — возможно, приложение "
@@ -358,10 +370,24 @@ def consume_pending_update_result() -> dict | None:
     current_commit = get_current_commit()
 
     exit_code = None
+    status = None
     if result_path and os.path.isfile(result_path):
         try:
-            with open(result_path, "r", encoding="utf-8") as f:
-                exit_code = f.read().strip() or None
+            # utf-8-sig, не utf-8: на Windows этот файл пишет PowerShell
+            # (Set-Content -Encoding utf8), а Windows PowerShell 5.1 в режиме
+            # "utf8" всегда добавляет BOM — с обычным utf-8 это превратило бы
+            # exit_code "0" в "﻿0", str.strip() BOM не убирает, и
+            # успешную установку было бы не отличить от неудачной. На Linux
+            # (echo $? без BOM) utf-8-sig читает как обычный utf-8.
+            with open(result_path, "r", encoding="utf-8-sig") as f:
+                lines = [line.strip() for line in f.readlines() if line.strip()]
+            exit_code = lines[0] if lines else None
+            # Вторая строка — необязательная отметка о том, что новый процесс
+            # не пережил перезапуск (см. _apply_linux/_apply_windows): либо
+            # "rolled_back" (Linux, не .deb: старый бинарник восстановлен
+            # автоматически), либо "relaunch_failed" (.deb/Windows — там
+            # безопасного отката нет, только диагностика).
+            status = lines[1] if len(lines) > 1 else None
         except OSError:
             pass
         try:
@@ -372,7 +398,7 @@ def consume_pending_update_result() -> dict | None:
     if current_commit and previous_commit and current_commit != previous_commit:
         return {"success": True, "commit": current_commit}
 
-    return {"success": False, "exit_code": exit_code, "message": _explain_install_failure(exit_code)}
+    return {"success": False, "exit_code": exit_code, "message": _explain_install_failure(exit_code, status)}
 
 
 def _apply_windows(installer_path: str) -> None:
@@ -390,18 +416,41 @@ def _apply_windows(installer_path: str) -> None:
     # что происходит, без отдельного кастомного UI. /SUPPRESSMSGBOXES
     # раньше прятал вместе с прогрессом и реальные ошибки инсталлятора —
     # убран намеренно (см. докстринг модуля).
-    script_path = os.path.join(tmp_dir, "apply_update.bat")
-    with open(script_path, "w", encoding="mbcs", errors="ignore") as f:
+    #
+    # PowerShell, а не .bat: Start-Process -PassThru отдаёт настоящий объект
+    # процесса с его PID и .ExitCode — можно точно проверить, что запустился
+    # (и жив) именно ТОТ процесс, который мы сами создали, а не какой-то
+    # чужой процесс с тем же именем образа (то, чем грешит сопоставление
+    # через tasklist/find по имени в .bat). Дополнительно уходит зависимость
+    # от кодировки "mbcs": Windows PowerShell по умолчанию читает файл
+    # скрипта в системной ANSI-кодовой странице, если в начале файла нет
+    # BOM, — путь с кириллицей (например, C:\Users\Иван\AppData\...,
+    # обычное дело для установщика в %TEMP%) в .bat без BOM/с "mbcs" рисковал
+    # прочитаться неверно и сломать установку. utf-8-sig ниже пишет BOM.
+    #
+    # Отката к предыдущей версии на Windows не делаем (файлы под управлением
+    # Inno Setup, безопасный бэкап — отдельная большая задача) — только
+    # честно сообщаем о неудавшемся перезапуске при следующем старте.
+    script_path = os.path.join(tmp_dir, "apply_update.ps1")
+    ps_installer_path = installer_path.replace("'", "''")
+    ps_current_exe = current_exe.replace("'", "''")
+    ps_result_path = result_path.replace("'", "''")
+    with open(script_path, "w", encoding="utf-8-sig") as f:
         f.write(
-            "@echo off\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"
-            f'"{installer_path}" /SILENT /NORESTART /CLOSEAPPLICATIONS\r\n'
-            f'echo %errorlevel% > "{result_path}"\r\n'
-            f'start "" "{current_exe}"\r\n'
+            "Start-Sleep -Seconds 2\n"
+            f"$installerProc = Start-Process -FilePath '{ps_installer_path}' "
+            "-ArgumentList '/SILENT','/NORESTART','/CLOSEAPPLICATIONS' -Wait -PassThru\n"
+            f"Set-Content -Path '{ps_result_path}' -Value $installerProc.ExitCode -Encoding utf8 -NoNewline\n"
+            f"$newProc = Start-Process -FilePath '{ps_current_exe}' -PassThru\n"
+            "Start-Sleep -Seconds 3\n"
+            "$stillAlive = Get-Process -Id $newProc.Id -ErrorAction SilentlyContinue\n"
+            "if (-not $stillAlive) {\n"
+            f"    Add-Content -Path '{ps_result_path}' -Value \"`nrelaunch_failed\"\n"
+            "}\n"
         )
 
     subprocess.Popen(
-        ["cmd", "/c", script_path],
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script_path],
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
         close_fds=True,
         env=_relaunch_env(),
@@ -425,23 +474,53 @@ def _apply_linux(asset_path: str) -> None:
         # сохраняется и показывается пользователю при следующем запуске
         # (см. consume_pending_update_result), вместо того чтобы просто
         # молча перезапустить старую версию.
+        # Как и на Windows, после apt-get install нет гарантии, что новая
+        # версия реально запустится (пакет мог собраться битым — ровно так
+        # уже случалось локально с pywebview/gi, см. build-native-linux.sh).
+        # apt не даёт нам безопасный локальный откат без заранее сохранённого
+        # старого .deb, поэтому здесь только фиксируем факт неудачи для
+        # следующего запуска, без автоматического отката.
         script = (
             "#!/bin/sh\n"
             "sleep 2\n"
             f"pkexec apt-get install -y --allow-downgrades '{asset_path}'\n"
             f"echo $? > '{result_path}'\n"
             f"'{current_exe}' &\n"
+            "NEWPID=$!\n"
+            "sleep 3\n"
+            f"kill -0 \"$NEWPID\" 2>/dev/null || echo relaunch_failed >> '{result_path}'\n"
         )
     else:
         os.chmod(asset_path, os.stat(asset_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         # cp, не mv — tmp_dir может быть на другой файловой системе
-        # (например, tmpfs), mv между ФС падает с "Invalid cross-device link".
+        # (например, tmpfs), mv между ФС падает с "Invalid cross-device link").
+        #
+        # Здесь, в отличие от .deb/Windows, у нас есть простой путь к
+        # безопасному откату: старый бинарник — это один файл, который мы и
+        # так вот-вот перезапишем, так что бэкапим его перед подменой. Если
+        # новый процесс не пережил первые секунды (тот самый класс багов —
+        # сборка "прошла", но собранный бинарник не может открыть окно),
+        # автоматически возвращаем рабочую версию назад и перезапускаем её,
+        # вместо того чтобы оставить пользователя с полностью нерабочим
+        # приложением до ручной переустановки.
+        backup_path = os.path.join(tmp_dir, "autosync.backup")
         script = (
             "#!/bin/sh\n"
             "sleep 2\n"
+            f"cp -f '{current_exe}' '{backup_path}'\n"
             f"cp -f '{asset_path}' '{current_exe}' && chmod +x '{current_exe}'\n"
             f"echo $? > '{result_path}'\n"
             f"'{current_exe}' &\n"
+            "NEWPID=$!\n"
+            "sleep 3\n"
+            "if kill -0 \"$NEWPID\" 2>/dev/null; then\n"
+            f"  rm -f '{backup_path}'\n"
+            "else\n"
+            f"  echo rolled_back >> '{result_path}'\n"
+            f"  cp -f '{backup_path}' '{current_exe}' && chmod +x '{current_exe}'\n"
+            f"  rm -f '{backup_path}'\n"
+            f"  '{current_exe}' &\n"
+            "fi\n"
         )
 
     script_path = os.path.join(tmp_dir, "apply_update.sh")
