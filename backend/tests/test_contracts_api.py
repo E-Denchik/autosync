@@ -1,6 +1,11 @@
 import io
+import re
+import zipfile
 
 import openpyxl
+
+_FIXED_ZIP_DATE = (2000, 1, 1, 0, 0, 0)
+_FIXED_TIMESTAMP = b"2000-01-01T00:00:00Z"
 
 
 def _xlsx_bytes(rows):
@@ -12,7 +17,61 @@ def _xlsx_bytes(rows):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return buf
+    return io.BytesIO(_normalize_xlsx(buf.read()))
+
+
+def _normalize_xlsx(data: bytes) -> bytes:
+    """openpyxl всегда пишет "modified" = datetime.now() в docProps/core.xml
+    (перезаписывает любое явно заданное значение при save()) и штампует
+    КАЖДУЮ запись zip-архива текущим временем — из-за этого два вызова
+    _xlsx_bytes() с ОДИНАКОВЫМ содержимым строк, но в разные секунды, дают
+    РАЗНЫЕ байты файла и, соответственно, разный content_hash (см.
+    app/services/upload_helpers.py). На CI (обычно медленнее локальной
+    машины) это реально ловилось: тест на переиспользование договора по
+    хэшу файла падал не всегда, а только когда два _xlsx_bytes() в одном
+    тесте успевали разъехаться на секунду. Пересобираем zip с фиксированными
+    датами записей и нормализованным core.xml, чтобы одно и то же логическое
+    содержимое всегда давало один и тот же файл байт-в-байт."""
+    src = zipfile.ZipFile(io.BytesIO(data))
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in src.infolist():
+            content = src.read(info.filename)
+            if info.filename == "docProps/core.xml":
+                # created/modified оба задаются openpyxl как datetime.now() при
+                # save() (явно заданное значение перед save() не переживает его) —
+                # нормализуем оба тега, а не только modified.
+                content = re.sub(
+                    rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:(?:created|modified)>)",
+                    lambda m: m.group(1) + _FIXED_TIMESTAMP + m.group(2),
+                    content,
+                )
+            new_info = zipfile.ZipInfo(info.filename, date_time=_FIXED_ZIP_DATE)
+            new_info.compress_type = zipfile.ZIP_DEFLATED
+            out.writestr(new_info, content)
+    return out_buf.getvalue()
+
+
+def test_xlsx_bytes_helper_is_deterministic_across_time():
+    """Регрессия: этот файл падал НЕ ВСЕГДА, а только когда два вызова
+    _xlsx_bytes() с одинаковыми строками успевали разъехаться на секунду
+    (openpyxl пишет created/modified = datetime.now() в docProps/core.xml
+    и штампует каждую запись zip-архива текущим временем) — на CI, обычно
+    более медленном, чем локальная машина, это ловилось регулярно (см.
+    test_reuploading_the_same_file_reuses_the_parsed_contract_instead_of_duplicating
+    ниже, который полагается на content_hash двух отдельно сгенерированных
+    файлов с одинаковым содержимым). datetime.now() читает системные часы
+    напрямую (не через time.time()), поэтому реальный sleep — единственный
+    надёжный способ воспроизвести именно секундный разрыв."""
+    import time
+
+    b1 = _xlsx_bytes([["A-1", "Деталь", 100]]).read()
+    time.sleep(1.5)
+    b2 = _xlsx_bytes([["A-1", "Деталь", 100]]).read()
+    assert b1 == b2
+
+    b3 = _xlsx_bytes([["A-2", "Другая деталь", 200]]).read()
+    assert b1 != b3
 
 
 def test_list_empty_by_default(client, operator_headers):
