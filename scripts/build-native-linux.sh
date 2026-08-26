@@ -84,6 +84,13 @@ OUT_DIR="$REPO_ROOT/dist/native-linux"
 rm -rf "$BUILD_WORK" "$OUT_DIR"
 mkdir -p "$BUILD_WORK" "$OUT_DIR"
 
+# --hidden-import=app.services.builtin_brand_aliases ниже: этот модуль
+# нигде в app/ не импортируется обычным import'ом (только миграцией
+# b7e3a9c5d1f8_add_brand_aliases_table.py и тестами) — без явного
+# hidden-import PyInstaller не находит его транзитивным анализом и не
+# включает в архив, а FileNotFoundError, к которому это приводит, если
+# миграция вдобавок пытается грузить его по относительному пути к файлу
+# (а не обычным import), см. саму миграцию.
 cd "$REPO_ROOT/backend"
 pyinstaller \
   --name autosync \
@@ -102,6 +109,7 @@ pyinstaller \
   --collect-submodules apscheduler \
   --hidden-import=logging.config \
   --hidden-import=pytesseract \
+  --hidden-import=app.services.builtin_brand_aliases \
   --collect-all numpy \
   --collect-all pandas \
   --collect-all gi \

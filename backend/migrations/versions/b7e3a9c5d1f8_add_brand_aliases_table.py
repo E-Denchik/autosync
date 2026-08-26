@@ -5,7 +5,6 @@ Revises: a1c4f0e2b7d3
 Create Date: 2026-08-26 00:00:00.000000
 
 """
-import importlib.util
 import os
 import sys
 from datetime import datetime
@@ -17,19 +16,19 @@ import sqlalchemy as sa
 # же) — но на всякий случай (миграции иногда запускают изолированно).
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# Используем importlib вместо обычного import, чтобы избежать проблем в
-# frozen-сборках PyInstaller, где sys.path может быть неполным на момент
-# запуска миграции. importlib гарантирует, что мы загружаем модуль даже
-# если обычный import не сработал бы.
-_spec = importlib.util.spec_from_file_location(
-    "builtin_brand_aliases",
-    os.path.join(os.path.dirname(__file__), "..", "..", "app", "services", "builtin_brand_aliases.py")
-)
-if _spec is None or _spec.loader is None:
-    raise ImportError("Не удалось загрузить builtin_brand_aliases.py")
-_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_module)
-BUILTIN_BRAND_ALIASES = _module.BUILTIN_BRAND_ALIASES
+# ВАЖНО: обычный import модуля, а не загрузка по относительному пути к
+# файлу (importlib.util.spec_from_file_location(..., "../../app/services/
+# builtin_brand_aliases.py")) — в frozen-сборке PyInstaller миграции
+# бандлятся как есть через --add-data (реальные файлы в migrations/), а
+# app/* компилируется В АРХИВ, отдельных .py-файлов на диске для него нет
+# вовсе. Путь "../../app/services/..." от файла миграции физически не
+# существует в собранном приложении — FileNotFoundError. Обычный import
+# работает и в dev, и в frozen-сборке (модуль явно указан через
+# --hidden-import в build-native-linux.sh/build-native-windows.ps1, чтобы
+# PyInstaller гарантированно включил его в архив, а не только через
+# транзитивный анализ импортов — этот модуль больше нигде в app/ не
+# импортируется).
+from app.services.builtin_brand_aliases import BUILTIN_BRAND_ALIASES  # noqa: E402
 
 
 # revision identifiers, used by Alembic.

@@ -91,6 +91,13 @@ $OutDir = "$RepoRoot\dist\native-windows"
 Remove-Item -Recurse -Force $BuildWork, $OutDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $BuildWork, $OutDir | Out-Null
 
+# --hidden-import=app.services.builtin_brand_aliases ниже: этот модуль
+# нигде в app/ не импортируется обычным import'ом (только миграцией
+# b7e3a9c5d1f8_add_brand_aliases_table.py и тестами) — без явного
+# hidden-import PyInstaller не находит его транзитивным анализом и не
+# включает в архив; миграция грузит его обычным import (не по
+# относительному пути к файлу — тот в frozen-сборке не существует, см.
+# саму миграцию).
 Set-Location "$RepoRoot\backend"
 
 pyinstaller `
@@ -113,6 +120,7 @@ pyinstaller `
   --collect-submodules apscheduler `
   --hidden-import=logging.config `
   --hidden-import=pytesseract `
+  --hidden-import=app.services.builtin_brand_aliases `
   --collect-all numpy `
   --collect-all pandas `
   --exclude-module PyQt5 `
