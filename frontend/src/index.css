@@ -1323,6 +1323,16 @@ a.stat-card:hover {
   color: var(--warning);
 }
 
+.hint-banner.hint-success {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.hint-banner.hint-danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
 .hint-banner a {
   color: inherit;
   font-weight: 650;

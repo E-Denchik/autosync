@@ -49,6 +49,7 @@ export const api = {
   listLlmModels: () => request("/llm/models"),
   selectLlmModel: (provider, model) =>
     request("/llm/select", { method: "POST", body: JSON.stringify({ provider, model }) }),
+  testLlmConnection: () => request("/llm/test", { method: "POST" }),
 
   // Дашборд
   dashboardSummary: () => request("/dashboard/summary"),

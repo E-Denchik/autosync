@@ -1,6 +1,19 @@
+import pytest
 import requests
 
+from app.services import llm_settings
 from app.services.llm_client import LLMClient, LLMClientError
+
+
+@pytest.fixture(autouse=True)
+def _selected_model(app):
+    """_generate() требует явно выбранную модель (см. её собственный
+    докстринг про запасной путь на жёстко прошитый "qwen2.5:14b") — тесты
+    в этом файле проверяют промпты/ретраи, а не саму логику выбора модели
+    (для неё см. test_llm_settings.py), поэтому просто заранее сажаем
+    любую модель, как и сделал бы администратор через Настройки → LLM."""
+    with app.app_context():
+        llm_settings.set_selection("ollama", "qwen2.5:7b")
 
 
 class _FakeResponse:
@@ -12,6 +25,66 @@ class _FakeResponse:
 
     def json(self):
         return self._json
+
+
+def test_test_connection_succeeds_when_model_responds(app, monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(True, {"text": "OK"})
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", fake_post)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        message = client.test_connection()
+
+    assert "отвечает" in message
+
+
+def test_test_connection_raises_with_real_error_on_failure(app, monkeypatch):
+    """Реальный сценарий заказчика: модель выбрана и видна в списке
+    скачанных, но раннер падает при попытке её реально загрузить
+    (нехватка памяти) — test_connection должен пробросить настоящую
+    причину, а не проглотить её."""
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(False, {}, status_code=502, text="out-of-memory during startup")
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", fake_post)
+    monkeypatch.setattr("app.services.llm_client.time.sleep", lambda *_: None)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        try:
+            client.test_connection()
+            assert False, "expected LLMClientError"
+        except LLMClientError as exc:
+            assert "out-of-memory" in str(exc)
+
+
+def test_generate_fails_clearly_without_silently_falling_back_when_no_model_selected(app, monkeypatch):
+    """Регрессия: без выбора llm-service тихо подставляет свой запасной
+    вариант (в реальном приложении — жёстко прошитый "qwen2.5:14b", ~9+ ГБ
+    памяти, поскольку LLM_MODEL_NAME никогда не задаётся), задуманный только
+    для ручного curl (см. llm-service/server.py). У заказчика это выглядело
+    как случайный out-of-memory на слабой машине после смены модели в
+    настройках — на самом деле выбор либо не сохранился, либо сбросился
+    (app/api/llm.py: previous_selection), и КАЖДЫЙ запрос уходил на этот
+    огромный запасной вариант в обход того, что реально выбрано."""
+    with app.app_context():
+        llm_settings.clear_selection()
+
+    def must_not_be_called(url, json=None, timeout=None):
+        raise AssertionError("не должно уходить в сеть без выбранной модели")
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", must_not_be_called)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        try:
+            client.suggest_price({"name": "x", "sku": "s", "cost_price": 1.0}, {})
+            assert False, "expected LLMClientError"
+        except LLMClientError as exc:
+            assert "не выбрана" in str(exc)
 
 
 def test_suggest_price_uses_dedicated_prompt_with_cost_price(app, monkeypatch):

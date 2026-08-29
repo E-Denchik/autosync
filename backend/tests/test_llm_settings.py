@@ -90,3 +90,35 @@ def test_selection_cleared_when_model_disappears_from_discovery(client, admin_he
     # выбор реально сброшен в БД, не просто "скрыт" в одном ответе
     resp2 = client.get("/api/llm/models", headers=admin_headers)
     assert resp2.get_json()["previous_selection"] is None
+
+
+def test_llm_test_endpoint_reports_success_when_model_responds(client, admin_headers, monkeypatch):
+    """Регрессия: модель может числиться на диске (list_models её видит), но
+    не влезать в доступную память при реальной загрузке — /models этого не
+    ловит. /test делает настоящий пробный запрос и дожидается ответа
+    (см. LLMClient.test_connection), чтобы UploadPage.jsx мог предупредить
+    об этом ДО загрузки файлов, а не посреди обработки заказ-наряда."""
+    monkeypatch.setattr(LLMClient, "test_connection", lambda self: "Модель отвечает, можно продолжать.")
+    resp = client.post("/api/llm/test", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert "отвечает" in body["message"]
+
+
+def test_llm_test_endpoint_reports_failure_without_500(client, admin_headers, monkeypatch):
+    """Реальный сценарий заказчика: модель выбрана, но раннер падает с
+    нехваткой памяти при загрузке — эндпоинт должен вернуть понятную
+    причину с кодом 200 (ok: false), а не голый 500."""
+
+    def _raise(self):
+        raise LLMClientError(
+            "llm-service -> 502: {\"error\":\"ollama -> 500: ...out-of-memory during startup...\"}"
+        )
+
+    monkeypatch.setattr(LLMClient, "test_connection", _raise)
+    resp = client.post("/api/llm/test", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "out-of-memory" in body["error"]

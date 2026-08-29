@@ -66,3 +66,17 @@ def select_model():
     )
     llm_settings.set_selection(provider, model_name)
     return jsonify(provider=provider, model=model_name)
+
+
+@bp.post("/test")
+def test_model():
+    """Реальный пробный запрос к уже выбранной модели (см.
+    LLMClient.test_connection) — в отличие от /models, дожидается ответа
+    раннера, а не просто проверяет, что модель есть в списке скачанных.
+    Ловит нехватку памяти/сбой раннера ДО того, как пользователь потратит
+    время на загрузку и разбор файлов (см. UploadPage.jsx)."""
+    try:
+        message = _client().test_connection()
+    except LLMClientError as exc:
+        return jsonify(ok=False, error=str(exc))
+    return jsonify(ok=True, message=message)

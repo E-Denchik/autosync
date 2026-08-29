@@ -20,6 +20,26 @@ if [ ! -d "$REPO_ROOT/backend" ]; then
   exit 1
 fi
 
+# Расчищает путь перед пересозданием — mv, а не сразу rm -rf: убрать
+# директорию С ПУТИ — операция над РОДИТЕЛЬСКИМ каталогом, нужны права
+# только на него, а не на каждый файл внутри убираемой директории. rm -rf
+# же спускается внутрь и спотыкается на первом файле с чужим владельцем
+# (например, build/dist от предыдущей сборки из-под sudo, или venv,
+# созданный не тем пользователем) — тогда даже обычная пересборка начинала
+# требовать ручного sudo rm -rf, хотя раньше без sudo работало. После mv
+# старую копию удаляем уже не блокируя саму сборку: получится — хорошо,
+# нет — не страшно, она просто лежит в стороне под тем же именем с .stale.
+clear_path() {
+  local target="$1"
+  [ -e "$target" ] || return 0
+  local stale="${target}.stale"
+  rm -rf "$stale" 2>/dev/null || true
+  mv "$target" "$stale"
+  if ! rm -rf "$stale" 2>/dev/null; then
+    echo "    (старую копию не удалось удалить сразу — не блокирует сборку, лежит в $stale; можно почистить позже: sudo rm -rf '$stale')"
+  fi
+}
+
 echo "==> Собираю frontend"
 # VITE_API_BASE_URL=/api (относительный, не абсолютный) — фронт и backend
 # это один и тот же процесс/origin (окно pywebview на 127.0.0.1), поэтому
@@ -45,6 +65,31 @@ if [ ! -x "$SYSTEM_PYTHON3" ]; then
   echo "    /usr/bin/python3 не найден — использую python3 из PATH (может не совпадать с тем, для кого apt поставил python3-gi)"
   SYSTEM_PYTHON3="python3"
 fi
+# На rolling-release дистрибутивах (замечено на Kali) версия /usr/bin/python3
+# может смениться МЕЖДУ сборками (например, 3.12 -> 3.14 после обновления
+# системы) — venv, созданный под старую версию, при этом никуда не девается
+# и продолжает молча переиспользоваться. ВАЖНО: bin/python3 внутри venv —
+# символьная ссылка НА /usr/bin/python3, поэтому "$VENV_DIR/bin/python3
+# --version" всегда покажет ТЕКУЩУЮ системную версию, а не ту, под которую
+# venv реально создавался, — этим способом смену версии не поймать в
+# принципе. Настоящая создания-time версия — в pyvenv.cfg (version = ...),
+# который сам не обновляется. При рассинхронизации структура venv
+# (lib/pythonX.Y/site-packages) не совпадает с версией фактически
+# запускаемого интерпретатора — Python перестаёт узнавать в этом venv "свой"
+# и трактует его как системное окружение (отсюда PEP 668
+# "externally-managed-environment" на pip install), а уже установленные
+# через pip пакеты (numpy/pandas и т.п. — реальные .so, не ссылки) остаются
+# собранными под старую версию. Раньше это проявлялось как невнятная ошибка
+# про gi — теперь при смене версии системного Python venv просто
+# пересоздаётся заново.
+if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
+  venv_python_version="$(sed -n 's/^version = //p' "$VENV_DIR/pyvenv.cfg")"
+  system_python_version="$("$SYSTEM_PYTHON3" -c 'import platform; print(platform.python_version())' 2>/dev/null || true)"
+  if [ -n "$venv_python_version" ] && [ "$venv_python_version" != "$system_python_version" ]; then
+    echo "    Системный Python изменился (venv собран под $venv_python_version, сейчас $system_python_version) — пересоздаю backend/.venv-native"
+    clear_path "$VENV_DIR"
+  fi
+fi
 if [ ! -d "$VENV_DIR" ]; then
   # --system-site-packages: окно приложения (pywebview) на Linux использует
   # WebKitGTK через PyGObject (модуль gi) — тот ставится системным пакетным
@@ -65,10 +110,11 @@ echo "==> Проверяю, что модуль gi (GTK-биндинги) вид
 # а не после долгой сборки через selftest в конце этого скрипта.
 if ! python3 -c "import gi" 2>/tmp/gi-import-error.log; then
   echo "" >&2
-  echo "ОШИБКА: модуль gi не импортируется из backend/.venv-native — venv, похоже," >&2
-  echo "создан не от системного Python (/usr/bin/python3), для которого apt" >&2
-  echo "поставил python3-gi. Обычно помогает: rm -rf backend/.venv-native и" >&2
-  echo "пересборка — сейчас использован: $SYSTEM_PYTHON3" >&2
+  echo "ОШИБКА: модуль gi не импортируется из backend/.venv-native (уже пересоздан под" >&2
+  echo "текущий $SYSTEM_PYTHON3 -- $($SYSTEM_PYTHON3 --version 2>/dev/null)). Проверьте, что для" >&2
+  echo "ИМЕННО ЭТОЙ версии Python установлены системные пакеты:" >&2
+  echo "  sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1" >&2
+  echo "(на некоторых системах пакет называется gir1.2-webkit2-4.0)." >&2
   cat /tmp/gi-import-error.log >&2
   rm -f /tmp/gi-import-error.log
   exit 1
@@ -81,7 +127,8 @@ python3 "$REPO_ROOT/scripts/write_build_info.py"
 echo "==> Запускаю PyInstaller"
 BUILD_WORK="$REPO_ROOT/build/native-linux"
 OUT_DIR="$REPO_ROOT/dist/native-linux"
-rm -rf "$BUILD_WORK" "$OUT_DIR"
+clear_path "$BUILD_WORK"
+clear_path "$OUT_DIR"
 mkdir -p "$BUILD_WORK" "$OUT_DIR"
 
 # --hidden-import=app.services.builtin_brand_aliases ниже: этот модуль

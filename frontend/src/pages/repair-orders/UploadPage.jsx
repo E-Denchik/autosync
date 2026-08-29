@@ -4,6 +4,7 @@ import { api } from "../../api/client.js";
 import { useToast } from "../../context/ToastContext.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
+import LlmPreflightModal from "../../components/LlmPreflightModal.jsx";
 import { UploadIcon, FileTextIcon, AlertCircleIcon, EyeIcon, CloseIcon, InfoIcon, PlusIcon } from "../../components/icons.jsx";
 
 const ACCEPTED = [".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pdf", ".jpg", ".jpeg", ".png"];
@@ -148,6 +149,7 @@ export default function UploadPage() {
   const [vehicleVin, setVehicleVin] = useState("");
   const [showMatchingInfo, setShowMatchingInfo] = useState(true);
   const [showVehicleFields, setShowVehicleFields] = useState(false);
+  const [showLlmModal, setShowLlmModal] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -169,7 +171,7 @@ export default function UploadPage() {
 
   const parsedContracts = contracts.filter((c) => c.status === "parsed" && c.active);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (orderFiles.length === 0) {
       toast.error("Нужно выбрать файл заказ-наряда");
@@ -183,6 +185,15 @@ export default function UploadPage() {
       toast.error("Нужно выбрать контракт из списка");
       return;
     }
+    // Файлы уже выбраны и прошли проверку — прежде чем реально их
+    // загружать, показываем статус ИИ (см. LlmPreflightModal.jsx): выбрана
+    // ли модель, можно сменить прямо тут, и по кнопке реально проверить,
+    // что она отвечает, а не просто числится на диске.
+    setShowLlmModal(true);
+  };
+
+  const performUpload = async () => {
+    setShowLlmModal(false);
     setSubmitting(true);
     try {
       const { repair_order_id, reused_existing_contract, reused_contract_name } = await api.uploadDocuments(
@@ -535,6 +546,10 @@ export default function UploadPage() {
         </div>
         )}
       </div>
+
+      {showLlmModal && (
+        <LlmPreflightModal onClose={() => setShowLlmModal(false)} onContinue={performUpload} />
+      )}
     </div>
   );
 }

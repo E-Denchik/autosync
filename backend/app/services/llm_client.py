@@ -54,16 +54,43 @@ class LLMClient:
             raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
         return resp.json()
 
+    def test_connection(self) -> str:
+        """Настоящий пробный запрос к уже выбранной модели — дожидается
+        реального ответа раннера (Ollama/LM Studio), а не просто проверяет,
+        что модель есть в списке скачанных (list_models). Модель может
+        числиться на диске и при этом не влезать в доступную память —
+        list_models этого не поймает, а именно на этом заказчик спотыкался
+        (см. UploadPage.jsx: предварительная проверка перед загрузкой
+        файлов, чтобы узнать об этом ДО, а не посреди обработки)."""
+        self._generate("Ответь одним словом: OK", json_response=False)
+        return "Модель отвечает, можно продолжать."
+
     def _generate(self, prompt: str, *, json_response: bool = False) -> str:
         from flask import current_app
 
         from app.services.llm_settings import get_selection
 
-        payload = {"prompt": prompt, "json_response": json_response}
         selection = get_selection()
-        if selection is not None:
-            payload["provider"] = selection.provider
-            payload["model"] = selection.model_name
+        if selection is None:
+            # Без выбора llm-service тихо подставляет свой запасной вариант
+            # (переменные окружения LLM_PROVIDER/LLM_MODEL_NAME, а без них —
+            # жёстко прошитый "qwen2.5:14b", ~9+ ГБ памяти) — этот запасной
+            # путь задуман только для ручного curl/обратной совместимости
+            # (см. докстринг llm-service/server.py), а не для реальной
+            # работы приложения. Раньше это выглядело как случайный
+            # out-of-memory на слабой машине, хотя причина была в том, что
+            # администратор просто не выбрал модель (или выбор сбросился,
+            # см. app/api/llm.py: previous_selection) — теперь ошибка сразу
+            # называет настоящую причину.
+            raise LLMClientError(
+                "Модель ИИ не выбрана — откройте Администрирование → LLM-модель и выберите модель."
+            )
+        payload = {
+            "prompt": prompt,
+            "json_response": json_response,
+            "provider": selection.provider,
+            "model": selection.model_name,
+        }
 
         # В тестах (TESTING=True) llm-service обычно не запущен вовсе —
         # это ОЖИДАЕМЫЙ, мгновенный ConnectionError, а не тот случай
