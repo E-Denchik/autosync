@@ -94,7 +94,7 @@ def create_app(config_class=Config):
     _register_frontend_static_routes(app)
 
     # модели должны быть импортированы до Alembic autogenerate
-    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, llm_setting, history, integration_setting, document_template, brand_alias, raw_import_row  # noqa: F401
+    from app.models import product, price_snapshot, repair_order, part_match, contract, contragent, labor_catalog, labor_line, nomenclature, llm_setting, history, integration_setting, document_template, brand_alias, raw_import_row, llm_extraction_cache  # noqa: F401
 
     return app
 

@@ -14,6 +14,7 @@ from app.models.upload_file import ContractFile, RepairOrderFile
 from app.models.document_template import DocumentTemplate
 from app.models.brand_alias import BrandAlias
 from app.models.raw_import_row import RawImportRow
+from app.models.llm_extraction_cache import LlmExtractionCache
 
 __all__ = [
     "Product",
@@ -42,4 +43,5 @@ __all__ = [
     "DocumentTemplate",
     "BrandAlias",
     "RawImportRow",
+    "LlmExtractionCache",
 ]

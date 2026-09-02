@@ -64,7 +64,11 @@ def test_enrich_part_match_survives_client_error():
     assert result["nomenclature_source"] is None
 
 
-def test_enrich_all_preserves_order_and_count():
+def test_enrich_all_preserves_order_and_count(app):
+    """enrich_all теперь обогащает позиции параллельно (см.
+    services/parallel.py: map_with_app_context) — на >1 элементе это
+    реальные потоки, каждому нужен свой Flask app_context, поэтому тест
+    (в отличие от enrich_part_match напрямую) требует app-фикстуру."""
     matches = [
         {"matched_article": "A", "matched_name": "Деталь A"},
         {"matched_article": "B", "matched_name": "Деталь B"},
@@ -72,7 +76,8 @@ def test_enrich_all_preserves_order_and_count():
     client = MagicMock()
     client.find_match.return_value = None
 
-    result = enrich_all(matches, client)
+    with app.app_context():
+        result = enrich_all(matches, client)
 
     assert len(result) == 2
     assert client.find_match.call_count == 2

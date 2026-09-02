@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../../context/ToastContext.jsx";
+import { ErrorLogProvider } from "../../context/ErrorLogContext.jsx";
 import { api } from "../../api/client.js";
 import Contragents from "./Contragents.jsx";
 
@@ -17,9 +18,11 @@ vi.mock("../../api/client.js", () => ({
 
 function renderPage() {
   return render(
-    <ToastProvider>
-      <Contragents />
-    </ToastProvider>
+    <ErrorLogProvider>
+      <ToastProvider>
+        <Contragents />
+      </ToastProvider>
+    </ErrorLogProvider>
   );
 }
 

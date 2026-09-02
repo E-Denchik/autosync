@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import { AlertCircleIcon, CheckCircleIcon, InfoIcon } from "../components/icons.jsx";
+import { useErrorLog } from "./ErrorLogContext.jsx";
 
 const ToastContext = createContext(null);
 
@@ -12,6 +13,7 @@ const ICONS = {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const idRef = useRef(0);
+  const errorLog = useErrorLog();
 
   const dismiss = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -31,7 +33,14 @@ export function ToastProvider({ children }) {
 
   const toast = {
     success: (msg) => push(msg, "success"),
-    error: (msg) => push(msg, "error", 8000),
+    // Всплывающее уведомление само по себе исчезает через несколько секунд
+    // и не всегда влезает целиком — полный текст дополнительно сохраняется
+    // в постоянный журнал (Администрирование → Журнал ошибок), который
+    // ничего не теряет и не пропадает сам.
+    error: (msg) => {
+      errorLog.log(msg);
+      return push(msg, "error", 8000);
+    },
     info: (msg) => push(msg, "info"),
   };
 
@@ -44,7 +53,7 @@ export function ToastProvider({ children }) {
           return (
             <div key={t.id} className={`toast toast-${t.type}`}>
               <Icon className="toast-icon" />
-              <span>{t.message}</span>
+              <span style={{ userSelect: "text" }}>{t.message}</span>
               <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Закрыть">
                 ×
               </button>

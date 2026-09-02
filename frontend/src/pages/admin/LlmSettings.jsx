@@ -8,12 +8,15 @@ import { RefreshIcon } from "../../components/icons.jsx";
 const PROVIDER_LABELS = {
   ollama: "Ollama",
   lmstudio: "LM Studio",
+  vsegpt: "vsegpt.ru",
 };
 
 export default function LlmSettings() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState(null); // "provider:model" в процессе выбора
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
   const toast = useToast();
 
   const load = () => {
@@ -25,7 +28,7 @@ export default function LlmSettings() {
         if (res.previous_selection) {
           const { provider, model } = res.previous_selection;
           toast.error(
-            `Ранее выбранная модель «${model}» (${PROVIDER_LABELS[provider] || provider}) больше не найдена на диске — выбор сброшен, выберите другую.`
+            `Ранее выбранная модель «${model}» (${PROVIDER_LABELS[provider] || provider}) больше не найдена — выбор сброшен, выберите другую.`
           );
         }
       })
@@ -48,7 +51,25 @@ export default function LlmSettings() {
     }
   };
 
-  if (loading) return <Spinner label="Ищем модели на этой машине…" />;
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      toast.error("Введите ключ");
+      return;
+    }
+    setSavingKey(true);
+    try {
+      await api.saveIntegrationKeys({ VSEGPT_API_KEY: apiKeyInput.trim() });
+      toast.success("Ключ vsegpt.ru сохранён — загружаем список моделей…");
+      setApiKeyInput("");
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  if (loading) return <Spinner label="Ищем доступные модели…" />;
   if (!data) return null;
 
   const isSelected = (provider, modelName) =>
@@ -60,10 +81,10 @@ export default function LlmSettings() {
         <div>
           <h2>LLM-модель</h2>
           <p>
-            AutoSync сам находит модели, скачанные на этой машине через Ollama и LM Studio, и
-            использует ту, что вы выберете, — для предложений по цене, генерации карточек и
-            LLM-фоллбэка сопоставления запчастей. Выбор сохраняется между сессиями, пока модель не
-            будет удалена с диска.
+            AutoSync находит модели, скачанные на этой машине через Ollama и LM Studio, либо
+            облачные модели vsegpt.ru (по вашему API-ключу), и использует ту, что вы выберете, —
+            для предложений по цене, генерации карточек и LLM-фоллбэка сопоставления запчастей.
+            Выбор сохраняется между сессиями, пока модель не станет недоступна.
           </p>
         </div>
         <button className="btn btn-secondary" onClick={load}>
@@ -73,11 +94,43 @@ export default function LlmSettings() {
 
       <HowToUse
         steps={[
-          "Выберите одну модель из найденных на этой машине (Ollama или LM Studio) — она будет использоваться для предложений по цене, генерации карточек и сопоставления запчастей по названию.",
-          "Если списки пустые — убедитесь, что запущена Ollama (ollama serve) или включён Local Server в LM Studio, затем нажмите «Обновить список».",
+          "Локальные модели: убедитесь, что запущена Ollama (ollama serve) или включён Local Server в LM Studio, затем нажмите «Обновить список».",
+          "Облачные модели vsegpt.ru: вставьте API-ключ в поле ниже и сохраните — появится список моделей, доступных этому ключу.",
+          "Выберите одну модель из списка — она будет использоваться для предложений по цене, генерации карточек и сопоставления запчастей по названию.",
           "Без выбранной модели эти LLM-функции просто недоступны — остальная часть приложения продолжает работать как обычно.",
         ]}
       />
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>vsegpt.ru — API-ключ</h3>
+          {data.vsegpt_configured ? (
+            <span className="status-pill status-approved">настроен</span>
+          ) : (
+            <span className="status-pill status-pending">не настроен</span>
+          )}
+        </div>
+        <p className="text-muted" style={{ marginTop: 0 }}>
+          Ключ сохраняется в базе данных и применяется сразу — перезапуск не нужен. Значение
+          обратно не показывается, только факт "настроен".
+        </p>
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="vsegpt-api-key">API-ключ vsegpt.ru</label>
+            <input
+              id="vsegpt-api-key"
+              type="password"
+              autoComplete="off"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder={data.vsegpt_configured ? "••••••••••••" : "sk-or-..."}
+            />
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={savingKey} onClick={handleSaveApiKey}>
+            {savingKey ? "Сохранение…" : data.vsegpt_configured ? "Заменить ключ" : "Сохранить ключ"}
+          </button>
+        </div>
+      </div>
 
       {data.selected ? (
         <div className="panel" style={{ marginBottom: 20 }}>
@@ -98,14 +151,26 @@ export default function LlmSettings() {
             {provider === "lmstudio" && info.server_running === false && info.models.length > 0 && (
               <span className="status-pill status-pending">Local Server выключен</span>
             )}
-            {!info.available && <span className="status-pill status-rejected">не найден</span>}
+            {!info.available && provider !== "vsegpt" && (
+              <span className="status-pill status-rejected">не найден</span>
+            )}
+            {!info.available && provider === "vsegpt" && data.vsegpt_configured && (
+              <span className="status-pill status-rejected">ошибка</span>
+            )}
           </div>
 
-          {!info.available && (
+          {!info.available && provider === "ollama" && (
+            <p className="text-muted">Ollama не отвечает — проверьте, что демон запущен (ollama serve).</p>
+          )}
+          {!info.available && provider === "lmstudio" && (
+            <p className="text-muted">Ни одной модели не найдено ни на диске, ни через Local Server LM Studio.</p>
+          )}
+          {!info.available && provider === "vsegpt" && !data.vsegpt_configured && (
+            <p className="text-muted">Добавьте API-ключ выше, чтобы увидеть доступные модели.</p>
+          )}
+          {!info.available && provider === "vsegpt" && data.vsegpt_configured && (
             <p className="text-muted">
-              {provider === "ollama"
-                ? "Ollama не отвечает — проверьте, что демон запущен (ollama serve)."
-                : "Ни одной модели не найдено ни на диске, ни через Local Server LM Studio."}
+              Не удалось получить список моделей{info.error ? `: ${info.error}` : ""} — проверьте ключ.
             </p>
           )}
 

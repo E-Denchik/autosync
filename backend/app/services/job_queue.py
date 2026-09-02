@@ -20,6 +20,7 @@ from flask import current_app
 # приложение уже полностью инициализировано, так что импортировать здесь
 # безопасно.
 from app.services.contract_catalog_import import import_contract_job
+from app.services.progress_tracker import tracking as track_progress
 from app.services.repair_order_processor import process_upload_job
 
 logger = logging.getLogger(__name__)
@@ -32,14 +33,18 @@ def enqueue_process_upload(contract_id: int, repair_order_id: int) -> None:
 
     def _run():
         with app.app_context():
-            try:
-                process_upload_job(contract_id, repair_order_id)
-            except Exception:
-                logger.exception(
-                    "process_upload_job упал для contract_id=%s repair_order_id=%s",
-                    contract_id,
-                    repair_order_id,
-                )
+            # tracking() снаружи try — прогресс должен считаться (и потом
+            # обязательно очиститься, см. его докстринг про переиспользуемые
+            # потоки пула) вне зависимости от того, упадёт ли сама обработка.
+            with track_progress(repair_order_id):
+                try:
+                    process_upload_job(contract_id, repair_order_id)
+                except Exception:
+                    logger.exception(
+                        "process_upload_job упал для contract_id=%s repair_order_id=%s",
+                        contract_id,
+                        repair_order_id,
+                    )
 
     _executor.submit(_run)
 

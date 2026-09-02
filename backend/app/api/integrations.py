@@ -10,6 +10,7 @@ import os
 
 from flask import Blueprint, current_app, jsonify, request
 
+from app.extensions import db
 from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.autoeuro_client import AutoEuroClient, AutoEuroError
@@ -201,4 +202,10 @@ def save_keys():
         "updated",
         details={"keys": sorted(updates.keys())},
     )
+    # log_change() сам не коммитит (см. его докстринг) — settings_store.save_keys()
+    # выше уже закоммитила сами ключи отдельной транзакцией, поэтому запись
+    # истории тоже нужно закоммитить явно здесь, иначе она осталась бы висеть
+    # в сессии как незафиксированное изменение до следующего db.session.add/commit
+    # где-то ещё в приложении (или потерялась бы вовсе на remove() сессии).
+    db.session.commit()
     return jsonify(ok=True, updated=sorted(updates.keys()))

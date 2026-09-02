@@ -7,6 +7,7 @@ import { AlertCircleIcon, CheckCircleIcon } from "./icons.jsx";
 const PROVIDER_LABELS = {
   ollama: "Ollama",
   lmstudio: "LM Studio",
+  vsegpt: "vsegpt.ru",
 };
 
 // Заказчик жаловался, что смена модели в настройках "как будто не
@@ -131,8 +132,8 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
 
             {allModels.length === 0 ? (
               <p className="text-muted" style={{ fontSize: 12.5 }}>
-                На этой машине не нашлось ни одной модели (Ollama/LM Studio). Установите модель и нажмите
-                «Обновить», либо продолжите без ИИ.
+                Не нашлось ни одной модели (Ollama/LM Studio) и ключ vsegpt.ru не настроен. Настройте одно
+                из этого в Администрирование → LLM-модель и нажмите «Обновить», либо продолжите без ИИ.
               </p>
             ) : (
               <div className="table-wrap" style={{ marginBottom: 14 }}>

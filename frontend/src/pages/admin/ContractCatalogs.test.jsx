@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../../context/ToastContext.jsx";
+import { ErrorLogProvider } from "../../context/ErrorLogContext.jsx";
 import { api } from "../../api/client.js";
 import ContractCatalogs from "./ContractCatalogs.jsx";
 
@@ -18,9 +19,11 @@ vi.mock("../../api/client.js", () => ({
 function renderPage() {
   return render(
     <MemoryRouter>
-      <ToastProvider>
-        <ContractCatalogs />
-      </ToastProvider>
+      <ErrorLogProvider>
+        <ToastProvider>
+          <ContractCatalogs />
+        </ToastProvider>
+      </ErrorLogProvider>
     </MemoryRouter>
   );
 }

@@ -190,7 +190,31 @@ def test_list_and_status_endpoints(client, admin_headers, app, monkeypatch):
         f"/api/repair-orders/upload/{repair_order_id}/status", headers=admin_headers
     )
     assert status_resp.status_code == 200
-    assert status_resp.get_json()["status"] == "uploaded"
+    body = status_resp.get_json()
+    assert body["status"] == "uploaded"
+    # Фронт считает от этой отметки прошедшее время обработки (см.
+    # ReviewMatches.jsx) — без неё индикатор не мог бы показать, сколько
+    # уже идёт парсинг/сопоставление долгого файла.
+    assert body["created_at"]
+    # Фоновая обработка этого заказ-наряда даже не запускалась (enqueue
+    # замокан в других тестах, а здесь просто ничего ещё не произошло) —
+    # прогресса пока ниоткуда взяться, поле должно быть null, а не падать.
+    assert body["progress"] is None
+
+    # А если фоновая обработка реально идёт (см. services/progress_tracker.py,
+    # job_queue.py: enqueue_process_upload) — /status должен отдавать её как есть.
+    from app.services import progress_tracker
+
+    with progress_tracker.tracking(repair_order_id):
+        progress_tracker.report(3, 10)
+        status_resp2 = client.get(
+            f"/api/repair-orders/upload/{repair_order_id}/status", headers=admin_headers
+        )
+    progress = status_resp2.get_json()["progress"]
+    assert progress["current"] == 3
+    assert progress["total"] == 10
+    # Фронт считает по нему, сколько времени осталось (см. ReviewMatches.jsx).
+    assert progress["started_at"]
 
 
 def test_status_reports_contragent_and_vehicle_so_ui_can_confirm_they_were_saved(

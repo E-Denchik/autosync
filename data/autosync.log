@@ -1534,3 +1534,308 @@ webview.errors.WebViewException: You must have either QT or GTK with Python exte
 2026-08-29 12:13:27,182 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
 2026-08-29 12:13:27,203 ERROR pywebview: Error while processing window.native.widget: unable to get the value
 2026-08-29 12:20:43,171 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 11:50:58,052 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 11:50:58,449 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 11:50:58,450 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 11:50:58,450 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 11:50:58,450 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 11:50:58,450 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 11:50:58,450 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 11:50:58,807 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 11:50:59,353 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 11:50:59,399 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 11:50:59,400 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 11:50:59,400 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 11:50:59,400 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 11:50:59,411 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 11:51:01,240 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 11:51:01,242 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 11:51:01,274 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 11:51:01,288 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 11:52:50,184 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 12:13:03,114 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 12:13:03,507 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 12:13:05,158 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 12:13:05,652 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 12:13:05,677 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 12:13:05,678 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 12:13:05,678 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 12:13:05,679 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 12:13:05,691 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 12:13:09,437 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 12:13:09,441 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 12:13:09,480 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 12:13:09,493 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 12:23:37,691 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 12:27:00,392 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 12:27:00,922 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 12:27:00,923 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 12:27:00,923 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 12:27:00,923 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 12:27:00,923 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 12:27:00,923 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 12:27:01,357 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 12:27:01,886 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 12:27:01,904 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 12:27:01,904 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 12:27:01,904 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 12:27:01,904 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 12:27:01,911 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 12:27:03,193 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 12:27:03,196 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 12:27:03,243 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 12:27:03,266 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 12:27:54,765 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:27:57,743 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:04,173 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:07,820 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:11,019 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:11,685 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:14,060 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:17,428 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:20,069 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:20,531 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:22,939 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:37,794 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:40,249 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:42,630 WARNING app.services.matcher: LLM-сопоставление недоступно для 'САЛЬНИК': llm-service -> 502: {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+
+2026-09-02 12:28:45,349 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:49,015 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:51,530 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:28:54,716 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:01,486 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:05,318 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:07,654 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:07,660 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:07,901 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:10,008 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:10,263 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:12,478 WARNING app.services.matcher: LLM-сопоставление недоступно для 'БОЛТ, ДВУХГРАННАЯ ГО': llm-service -> 502: {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+
+2026-09-02 12:29:17,092 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:22,069 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:25,089 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:25,525 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:28,183 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:31,860 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:34,347 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:35,576 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:42,177 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:48,570 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:29:51,095 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 12:31:45,108 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 12:35:48,782 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 12:35:49,174 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 12:35:49,525 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 12:35:49,988 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 12:35:50,007 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 12:35:50,007 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 12:35:50,007 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 12:35:50,008 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 12:35:50,015 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 12:35:51,148 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 12:35:51,150 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 12:35:51,184 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 12:35:51,197 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 12:36:41,615 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 1/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:37:09,877 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 2/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:37:40,894 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 3/314) — восстановлено 99 строк(и) из повреждённого JSON
+2026-09-02 12:38:12,717 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 4/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 12:38:43,290 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 5/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 12:39:22,996 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 6/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:39:56,276 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 7/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 12:40:30,066 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 8/314) — восстановлено 92 строк(и) из повреждённого JSON
+2026-09-02 12:40:58,302 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 9/314) — восстановлено 92 строк(и) из повреждённого JSON
+2026-09-02 12:41:26,591 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 10/314) — восстановлено 100 строк(и) из повреждённого JSON
+2026-09-02 12:41:57,344 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 11/314) — восстановлено 91 строк(и) из повреждённого JSON
+2026-09-02 12:42:26,811 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 12/314) — восстановлено 87 строк(и) из повреждённого JSON
+2026-09-02 12:42:56,068 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 13/314) — восстановлено 88 строк(и) из повреждённого JSON
+2026-09-02 12:43:57,633 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 15/314) — восстановлено 84 строк(и) из повреждённого JSON
+2026-09-02 12:44:27,024 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 16/314) — восстановлено 89 строк(и) из повреждённого JSON
+2026-09-02 12:45:28,781 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 18/314) — восстановлено 84 строк(и) из повреждённого JSON
+2026-09-02 12:46:03,485 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 19/314) — восстановлено 90 строк(и) из повреждённого JSON
+2026-09-02 12:48:14,719 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 23/314) — восстановлено 85 строк(и) из повреждённого JSON
+2026-09-02 12:48:26,692 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 1/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:48:59,307 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 2/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 12:49:33,727 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 3/314) — восстановлено 99 строк(и) из повреждённого JSON
+2026-09-02 12:50:05,206 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 4/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 12:50:26,749 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 27/314) — восстановлено 86 строк(и) из повреждённого JSON
+2026-09-02 12:50:38,331 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 5/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 12:50:57,059 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 28/314) — восстановлено 88 строк(и) из повреждённого JSON
+2026-09-02 12:50:59,795 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 13:04:51,627 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 13:04:52,025 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 13:04:52,026 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 13:04:52,026 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 13:04:52,026 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 13:04:52,026 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 13:04:52,026 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 13:04:52,375 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 13:04:52,847 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 13:04:52,869 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 13:04:52,869 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 13:04:52,869 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 13:04:52,870 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 13:04:52,879 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 13:04:53,839 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 13:04:53,840 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 13:04:53,870 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 13:04:53,884 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 13:05:47,690 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:05:47,693 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:06:20,233 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 4/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 13:06:22,622 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 2/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:06:23,991 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 3/314) — восстановлено 99 строк(и) из повреждённого JSON
+2026-09-02 13:06:24,009 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 1/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:06:24,472 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:06:51,134 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 5/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 13:06:54,811 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 6/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:06:56,120 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 7/314) — восстановлено 96 строк(и) из повреждённого JSON
+2026-09-02 13:06:58,700 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 8/314) — восстановлено 100 строк(и) из повреждённого JSON
+2026-09-02 13:07:23,596 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 9/314) — восстановлено 99 строк(и) из повреждённого JSON
+2026-09-02 13:07:29,627 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 10/314) — восстановлено 107 строк(и) из повреждённого JSON
+2026-09-02 13:07:32,132 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 12/314) — восстановлено 87 строк(и) из повреждённого JSON
+2026-09-02 13:07:34,550 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 11/314) — восстановлено 91 строк(и) из повреждённого JSON
+2026-09-02 13:07:55,541 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 13/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:08:03,048 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 15/314) — восстановлено 84 строк(и) из повреждённого JSON
+2026-09-02 13:08:08,561 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 16/314) — восстановлено 89 строк(и) из повреждённого JSON
+2026-09-02 13:08:31,076 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 18/314) — восстановлено 84 строк(и) из повреждённого JSON
+2026-09-02 13:08:37,309 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 19/314) — восстановлено 90 строк(и) из повреждённого JSON
+2026-09-02 13:09:10,899 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 23/314) — восстановлено 85 строк(и) из повреждённого JSON
+2026-09-02 13:09:53,339 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 28/314) — восстановлено 88 строк(и) из повреждённого JSON
+2026-09-02 13:09:59,794 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 29/314) — восстановлено 88 строк(и) из повреждённого JSON
+2026-09-02 13:10:01,599 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 30/314) — восстановлено 92 строк(и) из повреждённого JSON
+2026-09-02 13:10:30,569 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 33/314) — восстановлено 91 строк(и) из повреждённого JSON
+2026-09-02 13:10:46,953 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 35/314) — восстановлено 87 строк(и) из повреждённого JSON
+2026-09-02 13:10:53,881 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 36/314) — восстановлено 104 строк(и) из повреждённого JSON
+2026-09-02 13:11:09,034 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 38/314) — восстановлено 85 строк(и) из повреждённого JSON
+2026-09-02 13:12:11,033 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 46/314) — восстановлено 98 строк(и) из повреждённого JSON
+2026-09-02 13:12:51,884 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 52/314) — восстановлено 91 строк(и) из повреждённого JSON
+2026-09-02 13:13:06,739 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 53/314) — восстановлено 90 строк(и) из повреждённого JSON
+2026-09-02 13:13:21,716 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 55/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:14:05,216 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 61/314) — восстановлено 90 строк(и) из повреждённого JSON
+2026-09-02 13:14:18,651 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 62/314) — восстановлено 83 строк(и) из повреждённого JSON
+2026-09-02 13:14:19,249 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:16:37,061 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 81/314) — восстановлено 86 строк(и) из повреждённого JSON
+2026-09-02 13:16:43,711 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 82/314) — восстановлено 92 строк(и) из повреждённого JSON
+2026-09-02 13:17:44,502 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:19:53,207 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:20:22,286 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:23:01,369 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 132/314) — восстановлено 94 строк(и) из повреждённого JSON
+2026-09-02 13:23:54,895 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:24:23,531 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 141/314) — восстановлено 85 строк(и) из повреждённого JSON
+2026-09-02 13:24:23,984 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 429: {\"error\": {\"message\": \"Rate-limit error: You send more than 1 request per 1.0 second. Try later.\", \"code\": 429}}"}
+ — повтор через 2.0с
+2026-09-02 13:24:55,889 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 146/314) — восстановлено 84 строк(и) из повреждённого JSON
+2026-09-02 13:24:59,428 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 148/314) — восстановлено 91 строк(и) из повреждённого JSON
+2026-09-02 13:25:18,794 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 149/314) — восстановлено 83 строк(и) из повреждённого JSON
+2026-09-02 13:26:00,579 WARNING app.services.llm_client: Ответ llm-service на ocr_table_extraction обрезан (кусок 155/314) — восстановлено 107 строк(и) из повреждённого JSON
+2026-09-02 13:26:15,835 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-02 13:30:57,911 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-02 13:30:58,303 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-02 13:30:58,304 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-02 13:30:58,304 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-02 13:30:58,304 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-02 13:30:58,304 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-02 13:30:58,304 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-02 13:30:58,652 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-02 13:30:59,117 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-02 13:30:59,135 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-02 13:30:59,135 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-02 13:30:59,135 INFO apscheduler.scheduler: Scheduler started
+2026-09-02 13:30:59,136 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-02 13:30:59,143 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-02 13:31:00,216 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-02 13:31:00,218 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-02 13:31:00,253 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-02 13:31:00,268 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-02 13:33:34,816 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -0.570480 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:37,833 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -1.567340 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:39,222 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:40,209 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:41,658 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:44,544 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:45,876 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:49,663 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:50,893 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:52,329 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:54,690 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:57,651 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:33:58,575 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:34:00,370 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:34:02,529 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -2.659540 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:34:03,711 WARNING app.services.llm_client: llm-service вернул 502 (попытка 1/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -3.674360 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:34:05,005 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -3.674360 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:34:08,206 WARNING app.services.llm_client: llm-service вернул 502 (попытка 2/3): {"error":"vsegpt -> 400: {\"error\": {\"message\": \"You have only -3.674360 on account - it's equal to 0 or below it. Please, add some money to balance to proceed: https://vsegpt.ru/User/Money (4920272271)\", \"code\": 400}}"}
+ — повтор через 2.0с
+2026-09-02 13:39:41,179 INFO autosync.native: Окно закрыто — завершение работы AutoSync

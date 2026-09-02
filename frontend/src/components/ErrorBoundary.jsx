@@ -17,6 +17,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("Необработанная ошибка в интерфейсе:", error, info);
+    this.props.onError?.(error, info);
   }
 
   render() {

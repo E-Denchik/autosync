@@ -12,7 +12,7 @@ DISCOVERY = {
 
 
 def _mock_discovery(monkeypatch, discovery=DISCOVERY):
-    monkeypatch.setattr(LLMClient, "list_models", lambda self: discovery)
+    monkeypatch.setattr(LLMClient, "list_models", lambda self, vsegpt_api_key=None: discovery)
 
 
 def test_llm_models_no_selection_initially(client, admin_headers, monkeypatch):
@@ -26,7 +26,7 @@ def test_llm_models_no_selection_initially(client, admin_headers, monkeypatch):
 
 
 def test_llm_service_unavailable_returns_502(client, admin_headers, monkeypatch):
-    def _raise(self):
+    def _raise(self, vsegpt_api_key=None):
         raise LLMClientError("connection refused")
 
     monkeypatch.setattr(LLMClient, "list_models", _raise)
@@ -104,6 +104,60 @@ def test_llm_test_endpoint_reports_success_when_model_responds(client, admin_hea
     body = resp.get_json()
     assert body["ok"] is True
     assert "отвечает" in body["message"]
+
+
+def test_vsegpt_configured_false_by_default(client, admin_headers, monkeypatch):
+    _mock_discovery(monkeypatch)
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    assert resp.get_json()["vsegpt_configured"] is False
+
+
+def test_vsegpt_configured_true_after_saving_key(client, admin_headers, monkeypatch):
+    _mock_discovery(monkeypatch)
+    save_resp = client.post(
+        "/api/integrations/keys", headers=admin_headers, json={"VSEGPT_API_KEY": "sk-test"}
+    )
+    assert save_resp.status_code == 200
+
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    assert resp.get_json()["vsegpt_configured"] is True
+
+
+def test_list_models_passes_vsegpt_key_to_client(client, admin_headers, monkeypatch):
+    """Regression: без ключа llm-service не должен даже пытаться идти на
+    vsegpt.ru (см. discover_vsegpt в llm-service/server.py) — backend обязан
+    передавать сохранённый ключ с каждым вызовом list_models."""
+    captured = {}
+
+    def fake_list_models(self, vsegpt_api_key=None):
+        captured["vsegpt_api_key"] = vsegpt_api_key
+        return DISCOVERY
+
+    monkeypatch.setattr(LLMClient, "list_models", fake_list_models)
+    client.post("/api/integrations/keys", headers=admin_headers, json={"VSEGPT_API_KEY": "sk-test"})
+    client.get("/api/llm/models", headers=admin_headers)
+
+    assert captured["vsegpt_api_key"] == "sk-test"
+
+
+def test_select_vsegpt_model_allowed(client, admin_headers, monkeypatch):
+    discovery_with_vsegpt = {
+        "providers": {
+            **DISCOVERY["providers"],
+            "vsegpt": {"available": True, "models": [{"name": "openai/gpt-4o-mini"}]},
+        }
+    }
+    _mock_discovery(monkeypatch, discovery_with_vsegpt)
+
+    resp = client.post(
+        "/api/llm/select",
+        headers=admin_headers,
+        json={"provider": "vsegpt", "model": "openai/gpt-4o-mini"},
+    )
+    assert resp.status_code == 200
+
+    models_resp = client.get("/api/llm/models", headers=admin_headers)
+    assert models_resp.get_json()["selected"] == {"provider": "vsegpt", "model": "openai/gpt-4o-mini"}
 
 
 def test_llm_test_endpoint_reports_failure_without_500(client, admin_headers, monkeypatch):

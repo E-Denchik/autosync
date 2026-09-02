@@ -98,7 +98,9 @@ def test_dashboard_reports_selected_llm_model(client, admin_headers, monkeypatch
     monkeypatch.setattr(
         LLMClient,
         "list_models",
-        lambda self: {"providers": {"ollama": {"available": True, "models": [{"name": "llama3.2:3b"}]}}},
+        lambda self, vsegpt_api_key=None: {
+            "providers": {"ollama": {"available": True, "models": [{"name": "llama3.2:3b"}]}}
+        },
     )
     client.post(
         "/api/llm/select", headers=admin_headers, json={"provider": "ollama", "model": "llama3.2:3b"}

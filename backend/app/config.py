@@ -59,6 +59,11 @@ class Config:
 
     LLM_SERVICE_URL = os.environ.get("LLM_SERVICE_URL", "http://127.0.0.1:8001")
 
+    # Облачный провайдер моделей (vsegpt.ru, OpenAI-совместимый) — альтернатива
+    # локально скачанным Ollama/LM Studio, см. app/api/llm.py и
+    # llm-service/server.py: discover_vsegpt/_generate_vsegpt.
+    VSEGPT_API_KEY = os.environ.get("VSEGPT_API_KEY", "")
+
     OZON_CLIENT_ID = os.environ.get("OZON_CLIENT_ID", "")
     OZON_API_KEY = os.environ.get("OZON_API_KEY", "")
     OZON_PERFORMANCE_CLIENT_ID = os.environ.get("OZON_PERFORMANCE_CLIENT_ID", "")

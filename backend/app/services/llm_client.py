@@ -9,11 +9,81 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+def _llm_service_error_detail(resp: requests.Response) -> str:
+    """Достаёт читаемое сообщение из тела ответа llm-service вместо сырого
+    JSON целиком — llm-service сам уже выбрал понятную формулировку (см.
+    llm-service/server.py: _error_detail/_vsegpt_error_message) и завернул
+    её в {"error": "..."}; без этой распаковки пользователь видел бы
+    двойную обёртку JSON (экранированные кавычки и т.п. — именно так
+    выглядела ошибка нехватки баланса vsegpt.ru до этого исправления)."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return resp.text
+    error = data.get("error")
+    return error if isinstance(error, str) and error else resp.text
+
+
+def _recover_truncated_rows(text: str) -> list[dict]:
+    """Лучшее из возможного восстановление построчных объектов из
+    оборванного JSON-ответа ocr_table_extraction.md — раннер иногда режет
+    ответ по лимиту токенов на очень длинных таблицах (сотни позиций),
+    получается невалидный JSON вместо смыслового результата.
+
+    Строчные объекты в этом формате плоские (только строки/числа/null, без
+    вложенных {}/[] — см. сам промпт), поэтому каждая пара фигурных скобок
+    без фигурных скобок внутри — это ровно одна строка целиком. Последняя
+    строка, обрубленная посередине обрывом ответа, не находит закрывающую
+    скобку и естественно выпадает — что и нужно, включать её обломок было
+    бы хуже, чем просто её не найти."""
+    recovered = []
+    for match in re.finditer(r"\{[^{}]*\}", text):
+        try:
+            obj = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            recovered.append(obj)
+    return recovered
+
+
+def _split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """Режет текст на куски по границам строк, каждый не длиннее max_chars
+    — используется в extract_table_from_text вместо одного жёсткого
+    обрезания всего текста по фиксированной длине, чтобы обработать файл
+    целиком, а не только его начало.
+
+    Не пытается угадать, где именно проходит граница строки исходной
+    таблицы в OCR/PDF-тексте — это тот же компромисс, что уже был в этом
+    коде и без разбиения на куски (см. document_parser.py: OCR/PDF-текст
+    изначально нечёткий, для его интерпретации и нужна LLM, а не жёсткий
+    построчный парсер). Одна строка исходного текста длиннее max_chars
+    (например, один OCR-блок без переносов) попадает в свой кусок как
+    есть, не разрывается посередине."""
+    lines = text.splitlines()
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line) + 1  # +1 за перевод строки
+        if current and current_len + line_len > max_chars:
+            chunks.append("\n".join(current))
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks or [text]
+
 
 # Локальный llm-service (Ollama и т.п.) нередко на первом запросе после
 # простоя грузит модель в память по несколько секунд, плюс сеть между
@@ -43,15 +113,19 @@ class LLMClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def list_models(self) -> dict:
-        """Discovery всех LLM-раннеров, которые видит llm-service (Ollama,
-        LM Studio) — что реально скачано на этой машине прямо сейчас."""
+    def list_models(self, vsegpt_api_key: str | None = None) -> dict:
+        """Discovery всех LLM-провайдеров, которые видит llm-service: что
+        реально скачано на этой машине (Ollama, LM Studio) плюс облачные
+        модели vsegpt.ru, если передан ключ (заголовком, не query-параметром
+        — тот же принцип, что и secret_redaction.py: секрет не должен
+        попадать в URL, который echo'ится в текст сетевых ошибок/логов)."""
+        headers = {"X-VseGPT-Api-Key": vsegpt_api_key} if vsegpt_api_key else None
         try:
-            resp = requests.get(f"{self.base_url}/models", timeout=5)
+            resp = requests.get(f"{self.base_url}/models", headers=headers, timeout=5)
         except requests.exceptions.RequestException as exc:
             raise LLMClientError(f"llm-service недоступен: {exc}") from exc
         if not resp.ok:
-            raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
+            raise LLMClientError(f"llm-service -> {resp.status_code}: {_llm_service_error_detail(resp)}")
         return resp.json()
 
     def test_connection(self) -> str:
@@ -91,6 +165,11 @@ class LLMClient:
             "provider": selection.provider,
             "model": selection.model_name,
         }
+        if selection.provider == "vsegpt":
+            # Ключ хранится только в backend (БД, см. settings_store.py) —
+            # llm-service его нигде не держит, поэтому передаём с каждым
+            # запросом (см. докстринг llm-service/server.py).
+            payload["api_key"] = current_app.config.get("VSEGPT_API_KEY", "")
 
         # В тестах (TESTING=True) llm-service обычно не запущен вовсе —
         # это ОЖИДАЕМЫЙ, мгновенный ConnectionError, а не тот случай
@@ -138,17 +217,17 @@ class LLMClient:
                         resp.status_code,
                         attempt,
                         _MAX_ATTEMPTS,
-                        resp.text,
+                        _llm_service_error_detail(resp),
                         retry_delay,
                     )
                     if retry_delay:
                         time.sleep(retry_delay)
                     continue
-                raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
+                raise LLMClientError(f"llm-service -> {resp.status_code}: {_llm_service_error_detail(resp)}")
             break
 
         if not resp.ok:
-            raise LLMClientError(f"llm-service -> {resp.status_code}: {resp.text}")
+            raise LLMClientError(f"llm-service -> {resp.status_code}: {_llm_service_error_detail(resp)}")
         return resp.json()["text"]
 
     def generate_card_content(self, product: dict, market: dict | list) -> dict:
@@ -236,16 +315,117 @@ class LLMClient:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
 
     def extract_table_from_text(self, raw_text: str, fields: list[str]) -> list[dict]:
+        """Извлекает табличные строки из текста произвольной длины и
+        "ширины" (числа запрошенных полей на строку — от 3 у ставок
+        нормо-часов до 11 у номенклатуры, см. вызывающий код). Раньше
+        текст жёстко обрезался до 12000 символов ПЕРЕД отправкой — все
+        строки за этой границей просто никогда не попадали в запрос,
+        независимо от того, обрывался ли реально ответ модели. Теперь текст
+        режется на куски (см. _split_into_chunks) и разбирается несколькими
+        запросами — короткий файл, как и раньше, укладывается в один кусок
+        и в один запрос, поведение для типичного случая не меняется.
+
+        Чем шире таблица (больше fields), тем компактнее кусок — на то же
+        число строк уходит больше символов JSON в ответе, значит риск
+        упереться в лимит токенов раннера выше. Если ответ на конкретный
+        кусок всё равно обрезался — восстанавливаем из него целые строки
+        (см. _recover_truncated_rows) вместо одной ошибки на весь файл.
+        Если какой-то ОДИН кусок совсем не разобрался — пропускаем именно
+        его и продолжаем с остальными: частичный результат лучше отказа
+        прочитать файл целиком.
+
+        Куски не зависят друг от друга, поэтому разбираются ПАРАЛЛЕЛЬНО
+        через map_with_app_context (см. services/parallel.py) — тот же
+        приём, что уже используется для сопоставления запчастей/работ.
+        Раньше это был обычный последовательный цикл: каждый кусок ждал
+        до 3 попыток по 200с таймаута ДРУГ ЗА ДРУГОМ (см. _generate), и на
+        файле с полутора-двумя десятками кусков (широкая таблица, живой
+        скан) весь разбор мог растянуться на часы, хотя реальное время
+        ответа раннера на один кусок — секунды. Параллельно эти же куски
+        укладываются в разы быстрее — до 4 сразу (MAX_WORKERS в parallel.py).
+
+        Перед реальным запросом каждый кусок сверяется с кешем по хешу
+        своего содержимого + полей + провайдера/модели (см.
+        services/llm_extraction_cache.py) — повторная загрузка того же
+        файла (или того же куска текста в другом файле) не оплачивается
+        и не пересчитывается заново. Кешируется только ЧИСТО распарсенный
+        результат — обрезанный/восстановленный ответ намеренно НЕ
+        попадает в кеш, иначе неполный результат застрял бы там навсегда."""
+        from app.services import llm_extraction_cache, llm_settings
+        from app.services.parallel import map_with_app_context
         from app.services.prompt_loader import render_prompt
 
-        prompt = render_prompt("ocr_table_extraction.md", raw_text=raw_text[:12000], fields=fields)
-        text = self._generate(prompt, json_response=True)
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
-        rows = parsed.get("rows") or []
-        return [{field: row.get(field) for field in fields} for row in rows]
+        chunk_chars = 4000 if len(fields) <= 5 else 2200
+        chunks = _split_into_chunks(raw_text, chunk_chars)
+        total = len(chunks)
+        # Без выбранной модели закешировать нечего осмысленно (ключ должен
+        # зависеть от того, ЧЕМ был получен результат) — _generate() внутри
+        # цикла всё равно поднимет свою обычную понятную ошибку "модель не
+        # выбрана" на первом же кэш-промахе, отдельно проверять не нужно.
+        selection = llm_settings.get_selection()
+
+        def _process_chunk(item: tuple[int, str]) -> tuple[list[dict], str | None]:
+            idx, chunk = item
+
+            cache_key = None
+            if selection is not None:
+                cache_key = llm_extraction_cache.build_key(
+                    selection.provider, selection.model_name, fields, chunk
+                )
+                cached_rows = llm_extraction_cache.get(cache_key)
+                if cached_rows is not None:
+                    logger.info(
+                        "Кусок %s/%s взят из кеша LLM-извлечения — модель не вызывалась повторно",
+                        idx,
+                        total,
+                    )
+                    return cached_rows, None
+
+            prompt = render_prompt("ocr_table_extraction.md", raw_text=chunk, fields=fields)
+            text = self._generate(prompt, json_response=True)
+            try:
+                parsed = json.loads(text)
+                rows = parsed.get("rows") or []
+                if cache_key is not None:
+                    llm_extraction_cache.set(cache_key, rows)
+                return rows, None
+            except json.JSONDecodeError:
+                pass
+
+            # Раннер оборвал ответ по лимиту токенов посреди JSON (обычно —
+            # длинный/широкий кусок) — восстанавливаем всё, что успело
+            # попасть в ответ до обрыва, вместо того чтобы терять его целиком.
+            recovered = _recover_truncated_rows(text)
+            if recovered:
+                logger.warning(
+                    "Ответ llm-service на ocr_table_extraction обрезан (кусок %s/%s) — восстановлено %s строк(и) из повреждённого JSON",
+                    idx,
+                    total,
+                    len(recovered),
+                )
+                return recovered, None
+
+            logger.warning(
+                "Не удалось разобрать кусок текста %s/%s при извлечении таблицы — пропускаем, продолжаем с остальными",
+                idx,
+                total,
+            )
+            return [], text
+
+        results = map_with_app_context(_process_chunk, list(enumerate(chunks, start=1)))
+
+        all_rows: list[dict] = []
+        failed_chunks = 0
+        last_failed_text = ""
+        for rows, failed_text in results:
+            all_rows.extend(rows)
+            if failed_text is not None:
+                failed_chunks += 1
+                last_failed_text = failed_text
+
+        if not all_rows and failed_chunks:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {last_failed_text!r}")
+        return [{field: row.get(field) for field in fields} for row in all_rows]
 
     def match_part_by_name(self, contract_line: dict, candidates: list[dict]) -> dict:
         """Fallback-сопоставление позиции по названию, когда нет совпадения

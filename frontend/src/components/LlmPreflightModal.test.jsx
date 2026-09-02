@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../context/ToastContext.jsx";
+import { ErrorLogProvider } from "../context/ErrorLogContext.jsx";
 import { api } from "../api/client.js";
 import LlmPreflightModal from "./LlmPreflightModal.jsx";
 
@@ -15,9 +16,11 @@ vi.mock("../api/client.js", () => ({
 
 function renderModal(props = {}) {
   return render(
-    <ToastProvider>
-      <LlmPreflightModal onClose={vi.fn()} onContinue={vi.fn()} {...props} />
-    </ToastProvider>
+    <ErrorLogProvider>
+      <ToastProvider>
+        <LlmPreflightModal onClose={vi.fn()} onContinue={vi.fn()} {...props} />
+      </ToastProvider>
+    </ErrorLogProvider>
   );
 }
 

@@ -17,6 +17,7 @@ from app.models import (
 from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
 from app.services.pagination import paginate, paginated_response
+from app.services import progress_tracker
 from app.services.upload_helpers import compute_files_hash, display_filename, save_upload as _save_upload
 
 bp = Blueprint("repair_orders_upload", __name__)
@@ -270,6 +271,17 @@ def upload_status(repair_order_id: int):
         order_number=repair_order.order_number,
         order_date=repair_order.order_date,
         review_summary=repair_order.review_summary,
+        # Пока идёт парсинг/сопоставление — фронт считает от этой отметки,
+        # сколько времени уже идёт обработка (см. ReviewMatches.jsx), чтобы
+        # не выглядело зависшим на долгих файлах.
+        created_at=repair_order.created_at.isoformat(),
+        # {"current": N, "total": M} — сколько кусков текста/позиций уже
+        # обработано из скольки в АКТИВНОЙ прямо сейчас фазе (см.
+        # services/progress_tracker.py); null, если фаза ещё не начала
+        # отчитываться (только что стартовала) или прогресс для нужного шага
+        # не отслеживается (например, быстрый жёсткий парсер без LLM).
+        # Фронт считает по этим числам ожидаемое оставшееся время.
+        progress=progress_tracker.get(repair_order.id),
     )
 
 

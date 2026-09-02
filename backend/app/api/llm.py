@@ -1,5 +1,6 @@
-"""Настройки LLM: какую скачанную модель (Ollama или LM Studio) использовать
-для предложений по цене, генерации карточек и LLM-фоллбэка сопоставления."""
+"""Настройки LLM: какую модель использовать для предложений по цене,
+генерации карточек и LLM-фоллбэка сопоставления — локально скачанную
+(Ollama, LM Studio) или облачную через vsegpt.ru (по API-ключу)."""
 
 from __future__ import annotations
 
@@ -18,12 +19,16 @@ def _client() -> LLMClient:
 
 @bp.get("/models")
 def list_models():
-    """Discovery всех моделей, скачанных на этой машине (Ollama + LM Studio),
-    плюс текущий выбор администратора. Если ранее выбранная модель больше не
-    видна в discovery (удалена с диска) — выбор автоматически сбрасывается,
-    а фронту возвращается previous_selection, чтобы объяснить, что произошло."""
+    """Discovery всех LLM-провайдеров: что скачано на этой машине (Ollama +
+    LM Studio) плюс облачные модели vsegpt.ru (если ключ уже сохранён через
+    Администрирование → Интеграции), плюс текущий выбор администратора. Если
+    ранее выбранная модель больше не видна в discovery (удалена с диска,
+    либо ключ vsegpt.ru убрали/стал невалиден) — выбор автоматически
+    сбрасывается, а фронту возвращается previous_selection, чтобы объяснить,
+    что произошло."""
+    vsegpt_api_key = current_app.config.get("VSEGPT_API_KEY", "")
     try:
-        discovery = _client().list_models()
+        discovery = _client().list_models(vsegpt_api_key=vsegpt_api_key)
     except LLMClientError as exc:
         return jsonify(error=f"llm-service недоступен: {exc}"), 502
 
@@ -38,7 +43,12 @@ def list_models():
             previous_selection = {"provider": selection.provider, "model": selection.model_name}
             llm_settings.clear_selection()
 
-    return jsonify(providers=discovery["providers"], selected=selected, previous_selection=previous_selection)
+    return jsonify(
+        providers=discovery["providers"],
+        selected=selected,
+        previous_selection=previous_selection,
+        vsegpt_configured=bool(vsegpt_api_key),
+    )
 
 
 @bp.post("/select")
@@ -47,16 +57,16 @@ def select_model():
     provider = body.get("provider")
     model_name = body.get("model")
 
-    if provider not in ("ollama", "lmstudio") or not model_name:
-        return jsonify(error="'provider' ('ollama'|'lmstudio') и 'model' обязательны"), 400
+    if provider not in ("ollama", "lmstudio", "vsegpt") or not model_name:
+        return jsonify(error="'provider' ('ollama'|'lmstudio'|'vsegpt') и 'model' обязательны"), 400
 
     try:
-        discovery = _client().list_models()
+        discovery = _client().list_models(vsegpt_api_key=current_app.config.get("VSEGPT_API_KEY", ""))
     except LLMClientError as exc:
         return jsonify(error=f"llm-service недоступен: {exc}"), 502
 
     if not llm_settings.is_known_model(discovery, provider, model_name):
-        return jsonify(error="Эта модель не найдена среди скачанных — обновите список и попробуйте снова"), 404
+        return jsonify(error="Эта модель сейчас недоступна — обновите список и попробуйте снова"), 404
 
     log_change(
         "llm_model_selection",

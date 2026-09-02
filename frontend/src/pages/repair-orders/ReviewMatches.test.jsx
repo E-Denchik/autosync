@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../../context/ToastContext.jsx";
+import { ErrorLogProvider } from "../../context/ErrorLogContext.jsx";
 import { api } from "../../api/client.js";
 import { saveFile } from "../../utils/saveFile.js";
 import ReviewMatches from "./ReviewMatches.jsx";
@@ -30,11 +31,13 @@ vi.mock("../../utils/saveFile.js", () => ({
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={["/repair-orders/1/review"]}>
-      <ToastProvider>
-        <Routes>
-          <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
-        </Routes>
-      </ToastProvider>
+      <ErrorLogProvider>
+        <ToastProvider>
+          <Routes>
+            <Route path="/repair-orders/:repairOrderId/review" element={<ReviewMatches />} />
+          </Routes>
+        </ToastProvider>
+      </ErrorLogProvider>
     </MemoryRouter>
   );
 }
@@ -329,5 +332,90 @@ describe("ReviewMatches — прозрачность недоступности 
 
     expect(screen.queryByText(/ИИ-сопоставление по названию было недоступно/)).not.toBeInTheDocument();
     expect(screen.getByText("не найдено")).toBeInTheDocument();
+  });
+});
+
+describe("ReviewMatches — индикатор статуса во время обработки", () => {
+  it("фаза парсинга показывает свой текст и прошедшее с момента загрузки время", async () => {
+    const startedAt = new Date(Date.now() - 65000).toISOString(); // ~65 секунд назад
+    api.getUploadStatus.mockResolvedValue({
+      status: "parsing",
+      created_at: startedAt,
+      contragent_name: null,
+      vehicle_make: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Идёт разбор файлов/)).toBeInTheDocument();
+    expect(screen.getByText(/Идёт уже \d+ мин \d+ с\./)).toBeInTheDocument();
+    // Степпер тоже должен отражать именно фазу парсинга, а не общее "обрабатывается".
+    expect(screen.getByText("Парсинг").closest(".step")).toHaveClass("active");
+  });
+
+  it("фаза сопоставления показывает свой, отдельный от парсинга текст", async () => {
+    api.getUploadStatus.mockResolvedValue({
+      status: "matching",
+      created_at: new Date().toISOString(),
+      contragent_name: null,
+      vehicle_make: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Идёт сопоставление позиций с каталогом контракта/)).toBeInTheDocument();
+    expect(screen.queryByText(/Идёт разбор файлов/)).not.toBeInTheDocument();
+    expect(screen.getByText("Сопоставление").closest(".step")).toHaveClass("active");
+  });
+
+  it("показывает 'из скольки сделано', пока данных мало для оценки времени", async () => {
+    // current=1 — ниже MIN_COMPLETED_FOR_ESTIMATE (2), оценка времени
+    // намеренно ещё не показывается: на 1 элементе (особенно в первую
+    // секунду, когда несколько параллельных потоков финишируют почти
+    // одновременно) оценка скорости слишком шумная.
+    api.getUploadStatus.mockResolvedValue({
+      status: "parsing",
+      created_at: new Date().toISOString(),
+      contragent_name: null,
+      vehicle_make: null,
+      progress: { current: 1, total: 314 },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Обработано 1 из 314/)).toBeInTheDocument();
+    expect(screen.getByText(/оцениваем время…/)).toBeInTheDocument();
+    expect(screen.queryByText(/осталось примерно/)).not.toBeInTheDocument();
+  });
+
+  it("показывает прогресс без 'осталось'/'оцениваем', когда фаза уже полностью выполнена", async () => {
+    api.getUploadStatus.mockResolvedValue({
+      status: "matching",
+      created_at: new Date().toISOString(),
+      contragent_name: null,
+      vehicle_make: null,
+      progress: { current: 50, total: 50 },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Обработано 50 из 50")).toBeInTheDocument();
+    expect(screen.queryByText(/оцениваем время/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/осталось примерно/)).not.toBeInTheDocument();
+  });
+
+  it("не показывает строку прогресса, когда backend его ещё не передал", async () => {
+    api.getUploadStatus.mockResolvedValue({
+      status: "parsing",
+      created_at: new Date().toISOString(),
+      contragent_name: null,
+      vehicle_make: null,
+      progress: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Идёт разбор файлов/)).toBeInTheDocument();
+    expect(screen.queryByText(/Обработано/)).not.toBeInTheDocument();
   });
 });

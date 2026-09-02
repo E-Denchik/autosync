@@ -3,14 +3,17 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
+import { ErrorLogProvider } from "./context/ErrorLogContext.jsx";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
+      <ErrorLogProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </ErrorLogProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

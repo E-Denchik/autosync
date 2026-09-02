@@ -59,4 +59,12 @@ def enrich_part_match(match: dict, nomenclature_client: NomenclatureClient) -> d
 
 
 def enrich_all(matches: list[dict], nomenclature_client: NomenclatureClient) -> list[dict]:
-    return [enrich_part_match(m, nomenclature_client) for m in matches]
+    """Каждая позиция обогащается независимо от остальных — как и
+    сопоставление в matcher.py/labor_matcher.py, идёт параллельно (см.
+    services/parallel.py), а не строго по одной. Особенно заметно при
+    настроенном ALFAAUTO_BASE_URL: это реальный сетевой запрос к OData
+    на каждую позицию (см. NomenclatureClient._find_remote), сотни
+    позиций подряд иначе ощутимо копятся во времени."""
+    from app.services.parallel import map_with_app_context
+
+    return map_with_app_context(lambda m: enrich_part_match(m, nomenclature_client), matches)

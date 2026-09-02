@@ -16,6 +16,49 @@ import { saveFile, CSV_FILE_TYPES, XLSX_FILE_TYPES } from "../../utils/saveFile.
 
 const PROCESSING_STATUSES = new Set(["uploaded", "parsing", "matching"]);
 
+// Отдельный, честный текст на каждую фазу вместо одного общего "обычно
+// занимает несколько секунд" — парсинг больших/сканированных файлов и
+// сопоставление заказ-наряда с большим числом позиций без точных
+// совпадений по артикулу реально могут занимать минуты, не секунды (см.
+// llm_client.py: extract_table_from_text, matcher.py/labor_matcher.py).
+const PROCESSING_MESSAGES = {
+  uploaded: "Файлы приняты, обработка вот-вот начнётся…",
+  parsing: "Идёт разбор файлов — распознаём таблицы и извлекаем позиции. Для больших или сканированных файлов это может занять несколько минут.",
+  matching: "Идёт сопоставление позиций с каталогом контракта. Чем больше позиций и чем меньше точных совпадений по артикулу — тем дольше.",
+};
+
+function parseUtcTimestamp(iso) {
+  if (!iso) return null;
+  // Бэкенд отдаёт наивный UTC (datetime.utcnow().isoformat(), без суффикса
+  // часового пояса) — без явного "Z" браузer разобрал бы строку как
+  // локальное время, а не UTC, и прошедшее время до текущего момента
+  // считалось бы со сдвигом на часовой пояс пользователя (вплоть до
+  // отрицательного значения сразу после загрузки).
+  return new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
+}
+
+function formatElapsed(totalSeconds) {
+  if (totalSeconds < 60) return `${totalSeconds} с`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes} мин ${seconds} с`;
+}
+
+// Сколько уже сделано из скольки нужно ХОТЯ БЫ для первой, грубой оценки —
+// на 1 элементе (особенно в первую секунду фазы, когда несколько потоков
+// парсинга/сопоставления финишируют почти одновременно) оценка скорости
+// слишком шумная и может показать что-то нелепое вроде "осталось 40 минут"
+// сразу после старта, хотя на деле всё идёт быстро.
+const MIN_COMPLETED_FOR_ESTIMATE = 2;
+
+function estimateRemainingSeconds(progress, phaseElapsedSeconds) {
+  if (!progress || phaseElapsedSeconds <= 0) return null;
+  const { current, total } = progress;
+  if (current < MIN_COMPLETED_FOR_ESTIMATE || total <= current) return null;
+  const rate = current / phaseElapsedSeconds; // единиц в секунду
+  return Math.max(0, Math.round((total - current) / rate));
+}
+
 const CATEGORY_LABELS = {
   exact: "точное совпадение",
   cross_ref: "кросс-номер",
@@ -93,6 +136,7 @@ export default function ReviewMatches() {
   const [showSupplierSearch, setShowSupplierSearch] = useState(false);
   const [addingLaborLine, setAddingLaborLine] = useState(false);
   const [suppliersConfigured, setSuppliersConfigured] = useState(true); // оптимистично, пока не пришёл ответ
+  const [now, setNow] = useState(Date.now());
   const toast = useToast();
   const pollRef = useRef(null);
 
@@ -159,6 +203,15 @@ export default function ReviewMatches() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repairOrderId]);
+
+  // Отдельный тикер раз в секунду только для "сколько уже идёт обработка" —
+  // не завязан на опрос статуса (тот раз в 2с и может не дойти вовремя),
+  // чтобы счётчик времени не дёргался, а тикал плавно, пока видно спиннер.
+  useEffect(() => {
+    if (!PROCESSING_STATUSES.has(status)) return;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [status]);
 
   const toggleSelected = (id) => {
     setSelected((prev) => {
@@ -369,6 +422,29 @@ export default function ReviewMatches() {
   // не разбирать все позиции руками, а починить ИИ и загрузить заново.
   const llmErrorCount = [...matches, ...laborLines].filter((m) => m.llm_error).length;
   const isProcessing = PROCESSING_STATUSES.has(status);
+  const startedAt = orderInfo?.created_at ? parseUtcTimestamp(orderInfo.created_at) : null;
+  const elapsedSeconds = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : null;
+  const progress = orderInfo?.progress || null;
+  // started_at — от сервера (см. progress_tracker.py: report()), а не от
+  // момента, когда браузер открыл/перезагрузил эту страницу — иначе после
+  // обновления страницы посреди долгой обработки оценка скорости считалась
+  // бы по нескольким секундам, которые фронт "успел понаблюдать", а не по
+  // тому, сколько эта пачка реально обрабатывается, и оставшееся время
+  // выглядело бы то заниженным, то завышенным на пустом месте.
+  const phaseStartedAt = progress?.started_at ? parseUtcTimestamp(progress.started_at) : null;
+  const phaseElapsedSeconds = phaseStartedAt ? Math.max(0, (now - phaseStartedAt) / 1000) : 0;
+  const remainingSeconds = estimateRemainingSeconds(progress, phaseElapsedSeconds);
+  const processingLabel =
+    (PROCESSING_MESSAGES[status] || "Обрабатываем заказ-наряд…") +
+    (elapsedSeconds !== null ? ` Идёт уже ${formatElapsed(elapsedSeconds)}.` : "");
+  const progressLabel = progress
+    ? `Обработано ${progress.current} из ${progress.total}` +
+      (remainingSeconds !== null
+        ? ` · осталось примерно ${formatElapsed(remainingSeconds)}`
+        : progress.current < progress.total
+          ? " · оцениваем время…"
+          : "")
+    : null;
 
   // Настоящая, проверяемая статистика вместо голого текста от ИИ — каждое
   // число здесь можно свести с таблицами ниже (match_category приходит с
@@ -550,7 +626,12 @@ export default function ReviewMatches() {
 
       {isProcessing ? (
         <div className="table-wrap">
-          <Spinner label="Парсим документы и сопоставляем позиции — обычно это занимает несколько секунд…" />
+          <Spinner label={processingLabel} />
+          {progressLabel && (
+            <div className="text-muted" style={{ textAlign: "center", fontSize: 12.5, marginTop: -8, paddingBottom: 16 }}>
+              {progressLabel}
+            </div>
+          )}
         </div>
       ) : matches.length === 0 && laborLines.length === 0 ? (
         <div className="table-wrap">

@@ -20,6 +20,8 @@ import DocumentTemplates from "./pages/admin/DocumentTemplates.jsx";
 import CompanyProfile from "./pages/admin/CompanyProfile.jsx";
 import ContractCatalogs from "./pages/admin/ContractCatalogs.jsx";
 import ContractCatalogDetail from "./pages/admin/ContractCatalogDetail.jsx";
+import ErrorLog from "./pages/admin/ErrorLog.jsx";
+import { useErrorLog } from "./context/ErrorLogContext.jsx";
 import {
   HomeIcon,
   TagIcon,
@@ -34,10 +36,12 @@ import {
   ClockIcon,
   BoxIcon,
   FileTextIcon,
+  AlertCircleIcon,
 } from "./components/icons.jsx";
 
 export default function App() {
   const location = useLocation();
+  const errorLog = useErrorLog();
 
   // Отдельное системное окно прогресса обновления открывается на этот же
   // адрес (см. native_app.py: open_update_window) — своя, "голая" страница
@@ -116,6 +120,10 @@ export default function App() {
           <NavLink to="/admin/history">
             <HistoryIcon /> История
           </NavLink>
+          <NavLink to="/admin/errors">
+            <AlertCircleIcon /> Журнал ошибок
+            {errorLog.unreadCount > 0 && <span className="nav-badge">{errorLog.unreadCount}</span>}
+          </NavLink>
         </nav>
 
         <div className="sidebar-footer">
@@ -125,7 +133,10 @@ export default function App() {
 
       <div className="content">
         <div className="content-inner">
-          <ErrorBoundary key={location.pathname}>
+          <ErrorBoundary
+            key={location.pathname}
+            onError={(error) => errorLog.log(error?.message || String(error), "react-render")}
+          >
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/ozon/pricing" element={<PricingDashboard />} />
@@ -145,6 +156,7 @@ export default function App() {
             <Route path="/admin/llm" element={<LlmSettings />} />
             <Route path="/admin/integrations" element={<Integrations />} />
             <Route path="/admin/history" element={<History />} />
+            <Route path="/admin/errors" element={<ErrorLog />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </ErrorBoundary>

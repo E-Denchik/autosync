@@ -5,14 +5,22 @@ Backend (llm_client.py) обращается сюда по HTTP, а не к Olla
 напрямую — раннер или модель можно заменить, не трогая backend
 (см. ARCHITECTURE.md: «LLM как отдельный сервис»).
 
-Поддержаны два раннера, которые пользователь может держать на своей машине
-одновременно:
+Поддержаны два локальных раннера, которые пользователь может держать на
+своей машине одновременно, плюс один облачный:
   - Ollama          — HTTP API на OLLAMA_BASE_URL (по умолчанию localhost:11434)
   - LM Studio       — Local Server (OpenAI-совместимый) на LMSTUDIO_BASE_URL
                        (по умолчанию localhost:1234/v1)
+  - vsegpt.ru       — облачный OpenAI-совместимый шлюз к внешним моделям
+                       (GPT/Claude/Gemini и т.п.), нужен API-ключ. В отличие
+                       от Ollama/LM Studio ключ не живёт на этой машине как
+                       переменная окружения — администратор вводит его в UI
+                       (Администрирование → Интеграции), backend хранит его в
+                       БД и передаёт с каждым запросом сюда (заголовок
+                       X-VseGPT-Api-Key для GET /models, поле "api_key" в теле
+                       POST /generate) — сам llm-service ключ нигде не хранит.
 
-Какую из скачанных моделей реально использовать — решает администратор в
-UI (Настройки → LLM), backend хранит выбор в БД и передаёт provider+model
+Какую из моделей реально использовать — решает администратор в UI
+(Настройки → LLM), backend хранит выбор в БД и передаёт provider+model
 с каждым запросом сюда (см. app/services/llm_settings.py). Если backend
 их не передал (прямой curl, обратная совместимость) — используются
 переменные окружения LLM_PROVIDER/LLM_MODEL_NAME как раньше.
@@ -22,14 +30,72 @@ from __future__ import annotations
 
 import glob
 import os
+import threading
+import time
 
 import requests
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+
+class RunnerError(RuntimeError):
+    """Раннер/шлюз ответил ошибкой (не 2xx). В отличие от голого
+    RuntimeError несёт исходный HTTP-статус — по нему /generate ниже
+    решает, пробрасывать ли его как есть (4xx — неверный ключ, кончился
+    баланс, битый запрос: постоянная причина, backend такое НЕ ретраит,
+    см. LLMClient._generate: retry только на >=500) или завернуть в общий
+    502 (5xx/непонятно что — может быть, раннер просто занят/грузится,
+    имеет смысл попробовать ещё раз)."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _error_detail(resp: requests.Response) -> str:
+    """Достаёт читаемое сообщение из тела ответа раннера, а не отдаёт сырой
+    JSON как есть — и Ollama ({"error": "текст"}), и OpenAI-совместимые
+    шлюзы, vsegpt.ru/LM Studio ({"error": {"message": "текст", "code": N}}).
+    Если тело не JSON или не в одном из этих двух видов — возвращает текст
+    ответа как есть: лучше сырой текст, чем скрыть неожиданную форму ошибки."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return resp.text
+    error = data.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message:
+            return message
+    if isinstance(error, str) and error:
+        return error
+    return resp.text
+
+
+def _vsegpt_error_message(status_code: int, resp: requests.Response) -> str:
+    """Понятное человеку объяснение — ПЕРЕД техническими деталями, а не
+    вместо них (см. _error_detail), чтобы при обращении в поддержку было
+    что показать. Распознаёт частые, ожидаемые случаи; для остального —
+    только сырой (но уже без лишней вложенности JSON) текст ошибки, не
+    выдумываем причину, если она не очевидна."""
+    detail = _error_detail(resp)
+    lowered = detail.lower()
+    if status_code == 400 and ("on account" in lowered or "balance" in lowered):
+        human = "Закончился баланс на аккаунте vsegpt.ru — пополните на https://vsegpt.ru/User/Money"
+    elif status_code == 429:
+        human = "vsegpt.ru ограничивает скорость запросов — попробуйте ещё раз через несколько секунд"
+    elif status_code in (401, 403):
+        human = "vsegpt.ru не принял API-ключ — проверьте его в Администрирование → LLM-модель"
+    else:
+        return f"vsegpt -> {status_code}: {detail}"
+    return f"{human} (vsegpt -> {status_code}: {detail})"
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 LMSTUDIO_BASE_URL = os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
+# Не секрет — просто адрес шлюза, сам ключ приходит с каждым запросом отдельно
+# (см. докстринг модуля), а не читается из окружения этого процесса.
+VSEGPT_BASE_URL = os.environ.get("VSEGPT_BASE_URL", "https://api.vsegpt.ru/v1")
 
 DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
 DEFAULT_MODEL = os.environ.get("LLM_MODEL_NAME", "qwen2.5:14b")
@@ -40,6 +106,43 @@ LMSTUDIO_MODEL_DIRS = [
     os.path.expanduser("~/.lmstudio/models"),
     os.path.expanduser("~/.cache/lm-studio/models"),
 ]
+
+# vsegpt.ru жёстко ограничивает 1 запрос/сек НА КЛЮЧ (по всем эндпоинтам —
+# и /models, и /chat/completions), а backend умеет параллелить несколько
+# запросов сразу (см. app/services/parallel.py: до 4 одновременно — для
+# локальных Ollama/LM Studio это ускоряет разбор больших заказ-нарядов, они
+# нормально обслуживают параллельные запросы к уже загруженной модели). Для
+# vsegpt.ru этот же параллелизм только вредит: 3 из 4 запросов сразу
+# получают 429 "Rate-limit error", уходят в повтор с задержкой (см.
+# LLMClient._generate) — реальная задержка суммарно оказывается БОЛЬШЕ, чем
+# если бы запросы изначально шли по одному в темпе лимита. Поэтому здесь,
+# в единственном месте, где реально идёт исходящий HTTP к vsegpt.ru,
+# запросы сериализуются с шагом чуть больше 1с — независимо от того,
+# сколько потоков backend вызвало сюда одновременно.
+_VSEGPT_MIN_INTERVAL_SECONDS = 1.1
+_vsegpt_rate_lock = threading.Lock()
+_vsegpt_last_request_at = 0.0
+
+
+def _throttle_vsegpt() -> None:
+    global _vsegpt_last_request_at
+    with _vsegpt_rate_lock:
+        wait = _vsegpt_last_request_at + _VSEGPT_MIN_INTERVAL_SECONDS - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _vsegpt_last_request_at = time.monotonic()
+
+
+# Без явного max_tokens шлюз/модель подставляют свой умолчательный лимит
+# вывода (у части моделей за vsegpt.ru это заметно меньше, чем реально
+# нужно на JSON-таблицу из ocr_table_extraction.md) — на практике это
+# приводило к тому, что ответ обрывался почти на КАЖДОМ куске текста
+# (см. LLMClient._recover_truncated_rows: раньше просто восстанавливали,
+# что успело прийти, теперь по возможности не допускаем обрыв вовсе).
+# Значение с запасом под самый крупный кусок (см. llm_client.py: узкие
+# таблицы — 4000 символов исходного текста на кусок, это заведомо меньше,
+# чем 8000 токенов ответа даже для многословного JSON.
+_VSEGPT_MAX_TOKENS = 8000
 
 
 def discover_ollama() -> dict:
@@ -87,6 +190,44 @@ def discover_lmstudio() -> dict:
     return {"available": bool(names), "server_running": False, "models": [{"name": n} for n in names]}
 
 
+def discover_vsegpt(api_key: str | None) -> dict:
+    """Список моделей, доступных на vsegpt.ru с этим ключом — в отличие от
+    Ollama/LM Studio, это не "что скачано на диске", а "что открыто по
+    подписке/балансу этого ключа". Без ключа даже не пробуем сходить в
+    сеть — это ожидаемое "не настроено", а не сбой."""
+    if not api_key:
+        return {"available": False, "models": []}
+
+    _throttle_vsegpt()
+    try:
+        resp = requests.get(
+            f"{VSEGPT_BASE_URL}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        # Нет сети до vsegpt.ru и т.п. — не роняем discovery целиком
+        # (Ollama/LM Studio могли ответить нормально), просто помечаем
+        # этот провайдер недоступным с причиной для UI.
+        return {"available": False, "models": [], "error": str(exc)}
+
+    if not resp.ok:
+        # Не голое "400 Client Error: Bad Request" (это отдавал бы
+        # resp.raise_for_status()) — та же читаемая причина, что и при
+        # реальной генерации (см. _vsegpt_error_message): неверный ключ,
+        # кончился баланс и т.п. видно сразу на странице настроек LLM, а
+        # не только когда дело дойдёт до первого реального запроса.
+        return {"available": False, "models": [], "error": _vsegpt_error_message(resp.status_code, resp)}
+
+    try:
+        entries = resp.json().get("data", [])
+        models = [{"name": m["id"]} for m in entries if "id" in m]
+    except (ValueError, AttributeError, TypeError):
+        return {"available": False, "models": [], "error": "vsegpt.ru вернул неожиданный ответ"}
+
+    return {"available": True, "models": models}
+
+
 @app.get("/health")
 def health():
     return jsonify(status="ok", provider=DEFAULT_PROVIDER, model=DEFAULT_MODEL)
@@ -94,11 +235,15 @@ def health():
 
 @app.get("/models")
 def models():
-    """Что реально стоит на этой машине — для UI выбора модели админом."""
+    """Что доступно для использования: скачанное на этой машине (Ollama, LM
+    Studio) плюс облачные модели vsegpt.ru, если backend передал ключ
+    (см. X-VseGPT-Api-Key в докстринге модуля) — для UI выбора модели админом."""
+    vsegpt_api_key = request.headers.get("X-VseGPT-Api-Key")
     return jsonify(
         providers={
             "ollama": discover_ollama(),
             "lmstudio": discover_lmstudio(),
+            "vsegpt": discover_vsegpt(vsegpt_api_key),
         }
     )
 
@@ -115,7 +260,7 @@ def _generate_ollama(model: str, prompt: str, json_response: bool) -> str:
 
     resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180)
     if not resp.ok:
-        raise RuntimeError(f"ollama -> {resp.status_code}: {resp.text}")
+        raise RunnerError(f"ollama -> {resp.status_code}: {_error_detail(resp)}", status_code=resp.status_code)
     return resp.json().get("response", "")
 
 
@@ -130,7 +275,29 @@ def _generate_lmstudio(model: str, prompt: str, json_response: bool) -> str:
 
     resp = requests.post(f"{LMSTUDIO_BASE_URL}/chat/completions", json=payload, timeout=180)
     if not resp.ok:
-        raise RuntimeError(f"lmstudio -> {resp.status_code}: {resp.text}")
+        raise RunnerError(f"lmstudio -> {resp.status_code}: {_error_detail(resp)}", status_code=resp.status_code)
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def _generate_vsegpt(model: str, prompt: str, json_response: bool, api_key: str) -> str:
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "max_tokens": _VSEGPT_MAX_TOKENS,
+    }
+    if json_response:
+        payload["response_format"] = {"type": "json_object"}
+
+    _throttle_vsegpt()
+    resp = requests.post(
+        f"{VSEGPT_BASE_URL}/chat/completions",
+        json=payload,
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=180,
+    )
+    if not resp.ok:
+        raise RunnerError(_vsegpt_error_message(resp.status_code, resp), status_code=resp.status_code)
     return resp.json()["choices"][0]["message"]["content"]
 
 
@@ -148,8 +315,25 @@ def generate():
     try:
         if provider == "lmstudio":
             text = _generate_lmstudio(model, prompt, json_response)
+        elif provider == "vsegpt":
+            api_key = body.get("api_key")
+            if not api_key:
+                return jsonify(error="Для vsegpt.ru нужен API-ключ — добавьте его в Администрирование → Интеграции"), 400
+            text = _generate_vsegpt(model, prompt, json_response, api_key)
         else:
             text = _generate_ollama(model, prompt, json_response)
+    except RunnerError as exc:
+        # 4xx от самого раннера/шлюза (неверный ключ, кончился баланс,
+        # битый запрос) — постоянная причина: backend её всё равно не
+        # ретраит на >=500 (см. LLMClient._generate), значит незачем
+        # заворачивать в общий 502, который выглядел бы как временный сбой.
+        # Экономит и время (не ждём 2 бесполезных повтора x 2с задержки на
+        # КАЖДЫЙ кусок большого файла), и деньги — не тратим лишние попытки
+        # обратиться к платному vsegpt.ru с запросом, который заведомо не
+        # пройдёт. Настоящие 5xx/непонятный статус — как и раньше, 502
+        # (может, раннер просто занят/грузится — тут повтор имеет смысл).
+        status = exc.status_code if exc.status_code and exc.status_code < 500 else 502
+        return jsonify(error=str(exc)), status
     except RuntimeError as exc:
         return jsonify(error=str(exc)), 502
     except requests.exceptions.RequestException as exc:
