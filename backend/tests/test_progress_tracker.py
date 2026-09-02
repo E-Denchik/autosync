@@ -96,6 +96,23 @@ def test_tracking_does_not_leak_into_reused_pool_thread():
     assert progress_tracker.get(100) is None
 
 
+def test_tracking_accepts_string_key_without_colliding_with_int_ids():
+    """contract_catalog_import.py использует ключ "contract:{id}" в том же
+    модуле, что и repair_order_id (int) из job_queue.py — Contract.id и
+    RepairOrder.id независимые автоинкременты, ничто не мешает им
+    совпасть числом (например, оба = 42), поэтому пространства ключей
+    должны оставаться раздельными по типу/содержимому строки, не только по
+    значению."""
+    with progress_tracker.tracking(42):
+        progress_tracker.report(1, 5)
+        with progress_tracker.tracking("contract:42"):
+            progress_tracker.report(3, 10)
+            assert progress_tracker.get(42)["current"] == 1
+            assert progress_tracker.get("contract:42")["current"] == 3
+        assert progress_tracker.get("contract:42") is None
+        assert progress_tracker.get(42)["current"] == 1
+
+
 def test_bind_for_worker_thread_is_visible_only_in_that_thread():
     results = {}
 

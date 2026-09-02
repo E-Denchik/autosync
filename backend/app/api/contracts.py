@@ -19,6 +19,7 @@ from app.services.job_queue import enqueue_import_contract
 from app.services.llm_client import LLMClient
 from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
+from app.services.progress_tracker import get as get_progress
 from app.services.upload_helpers import compute_files_hash, display_filename, save_upload, save_uploads
 
 bp = Blueprint("contracts", __name__)
@@ -52,6 +53,11 @@ def _serialize(contract: Contract) -> dict:
         "labor_norms_count": ContractLaborNorm.query.filter_by(contract_id=contract.id).count(),
         "repair_orders_count": len(contract.repair_orders),
         "created_at": contract.created_at.isoformat(),
+        # Сколько файлов уже разобрано из скольки — см. progress_tracker.py
+        # (contract_catalog_import.import_contract_job пишет под ключом
+        # "contract:{id}"); null, пока фаза разбора файлов ещё не началась
+        # или уже завершилась.
+        "progress": get_progress(f"contract:{contract.id}"),
     }
 
 
@@ -155,7 +161,12 @@ def import_more_files(contract_id: int):
 @bp.get("/<int:contract_id>/status")
 def contract_status(contract_id: int):
     contract = db.get_or_404(Contract, contract_id)
-    return jsonify(id=contract.id, status=contract.status.value, error_message=contract.error_message)
+    return jsonify(
+        id=contract.id,
+        status=contract.status.value,
+        error_message=contract.error_message,
+        progress=get_progress(f"contract:{contract.id}"),
+    )
 
 
 @bp.get("/<int:contract_id>/parts")

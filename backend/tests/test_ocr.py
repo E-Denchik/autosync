@@ -91,3 +91,118 @@ def test_extract_text_rejects_unsupported_extension(tmp_path):
 
     with pytest.raises(OcrError, match="не поддерживает формат"):
         extract_text(str(path))
+
+
+class _FakePage:
+    def __init__(self, index):
+        self._index = index
+
+    def to_image(self, resolution=300):
+        return self
+
+    @property
+    def original(self):
+        return f"page-{self._index}"
+
+
+class _FakePdf:
+    def __init__(self, pages):
+        self.pages = pages
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+class _FakeExecutor:
+    """Тот же интерфейс, что и ProcessPoolExecutor (context manager + map),
+    но выполняет задачи прямо в текущем процессе — проверяет СКЛЕИВАЮЩИЙ
+    код (map_with...) без реального спавна процессов/Tesseract/PDF."""
+
+    def __init__(self, max_workers=None):
+        self.max_workers = max_workers
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def map(self, fn, tasks):
+        return [fn(t) for t in tasks]
+
+
+def test_extract_text_from_scanned_pdf_single_page_skips_process_pool(tmp_path, monkeypatch):
+    """Одна страница — распознаём прямо в текущем процессе, не тратим время
+    на спавн ProcessPoolExecutor там, где параллелить нечего."""
+    import app.services.ocr as ocr_module
+
+    fake_pdf = _FakePdf([_FakePage(0)])
+    monkeypatch.setattr("pdfplumber.open", lambda path: fake_pdf)
+    monkeypatch.setattr(ocr_module, "_run_tesseract", lambda image: f"text:{image}")
+
+    def _must_not_be_called(*args, **kwargs):
+        raise AssertionError("ProcessPoolExecutor не должен вызываться для одной страницы")
+
+    monkeypatch.setattr(ocr_module, "ProcessPoolExecutor", _must_not_be_called)
+
+    result = ocr_module.extract_text_from_scanned_pdf(str(tmp_path / "scan.pdf"))
+    assert result == "text:page-0"
+
+
+def test_extract_text_from_scanned_pdf_joins_pages_in_order(tmp_path, monkeypatch):
+    """Многостраничный скан идёт через пул (см. _FakeExecutor) — результат
+    должен склеиться в исходном порядке страниц, а не в порядке завершения."""
+    import app.services.ocr as ocr_module
+
+    fake_pdf = _FakePdf([_FakePage(0), _FakePage(1), _FakePage(2)])
+    monkeypatch.setattr("pdfplumber.open", lambda path: fake_pdf)
+    monkeypatch.setattr(ocr_module, "_run_tesseract", lambda image: f"text:{image}")
+    monkeypatch.setattr(ocr_module, "ProcessPoolExecutor", _FakeExecutor)
+
+    result = ocr_module.extract_text_from_scanned_pdf(str(tmp_path / "scan.pdf"))
+    assert result == "text:page-0\n\ntext:page-1\n\ntext:page-2"
+
+
+def test_extract_text_from_scanned_pdf_falls_back_to_sequential_when_pool_breaks(tmp_path, monkeypatch):
+    """Регрессия: если ProcessPoolExecutor почему-то не смог отработать
+    (например, тонкости спавна процессов на конкретной PyInstaller-сборке —
+    см. docstring extract_text_from_scanned_pdf) — не роняем распознавание
+    целиком, а тихо возвращаемся к последовательному пути, который работал
+    и раньше."""
+    import app.services.ocr as ocr_module
+
+    fake_pdf = _FakePdf([_FakePage(0), _FakePage(1), _FakePage(2)])
+    monkeypatch.setattr("pdfplumber.open", lambda path: fake_pdf)
+    monkeypatch.setattr(ocr_module, "_run_tesseract", lambda image: f"text:{image}")
+
+    def _broken_pool(*args, **kwargs):
+        raise RuntimeError("simulated process pool failure")
+
+    monkeypatch.setattr(ocr_module, "ProcessPoolExecutor", _broken_pool)
+
+    result = ocr_module.extract_text_from_scanned_pdf(str(tmp_path / "scan.pdf"))
+    assert result == "text:page-0\n\ntext:page-1\n\ntext:page-2"
+
+
+def test_extract_text_from_scanned_pdf_does_not_swallow_real_ocr_error(tmp_path, monkeypatch):
+    """В отличие от инфраструктурного сбоя пула, настоящая ошибка
+    распознавания (например, не установлен языковой пакет) детерминирована
+    и повторится в последовательном пути один в один — откат её не
+    исправит, поэтому она должна пробрасываться сразу, а не тонуть в
+    молчаливом фолбэке."""
+    import app.services.ocr as ocr_module
+
+    fake_pdf = _FakePdf([_FakePage(0), _FakePage(1)])
+    monkeypatch.setattr("pdfplumber.open", lambda path: fake_pdf)
+
+    def _raise_ocr_error(image):
+        raise OcrError("На этой машине не установлен языковой пакет Tesseract для русского")
+
+    monkeypatch.setattr(ocr_module, "_run_tesseract", _raise_ocr_error)
+    monkeypatch.setattr(ocr_module, "ProcessPoolExecutor", _FakeExecutor)
+
+    with pytest.raises(OcrError, match="языковой пакет"):
+        ocr_module.extract_text_from_scanned_pdf(str(tmp_path / "scan.pdf"))

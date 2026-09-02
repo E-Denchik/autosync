@@ -269,11 +269,24 @@ def _number(value):
 
 
 def get_vsegpt_status(api_key: str | None) -> dict:
-    """Получает баланс и доступные поля usage из официального v1/balance.
+    """Получает баланс и статус аккаунта из официального v1/balance —
+    ровно то же самое, что видно в личном кабинете на vsegpt.ru.
 
-    VseGPT менял форму ответа между версиями API, поэтому сохраняем только
-    известные числовые поля и не возвращаем тело ответа целиком.
-    """
+    Реальная форма ответа (см. https://vsegpt.ru/Docs/API/Code):
+        {"status": "ok", "data": {
+            "credits": "10.752448",
+            "subscription_status": "ok",
+            "subscription_end": "2024-05-02 00:08:02",
+            "user_status": 1,
+            "user_status_text": "Less than 500 credits on account."
+        }}
+    Раньше здесь читалось несуществующее поле "balance" (и ещё несколько
+    угаданных "currency"/"spent"/"requests_made"/"requests_remaining",
+    которых в реальном ответе API вообще нет) — баланс всегда приходил
+    None, хотя ключ был рабочим. "credits" — приоритетное имя поля,
+    "balance" оставлен как запасной вариант на случай более старой версии
+    API (см. её прежнее упоминание в этом докстринге про смену формы
+    ответа между версиями)."""
     if not api_key:
         return {"configured": False, "available": False}
     _throttle_vsegpt()
@@ -298,24 +311,20 @@ def get_vsegpt_status(api_key: str | None) -> dict:
     data = payload.get("data", payload) if isinstance(payload, dict) else {}
     if not isinstance(data, dict):
         return {"configured": True, "available": False, "error": "vsegpt.ru вернул неожиданный ответ"}
+    balance = _number(data.get("credits") if data.get("credits") is not None else data.get("balance"))
     result = {
         "configured": True,
-        "available": _number(data.get("balance")) is not None,
-        "balance": _number(data.get("balance")),
-        "currency": data.get("currency") or data.get("currency_code") or "RUB",
-        "spent": _number(data.get("spent") if data.get("spent") is not None else data.get("used")),
-        "requests_made": (
-            data.get("requests")
-            if data.get("requests") is not None
-            else data.get("requests_made")
-            if data.get("requests_made") is not None
-            else data.get("total_requests")
-        ),
-        "requests_remaining": (
-            data.get("requests_remaining")
-            if data.get("requests_remaining") is not None
-            else data.get("remaining_requests")
-        ),
+        "available": balance is not None,
+        "balance": balance,
+        # 0/1/2 — тот же светофор ("зелёный"/"жёлтый"/"красный"), что
+        # показан в профиле на vsegpt.ru; user_status_text — их же
+        # человеко-читаемое пояснение (например, "Less than 500 credits on
+        # account."), не переводим и не переформулируем — это сообщение
+        # самого vsegpt.ru, оно может обновиться на их стороне.
+        "user_status": data.get("user_status"),
+        "user_status_text": data.get("user_status_text"),
+        "subscription_status": data.get("subscription_status"),
+        "subscription_end": data.get("subscription_end"),
     }
     with _vsegpt_stats_lock:
         result["local_requests"] = _vsegpt_stats["requests"]

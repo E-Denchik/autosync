@@ -1,9 +1,11 @@
 import threading
+import time
 
 import pytest
 import requests
 
 from app.services import llm_settings
+from app.services import parallel
 from app.services.llm_client import LLMClient, LLMClientError
 
 
@@ -40,6 +42,45 @@ def test_test_connection_succeeds_when_model_responds(app, monkeypatch):
         message = client.test_connection()
 
     assert "отвечает" in message
+
+
+def test_generate_concurrency_gate_caps_in_flight_requests_process_wide(app, monkeypatch):
+    """_LlmConcurrencyGate — общий на процесс лимит (см. её докстринг в
+    llm_client.py про переподписку: файлы каталога x куски текста x
+    сопоставление x задания очереди, каждый со своим ThreadPoolExecutor).
+    Здесь эмулируем именно это — БОЛЬШЕ потоков зовут _generate() сразу,
+    чем разрешено llm_workers() — и проверяем, что реально одновременно
+    исполняющихся requests.post никогда не больше лимита, хотя вызывающих
+    потоков больше."""
+    monkeypatch.setattr(parallel, "llm_workers", lambda: 2)
+
+    lock = threading.Lock()
+    state = {"current": 0, "max_seen": 0}
+
+    def fake_post(url, json=None, timeout=None):
+        with lock:
+            state["current"] += 1
+            state["max_seen"] = max(state["max_seen"], state["current"])
+        time.sleep(0.05)
+        with lock:
+            state["current"] -= 1
+        return _FakeResponse(True, {"text": "OK"})
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", fake_post)
+
+    client = LLMClient("http://llm-service:8000")
+
+    def _call():
+        with app.app_context():
+            client.test_connection()
+
+    threads = [threading.Thread(target=_call) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert state["max_seen"] == 2
 
 
 def test_test_connection_raises_with_real_error_on_failure(app, monkeypatch):

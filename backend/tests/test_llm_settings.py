@@ -25,6 +25,28 @@ def test_llm_models_no_selection_initially(client, admin_headers, monkeypatch):
     assert body["providers"]["ollama"]["models"][0]["name"] == "llama3.2:3b"
 
 
+def test_llm_models_lists_ollama_and_lmstudio_when_vsegpt_not_configured(client, admin_headers, monkeypatch):
+    """Ollama/LM Studio — независимые локальные раннеры, не должны зависеть
+    от того, настроен ли ключ vsegpt.ru (см. discover_ollama/discover_lmstudio
+    в llm-service/server.py — они не трогают vsegpt вообще). Мок здесь
+    ближе к реальному ответу llm-service, чем DISCOVERY выше: явно содержит
+    providers.vsegpt с configured=False, а не просто отсутствие ключа."""
+    discovery = {
+        "providers": {
+            "ollama": {"available": True, "models": [{"name": "qwen2.5:7b"}]},
+            "lmstudio": {"available": True, "server_running": True, "models": [{"name": "local-model"}]},
+            "vsegpt": {"available": False, "configured": False, "models": []},
+        }
+    }
+    _mock_discovery(monkeypatch, discovery)
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["providers"]["ollama"]["models"] == [{"name": "qwen2.5:7b"}]
+    assert body["providers"]["lmstudio"]["models"] == [{"name": "local-model"}]
+    assert body["vsegpt_configured"] is False
+
+
 def test_llm_service_unavailable_returns_502(client, admin_headers, monkeypatch):
     def _raise(self, vsegpt_api_key=None):
         raise LLMClientError("connection refused")

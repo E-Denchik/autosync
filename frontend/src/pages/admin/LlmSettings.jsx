@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
@@ -153,16 +154,15 @@ export default function LlmSettings() {
             </p>
           ) : (
             <div className="llm-stats-grid">
-              <div><strong>Баланс</strong><br />{data.providers.vsegpt.status.balance ?? "—"} {data.providers.vsegpt.status.currency || ""}</div>
+              <div><strong>Баланс</strong><br />{data.providers.vsegpt.status.balance != null ? `${data.providers.vsegpt.status.balance} кредитов` : "—"}</div>
               <div><strong>Запросов через AutoSync</strong><br />{data.providers.vsegpt.status.local_requests ?? 0}</div>
               <div><strong>Успешно</strong><br />{data.providers.vsegpt.status.local_successes ?? 0}</div>
               <div><strong>Ошибок</strong><br />{data.providers.vsegpt.status.local_errors ?? 0}</div>
-              {data.providers.vsegpt.status.spent != null && <div><strong>Потрачено</strong><br />{data.providers.vsegpt.status.spent} {data.providers.vsegpt.status.currency || ""}</div>}
-              {data.providers.vsegpt.status.requests_remaining != null && <div><strong>Осталось запросов</strong><br />{data.providers.vsegpt.status.requests_remaining}</div>}
             </div>
           )}
           <p className="text-muted" style={{ marginBottom: 0, fontSize: 12 }}>
-            Баланс и доступные лимиты получены из v1/balance. Счётчики AutoSync относятся к текущему процессу сервиса.
+            Баланс получен из v1/balance, счётчики AutoSync относятся к текущему процессу сервиса. Полная
+            статистика аккаунта — на странице <Link to="/admin/vsegpt-stats">Статистика vsegpt</Link>.
           </p>
         </div>
       )}

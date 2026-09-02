@@ -46,6 +46,7 @@ const KEY_FIELDS = {
     },
     { key: "MOSKVORECHYE_API_KEY", label: "Ключ доступа (login:password)", type: "password", placeholder: "" },
   ],
+  vsegpt: [{ key: "VSEGPT_API_KEY", label: "API-ключ vsegpt.ru", type: "password", placeholder: "sk-or-..." }],
 };
 
 export default function Integrations() {

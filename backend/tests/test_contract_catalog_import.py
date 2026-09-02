@@ -414,6 +414,61 @@ def test_merge_removes_source_files_from_disk(app, tmp_path):
         assert not source_path.exists()
 
 
+def test_import_continues_when_one_file_among_many_fails_to_parse(app):
+    """Раньше один файл с ошибкой разбора (DocumentParseError) обрывал ВЕСЬ
+    список — ничего из уже разобранных файлов не сохранялось, потому что
+    коммит один на весь import_contract_files (см. её докстринг). Теперь
+    разбор каждого файла независим: плохой файл попадает в failed_files,
+    остальные — сохраняются как обычно."""
+    good_path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    bad_path = os.path.join(TESTDATA_DIR, "does-not-exist-at-all.xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_files(contract_id, [good_path, bad_path], None, llm_client=None)
+
+        assert result["parts_created"] > 0
+        assert len(result["failed_files"]) == 1
+        assert result["failed_files"][0]["filename"] == "does-not-exist-at-all.xlsx"
+
+        parts = ContractPart.query.filter_by(contract_id=contract_id).all()
+        assert len(parts) > 0
+
+
+def test_import_contract_job_stays_parsed_with_partial_file_failures(app):
+    """Частичный провал (не все файлы) — договор всё равно PARSED с уже
+    сохранёнными данными, а не FAILED, но error_message предупреждает,
+    сколько файлов не удалось разобрать."""
+    good_path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
+    bad_path = os.path.join(TESTDATA_DIR, "does-not-exist-at-all.xlsx")
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_job(contract_id, [good_path, bad_path], None)
+
+        assert result["status"] == "ok"
+        contract = db.session.get(Contract, contract_id)
+        assert contract.status == DocumentProcessingStatus.PARSED
+        assert "1 из 2" in contract.error_message
+        assert ContractPart.query.filter_by(contract_id=contract_id).count() > 0
+
+
+def test_import_contract_job_marks_failed_when_every_file_fails(app):
+    with app.app_context():
+        contract_id = _make_contract(app)
+        result = import_contract_job(
+            contract_id,
+            [
+                os.path.join(TESTDATA_DIR, "does-not-exist-1.xlsx"),
+                os.path.join(TESTDATA_DIR, "does-not-exist-2.xlsx"),
+            ],
+            None,
+        )
+
+        assert result["status"] == "failed"
+        contract = db.session.get(Contract, contract_id)
+        assert contract.status == DocumentProcessingStatus.FAILED
+        assert "Не удалось разобрать ни один файл" in contract.error_message
+
+
 def test_import_contract_job_marks_failed_on_unexpected_error_instead_of_hanging(app, monkeypatch):
     path = os.path.join(TESTDATA_DIR, "тест 1 (исходник).xlsx")
     with app.app_context():

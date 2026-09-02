@@ -15,6 +15,7 @@ from app.services import settings_store
 from app.services.analytics_provider import AnalyticsProvider, AnalyticsProviderError
 from app.services.autoeuro_client import AutoEuroClient, AutoEuroError
 from app.services.history import log_change
+from app.services.llm_client import LLMClient, LLMClientError
 from app.services.moskvorechye_client import MoskvorechyeClient, MoskvorechyeError
 from app.services.nomenclature_client import NomenclatureClient, NomenclatureClientError
 from app.services.ozon_client import (
@@ -62,6 +63,10 @@ def _autoeuro_client() -> AutoEuroClient:
 def _moskvorechye_client() -> MoskvorechyeClient:
     cfg = current_app.config
     return MoskvorechyeClient(cfg["MOSKVORECHYE_BASE_URL"], cfg["MOSKVORECHYE_API_KEY"])
+
+
+def _vsegpt_client() -> LLMClient:
+    return LLMClient(current_app.config["LLM_SERVICE_URL"])
 
 
 def _api_base_override(env_var: str, default: str) -> str | None:
@@ -132,6 +137,17 @@ def status():
             "configured": bool(cfg["MOSKVORECHYE_BASE_URL"] and cfg["MOSKVORECHYE_API_KEY"]),
             "api_base_override": None,
         },
+        {
+            "id": "vsegpt",
+            "name": "vsegpt.ru",
+            "description": (
+                "Облачные LLM-модели (используются, если не выбрана локальная Ollama/LM Studio) — "
+                "предложения по цене, генерация карточек, LLM-фоллбэк сопоставления запчастей и работ. "
+                "Сама модель выбирается в Администрирование → LLM-модель."
+            ),
+            "configured": bool(cfg["VSEGPT_API_KEY"]),
+            "api_base_override": None,
+        },
     ]
     return jsonify(integrations)
 
@@ -153,6 +169,27 @@ def test_connection(integration_id: str):
             message = _autoeuro_client().test_connection()
         elif integration_id == "moskvorechye":
             message = _moskvorechye_client().test_connection()
+        elif integration_id == "vsegpt":
+            # Проверяем локально ДО сетевого похода в llm-service — тот же
+            # приём, что и у остальных клиентов здесь (см. ozon_client.py:
+            # OzonClientError на пустой OZON_CLIENT_ID без единого запроса
+            # в сеть): не смысла спрашивать llm-service о ключе, которого
+            # точно нет, да ещё и результат зависел бы от того, запущен ли
+            # вообще llm-service, а не только от наличия ключа.
+            api_key = current_app.config.get("VSEGPT_API_KEY", "")
+            if not api_key:
+                raise LLMClientError("Ключ не задан")
+            # vsegpt_status() сама не бросает исключение на "ключ не принят"/
+            # "баланс не подтверждён" (это ожидаемое best-effort состояние
+            # для остального приложения, см. её докстринг в llm_client.py) —
+            # здесь это и есть провал проверки подключения, поэтому
+            # оборачиваем в LLMClientError, чтобы попасть в тот же except
+            # ниже и не дублировать формирование jsonify(ok=False, ...).
+            status = _vsegpt_client().vsegpt_status(api_key)
+            if not status.get("available"):
+                raise LLMClientError(status.get("error") or "Не удалось подтвердить баланс vsegpt.ru")
+            balance = status.get("balance")
+            message = f"Ключ рабочий — баланс {balance} кредитов" if balance is not None else "Ключ принят"
         else:
             return jsonify(error=f"Неизвестная интеграция: {integration_id}"), 404
     except (
@@ -162,6 +199,7 @@ def test_connection(integration_id: str):
         RosscoError,
         AutoEuroError,
         MoskvorechyeError,
+        LLMClientError,
     ) as exc:
         return jsonify(ok=False, message=str(exc))
     except Exception as exc:  # сеть/таймаут/и т.п. — тоже "не удалось", не 500

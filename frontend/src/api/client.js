@@ -51,6 +51,8 @@ export const api = {
   selectLlmModel: (provider, model) =>
     request("/llm/select", { method: "POST", body: JSON.stringify({ provider, model }) }),
   testLlmConnection: () => request("/llm/test", { method: "POST" }),
+  performance: () => request("/performance"),
+  savePerformance: (settings) => request("/performance", { method: "PUT", body: JSON.stringify(settings) }),
 
   // Дашборд
   dashboardSummary: () => request("/dashboard/summary"),

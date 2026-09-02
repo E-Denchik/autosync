@@ -127,12 +127,12 @@ def match_all_labor(
     autodata_client: AutoDataClient,
     llm_client: LLMClient,
 ) -> list[dict]:
-    from app.services.parallel import map_with_app_context
+    from app.services.parallel import llm_workers, map_with_app_context
 
     return map_with_app_context(
         lambda desc: match_labor_line(desc, vehicle_make, vehicle_model, autodata_client, llm_client),
         descriptions,
-        max_workers=1,
+        max_workers=llm_workers(),
     )
 
 
@@ -316,12 +316,12 @@ def match_all_labor_against_contract(
     vehicle_model: str | None,
     llm_client: LLMClient,
 ) -> list[dict]:
-    from app.services.parallel import map_with_app_context
+    from app.services.parallel import llm_workers, map_with_app_context
 
     return map_with_app_context(
         lambda desc: match_labor_line_against_contract(desc, contract_id, vehicle_make, vehicle_model, llm_client),
         descriptions,
-        max_workers=1,
+        max_workers=llm_workers(),
     )
 
 

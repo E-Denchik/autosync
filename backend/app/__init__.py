@@ -33,6 +33,7 @@ def create_app(config_class=Config):
     from app.api.contracts import bp as contracts_bp
     from app.api.parts_suppliers import bp as parts_suppliers_bp
     from app.api.update import bp as update_bp
+    from app.api.performance import bp as performance_bp
 
     app.register_blueprint(ozon_pricing_bp, url_prefix="/api/ozon/pricing")
     app.register_blueprint(ozon_cards_bp, url_prefix="/api/ozon/cards")
@@ -54,6 +55,7 @@ def create_app(config_class=Config):
     app.register_blueprint(contracts_bp, url_prefix="/api/contracts")
     app.register_blueprint(parts_suppliers_bp, url_prefix="/api/parts-suppliers")
     app.register_blueprint(update_bp, url_prefix="/api/update")
+    app.register_blueprint(performance_bp, url_prefix="/api/performance")
 
     @app.get("/api/health")
     def health():

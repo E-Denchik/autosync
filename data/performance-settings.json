@@ -1,0 +1,5 @@
+{
+  "mode": "manual",
+  "workers": 4,
+  "timeout_seconds": 300
+}

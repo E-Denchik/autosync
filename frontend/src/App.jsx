@@ -22,6 +22,7 @@ import CompanyProfile from "./pages/admin/CompanyProfile.jsx";
 import ContractCatalogs from "./pages/admin/ContractCatalogs.jsx";
 import ContractCatalogDetail from "./pages/admin/ContractCatalogDetail.jsx";
 import ErrorLog from "./pages/admin/ErrorLog.jsx";
+import PerformanceSettings from "./pages/admin/PerformanceSettings.jsx";
 import { useErrorLog } from "./context/ErrorLogContext.jsx";
 import {
   HomeIcon,
@@ -115,6 +116,9 @@ export default function App() {
           <NavLink to="/admin/llm">
             <CpuIcon /> LLM-модель
           </NavLink>
+          <NavLink to="/admin/performance">
+            <CpuIcon /> Производительность
+          </NavLink>
           <NavLink to="/admin/vsegpt-stats">
             <TrendingUpIcon /> Статистика vsegpt
           </NavLink>
@@ -158,6 +162,7 @@ export default function App() {
             <Route path="/admin/document-templates" element={<DocumentTemplates />} />
             <Route path="/admin/company-profile" element={<CompanyProfile />} />
             <Route path="/admin/llm" element={<LlmSettings />} />
+            <Route path="/admin/performance" element={<PerformanceSettings />} />
             <Route path="/admin/vsegpt-stats" element={<VsegptStats />} />
             <Route path="/admin/integrations" element={<Integrations />} />
             <Route path="/admin/history" element={<History />} />

@@ -22,6 +22,7 @@ from app.services.document_parser import (
 )
 from app.services.history import log_change
 from app.services.matcher import normalize_article
+from app.services.progress_tracker import tracking as track_progress
 from app.services.raw_import_staging import mark_rows_moved, stage_raw_rows
 
 logger = logging.getLogger(__name__)
@@ -143,32 +144,27 @@ def _bulk_insert_labor_norms(
     return {"created": len(to_insert), "updated": len(to_update)}
 
 
-def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str | None, llm_client) -> dict:
-    parts_created = 0
-    parts_updated = 0
-    labor_norms_created = 0
-    labor_norms_updated = 0
-    for path in paths:
-        filename = os.path.basename(path)
+def _parse_one_contract_file(path: str, llm_client) -> dict:
+    """Разбирает ОДИН файл каталога договора и ничего не пишет в БД (кроме
+    единственного read-only запроса к BrandAlias внутри
+    parse_price_catalog_by_brand/_normalize_brand_label — как и в
+    matcher.py: _contract_candidate_pool, это безопасно параллелить).
+    Запись остаётся строго последовательной в вызывающем потоке (см.
+    import_contract_files) — дедуп по артикулу в _bulk_insert_parts делает
+    SELECT по contract_id и должен видеть уже вставленные (пусть и не
+    закоммиченные — автофлаш той же сессии) строки ПРЕДЫДУЩИХ файлов,
+    иначе два файла с одним и тем же новым артикулом создали бы дубль.
+
+    Никогда не бросает исключение — плохой формат ОДНОГО файла среди
+    десятков/сотен не должен обрывать разбор всех остальных (раньше
+    ровно так и было: DocumentParseError из этой функции улетала до
+    import_contract_job, ничего из уже разобранного не коммитилось, и
+    вся загрузка целиком проваливалась из-за одного файла)."""
+    filename = os.path.basename(path)
+    try:
         export = parse_repair_order_export(path)
         if export is not None:
-            # Сохраняем строки как они были распознаны в файле — ДО того,
-            # как они станут ContractPart (см. raw_import_staging.py — тот
-            # же принцип "сначала сырые данные, потом постоянные таблицы"
-            # для каталога договора, что и для заказ-наряда ниже).
-            stage_raw_rows(export["part_lines"], row_kind="catalog_part", contract_id=contract_id, source_filename=filename)
-            parts_result = _bulk_insert_parts(contract_id, export["part_lines"])
-            parts_created += parts_result["created"]
-            parts_updated += parts_result["updated"]
-            labor_norms_result = _bulk_insert_labor_norms(
-                contract_id,
-                export["labor_lines"],
-                export["meta"].get("vehicle_make") or vehicle_make,
-                export["meta"].get("vehicle_model"),
-            )
-            labor_norms_created += labor_norms_result["created"]
-            labor_norms_updated += labor_norms_result["updated"]
-            continue
+            return {"filename": filename, "kind": "export", "export": export, "error": None}
 
         # Всегда разбираем ВСЕ найденные листы марок разом (vehicle_make=None
         # заставляет parse_price_catalog_by_brand взять все листы — см. её
@@ -188,6 +184,73 @@ def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str 
             lines = parse_price_catalog_single_sheet_sections(path)
         if lines is None:
             lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
+        return {"filename": filename, "kind": "catalog", "lines": lines, "error": None}
+    except DocumentParseError as exc:
+        return {"filename": filename, "kind": None, "error": str(exc)}
+    except Exception as exc:
+        logger.exception("Не удалось разобрать файл %s при импорте каталога договора", filename)
+        return {"filename": filename, "kind": None, "error": str(exc)}
+
+
+def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str | None, llm_client) -> dict:
+    """179 файлов договора раньше разбирались строго по одному — каждый
+    файл без готовой табличной структуры уходил в OCR/LLM-fallback
+    (parse_document_with_ocr_fallback), а на слабой машине/большой модели
+    один такой вызов мог занимать минуту и больше; сотня файлов
+    превращалась в часы ожидания без единого признака прогресса. Сам
+    разбор файла — чистая функция без записи в БД (см.
+    _parse_one_contract_file), поэтому его можно раздать по пулу потоков
+    точно так же, как уже разбираются строки одного заказ-наряда в
+    matcher.py/labor_matcher.py — см. app/services/parallel.py про то, что
+    это НЕ параллель разных моделей, а несколько запросов к ОДНОЙ уже
+    загруженной. Число одновременных запросов адаптируется под память/CPU
+    этого компьютера (llm_workers() -> performance_settings.py), поэтому
+    для владельца слабой машины пул сам сузится, а не просто станет "быстрее
+    для всех и упадёт по OOM у него"."""
+    from app.services.parallel import llm_workers, map_with_app_context
+
+    parsed_results = map_with_app_context(
+        lambda path: _parse_one_contract_file(path, llm_client),
+        paths,
+        max_workers=llm_workers(),
+    )
+
+    parts_created = 0
+    parts_updated = 0
+    labor_norms_created = 0
+    labor_norms_updated = 0
+    failed_files: list[dict] = []
+
+    # Запись в БД — строго последовательно и в исходном порядке файлов
+    # (map_with_app_context сохраняет порядок items), ради того же дедупа
+    # по артикулу, что и раньше в обычном цикле.
+    for parsed in parsed_results:
+        filename = parsed["filename"]
+        if parsed["error"] is not None:
+            failed_files.append({"filename": filename, "error": parsed["error"]})
+            continue
+
+        if parsed["kind"] == "export":
+            export = parsed["export"]
+            # Сохраняем строки как они были распознаны в файле — ДО того,
+            # как они станут ContractPart (см. raw_import_staging.py — тот
+            # же принцип "сначала сырые данные, потом постоянные таблицы"
+            # для каталога договора, что и для заказ-наряда ниже).
+            stage_raw_rows(export["part_lines"], row_kind="catalog_part", contract_id=contract_id, source_filename=filename)
+            parts_result = _bulk_insert_parts(contract_id, export["part_lines"])
+            parts_created += parts_result["created"]
+            parts_updated += parts_result["updated"]
+            labor_norms_result = _bulk_insert_labor_norms(
+                contract_id,
+                export["labor_lines"],
+                export["meta"].get("vehicle_make") or vehicle_make,
+                export["meta"].get("vehicle_model"),
+            )
+            labor_norms_created += labor_norms_result["created"]
+            labor_norms_updated += labor_norms_result["updated"]
+            continue
+
+        lines = parsed["lines"]
         stage_raw_rows(lines, row_kind="catalog_part", contract_id=contract_id, source_filename=filename)
         parts_result = _bulk_insert_parts(contract_id, lines)
         parts_created += parts_result["created"]
@@ -205,6 +268,7 @@ def import_contract_files(contract_id: int, paths: list[str], vehicle_make: str 
         "labor_norms_created": labor_norms_created,
         "labor_norms_updated": labor_norms_updated,
         "brands_normalized": brands_normalized,
+        "failed_files": failed_files,
     }
 
 
@@ -281,7 +345,12 @@ def import_contract_job(contract_id: int, paths: list[str], vehicle_make: str | 
 
     llm_client = LLMClient(current_app.config["LLM_SERVICE_URL"])
     try:
-        result = import_contract_files(contract_id, paths, vehicle_make, llm_client)
+        # Ключ прогресса — строка "contract:{id}", отдельное пространство
+        # от repair_order_id внутри того же progress_tracker (см. его
+        # докстринг) — /contracts/<id>/status отдаёт его фронту так же, как
+        # upload.py уже делает для заказ-нарядов.
+        with track_progress(f"contract:{contract_id}"):
+            result = import_contract_files(contract_id, paths, vehicle_make, llm_client)
     except DocumentParseError as exc:
         contract.status = DocumentProcessingStatus.FAILED
         contract.error_message = str(exc)
@@ -296,8 +365,27 @@ def import_contract_job(contract_id: int, paths: list[str], vehicle_make: str | 
         db.session.commit()
         return {"status": "failed", "error": str(exc)}
 
+    failed_files = result.get("failed_files") or []
+    if failed_files and len(failed_files) == len(paths):
+        # Ни один файл не разобрался — это фактический провал всей
+        # загрузки (частичный успех здесь невозможен), а не "6 хороших из
+        # 179" — оставляем FAILED, как и раньше для единственной ошибки.
+        summary = "; ".join(f"{f['filename']} — {f['error']}" for f in failed_files[:5])
+        if len(failed_files) > 5:
+            summary += f" и ещё {len(failed_files) - 5}"
+        contract.status = DocumentProcessingStatus.FAILED
+        contract.error_message = f"Не удалось разобрать ни один файл: {summary}"
+        log_change("contract", contract.id, "import_failed", details={"failed_files": failed_files})
+        db.session.commit()
+        return {"status": "failed", "error": contract.error_message}
+
     contract.status = DocumentProcessingStatus.PARSED
-    contract.error_message = None
+    contract.error_message = (
+        f"{len(failed_files)} из {len(paths)} файлов не удалось разобрать — остальные загружены, "
+        "подробности в истории изменений."
+        if failed_files
+        else None
+    )
     log_change("contract", contract.id, "imported", details=result)
     db.session.commit()
     return {"status": "ok", **result}

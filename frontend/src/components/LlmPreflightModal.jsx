@@ -26,6 +26,7 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
   const [selecting, setSelecting] = useState(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [performance, setPerformance] = useState(null);
   const toast = useToast();
 
   const load = () => {
@@ -44,6 +45,10 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
+    // Оценку RAM/CPU и рекомендацию по числу потоков подтягиваем отдельно
+    // и best-effort: она не должна блокировать сам список моделей выше,
+    // если вдруг не отвечает (см. performance_settings.py).
+    api.performance().then(setPerformance).catch(() => {});
   };
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -130,11 +135,27 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
               </div>
             )}
 
+            {performance?.recommendation?.warnings?.length > 0 && (
+              <div className="hint-banner hint-warning" style={{ marginBottom: 12, flexDirection: "column", alignItems: "flex-start" }}>
+                {performance.recommendation.warnings.map((warning) => (
+                  <div key={warning} style={{ display: "flex", gap: 8 }}>
+                    <AlertCircleIcon />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+                <span className="text-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                  Сейчас автоматически применено: {performance.settings.workers} параллельных запрос(а),
+                  timeout {performance.settings.timeout_seconds} с. Изменить можно в Администрирование →
+                  Производительность.
+                </span>
+              </div>
+            )}
+
             {data.providers.vsegpt?.status && (
               <div className={`hint-banner ${data.providers.vsegpt.status.available ? "" : "hint-warning"}`} style={{ marginBottom: 12 }}>
                 vsegpt.ru:{" "}
                 {data.providers.vsegpt.status.balance != null
-                  ? `баланс ${data.providers.vsegpt.status.balance} ${data.providers.vsegpt.status.currency || ""}`
+                  ? `баланс ${data.providers.vsegpt.status.balance} кредитов`
                   : data.providers.vsegpt.status.error || "статистика недоступна"}
               </div>
             )}

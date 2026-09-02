@@ -165,6 +165,19 @@ def load_llm_service_app():
     return module.app
 
 
+# Дефолт waitress — 4 потока на процесс. Backend держит фоновую задачу
+# (импорт каталога/обработка заказ-наряда), которая пишет в SQLite ОДНОЙ
+# долгой транзакцией (см. contract_catalog_import.import_contract_files) —
+# пока она не закоммитилась, читающие запросы вроде опроса /status могут
+# ждать блокировку БД. С 4 потоками этого одного заняло достаточно, чтобы
+# опрос прогресса встал в очередь самого waitress ("Task queue depth is
+# 1/2/3" в логе) — выглядело как зависшее приложение, хотя фоновая задача
+# реально работала. Увеличение пула потоков — дешёвая подстраховка (потоки,
+# ждущие сеть/лок, почти не грузят CPU), настоящая причина блокировки чтения
+# отдельно снята через WAL (см. extensions.py).
+_WAITRESS_THREADS = 8
+
+
 def run_llm_service(port: int) -> None:
     from waitress import serve
 
@@ -172,7 +185,7 @@ def run_llm_service(port: int) -> None:
     os.environ.setdefault("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1")
     app = load_llm_service_app()
     logger.info("llm-service слушает на 127.0.0.1:%s", port)
-    serve(app, host="127.0.0.1", port=port, _quiet=True)
+    serve(app, host="127.0.0.1", port=port, threads=_WAITRESS_THREADS, _quiet=True)
 
 
 def run_backend(app, port: int) -> None:
@@ -182,7 +195,7 @@ def run_backend(app, port: int) -> None:
     # окно (см. run_window), не через браузер ни с этой машины, ни тем более
     # с других устройств в сети.
     logger.info("backend слушает на 127.0.0.1:%s", port)
-    serve(app, host="127.0.0.1", port=port, _quiet=True)
+    serve(app, host="127.0.0.1", port=port, threads=_WAITRESS_THREADS, _quiet=True)
 
 
 def start_scheduler(app):
@@ -509,6 +522,16 @@ def _selftest_gui() -> None:
 
 
 if __name__ == "__main__":
+    # Обязательно ДО чего-либо ещё и именно здесь (PyInstaller-требование):
+    # OCR по сканам теперь параллелит страницы через ProcessPoolExecutor
+    # (см. app/services/ocr.py) — на Windows-сборке без freeze_support()
+    # спавн процесса из frozen-бинарника перезапускает точку входа целиком
+    # вместо того, чтобы выполнить только функцию воркера. На Linux/macOS
+    # и при запуске из исходников это no-op.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
     if os.environ.get("AUTOSYNC_SELFTEST_GUI") == "1":
         _selftest_gui()
     else:

@@ -70,3 +70,31 @@ describe("ContractCatalogs — отдельный файл ставок по м�
     expect(await screen.findByText(/Ставки по маркам загружены: 9 новых, 0 обновлено/)).toBeInTheDocument();
   });
 });
+
+describe("ContractCatalogs — прогресс разбора файлов", () => {
+  it("показывает 'разобрано X из Y файлов' пока контракт в статусе parsing", async () => {
+    // Раньше массовая загрузка каталога (десятки-сотни файлов) не давала
+    // вообще никакой обратной связи, кроме статуса "разбирается" — со
+    // стороны выглядело как зависание (см. progress_tracker.py/
+    // contract_catalog_import.py: теперь прогресс по файлам считается так
+    // же, как уже считался прогресс по строкам заказ-наряда).
+    api.listContracts.mockResolvedValue([
+      {
+        id: 7,
+        name: "Большой каталог",
+        original_filename: "catalog.xlsx",
+        status: "parsing",
+        error_message: null,
+        active: true,
+        parts_count: 0,
+        labor_norms_count: 0,
+        repair_orders_count: 0,
+        progress: { current: 6, total: 179, started_at: "2026-09-02T10:00:00" },
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText("Разобрано 6 из 179 файлов")).toBeInTheDocument();
+  });
+});

@@ -10,6 +10,13 @@
 обрабатываться одновременно (job_queue.py: ThreadPoolExecutor(max_workers=2))
 без путаницы прогресса одного с другим.
 
+Ключ намеренно типизирован как int | str: массовый импорт каталога
+договора (contract_catalog_import.py) переиспользует этот же модуль под
+СВОИМ пространством ключей — строкой вида "contract:{id}", а не голым
+Contract.id, чтобы не столкнуться с RepairOrder.id той же величины (это
+две независимые таблицы с автоинкрементом, ничто не мешает им совпасть
+числом).
+
 Кто именно из потоков параллельной обработки (см. parallel.py:
 map_with_app_context) сейчас работает над каким repair_order_id — определяется
 через contextvars, а не через явный параметр в каждой сигнатуре функции:
@@ -28,16 +35,16 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 
-_current_repair_order_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+_current_repair_order_id: contextvars.ContextVar[int | str | None] = contextvars.ContextVar(
     "current_repair_order_id", default=None
 )
 
 _lock = threading.Lock()
-_progress: dict[int, dict[str, int]] = {}
+_progress: dict[int | str, dict[str, int]] = {}
 
 
 @contextmanager
-def tracking(repair_order_id: int):
+def tracking(repair_order_id: int | str):
     """Обернуть весь жизненный цикл обработки одного заказ-наряда — см.
     job_queue.py: enqueue_process_upload. token/reset (а не просто set)
     обязателен: ThreadPoolExecutor переиспользует потоки между задачами
@@ -52,7 +59,7 @@ def tracking(repair_order_id: int):
         clear(repair_order_id)
 
 
-def current_repair_order_id() -> int | None:
+def current_repair_order_id() -> int | str | None:
     """Для parallel.py: узнать, за каким repair_order_id числится текущий
     (главный, вызывающий map_with_app_context) поток — ПЕРЕД тем как
     раздать работу по пулу. Специально не отдаём наружу сам ContextVar
@@ -62,7 +69,7 @@ def current_repair_order_id() -> int | None:
     return _current_repair_order_id.get()
 
 
-def bind_for_worker_thread(repair_order_id: int) -> None:
+def bind_for_worker_thread(repair_order_id: int | str) -> None:
     """Пул-воркер из parallel.py: каждый вызывающий поток здесь новый и
     создан заново специально для ОДНОГО вызова map_with_app_context (сам
     ThreadPoolExecutor там создаётся и уничтожается внутри этого вызова,
@@ -99,12 +106,12 @@ def report(current: int, total: int) -> None:
         _progress[repair_order_id] = {"current": current, "total": total, "started_at": started_at}
 
 
-def get(repair_order_id: int) -> dict[str, int | str] | None:
+def get(repair_order_id: int | str) -> dict[str, int | str] | None:
     with _lock:
         progress = _progress.get(repair_order_id)
         return dict(progress) if progress else None
 
 
-def clear(repair_order_id: int) -> None:
+def clear(repair_order_id: int | str) -> None:
     with _lock:
         _progress.pop(repair_order_id, None)

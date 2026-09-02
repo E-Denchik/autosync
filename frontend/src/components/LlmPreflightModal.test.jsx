@@ -11,6 +11,7 @@ vi.mock("../api/client.js", () => ({
     listLlmModels: vi.fn(),
     selectLlmModel: vi.fn(),
     testLlmConnection: vi.fn(),
+    performance: vi.fn(),
   },
 }));
 
@@ -26,6 +27,12 @@ function renderModal(props = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // По умолчанию — без предупреждений о памяти, чтобы существующие тесты не
+  // зависели от него; тест ниже переопределяет это резолвом с warnings.
+  api.performance.mockResolvedValue({
+    settings: { mode: "auto", workers: 2, timeout_seconds: 180 },
+    recommendation: { workers: 2, timeout_seconds: 180, reason: "", warnings: [] },
+  });
 });
 
 describe("LlmPreflightModal", () => {
@@ -105,6 +112,51 @@ describe("LlmPreflightModal", () => {
 
     await userEvent.click(screen.getByText("Загрузить и сопоставить"));
     expect(onContinue).toHaveBeenCalled();
+  });
+
+  it("показывает модели Ollama и LM Studio, даже если vsegpt.ru не подключён", async () => {
+    api.listLlmModels.mockResolvedValue({
+      selected: null,
+      previous_selection: null,
+      providers: {
+        ollama: { available: true, models: [{ name: "qwen2.5:7b" }] },
+        lmstudio: { available: true, server_running: true, models: [{ name: "local-model" }] },
+        vsegpt: { available: false, configured: false, models: [] },
+      },
+      vsegpt_configured: false,
+    });
+
+    renderModal();
+
+    expect(await screen.findByText("qwen2.5:7b")).toBeInTheDocument();
+    expect(screen.getByText("local-model")).toBeInTheDocument();
+    const useButtons = screen.getAllByText("Использовать");
+    expect(useButtons).toHaveLength(2);
+    useButtons.forEach((button) => expect(button).not.toBeDisabled());
+  });
+
+  it("показывает предупреждение, если модель не помещается в RAM этого компьютера", async () => {
+    // Регрессия: на 8 ГБ RAM с моделью 14B обработка уходила в свопирование
+    // и еле ползла (179 файлов, 6 обработано за 10 минут), но пользователь
+    // узнавал об этом только посреди загрузки, а не заранее.
+    api.listLlmModels.mockResolvedValue({
+      selected: { provider: "ollama", model: "qwen2.5:14b" },
+      previous_selection: null,
+      providers: { ollama: { available: true, models: [{ name: "qwen2.5:14b" }] } },
+    });
+    api.performance.mockResolvedValue({
+      settings: { mode: "auto", workers: 1, timeout_seconds: 600 },
+      recommendation: {
+        workers: 1,
+        timeout_seconds: 600,
+        reason: "",
+        warnings: ["Выбранная модель весит 9.0 ГБ — больше, чем есть RAM на этом компьютере (8.0 ГБ)"],
+      },
+    });
+
+    renderModal();
+
+    expect(await screen.findByText(/больше, чем есть RAM на этом компьютере/)).toBeInTheDocument();
   });
 
   it("продолжить можно и без ИИ вообще — кнопка не блокируется отсутствием выбора", async () => {

@@ -410,7 +410,7 @@ def match_all_against_contract(
     llm_client: LLMClient,
     vehicle_make: str | None = None,
 ) -> list[dict]:
-    from app.services.parallel import map_with_app_context
+    from app.services.parallel import llm_workers, map_with_app_context
 
     # Несколько строк заказа часто имеют одно и то же название (например,
     # одинаковые расходники). Пул каталога неизменен в рамках этой операции,
@@ -443,5 +443,5 @@ def match_all_against_contract(
     return map_with_app_context(
         match_line_with_cached_pool,
         order_lines,
-        max_workers=1,
+        max_workers=llm_workers(),
     )

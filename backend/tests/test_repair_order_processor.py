@@ -107,6 +107,29 @@ def test_process_upload_job_matches_against_pre_populated_contract_catalog(app):
         assert all(r.status == "moved" for r in staged_labor)
 
 
+def test_parse_repair_order_files_merges_multiple_files_in_order(app):
+    """Регрессия: несколько приложенных файлов заказ-наряда теперь
+    разбираются параллельно (см. _parse_repair_order_files — тот же приём,
+    что и contract_catalog_import.import_contract_files), а не строго по
+    одному. Слияние meta/part_lines/labor_lines_raw обязано остаться
+    детерминированным — по порядку paths, а не по порядку завершения
+    потоков пула: проверяем это тем, что тот же файл дважды даёт РОВНО
+    удвоенный, а не перемешанный или частично потерянный результат."""
+    from app.services.repair_order_processor import _parse_repair_order_files
+
+    llm_client = MagicMock()
+    with app.app_context():
+        single_meta, single_parts, single_labor = _parse_repair_order_files([REPAIR_ORDER_FILE], llm_client)
+        meta, part_lines, labor_lines_raw = _parse_repair_order_files(
+            [REPAIR_ORDER_FILE, REPAIR_ORDER_FILE], llm_client
+        )
+
+    assert meta == single_meta
+    assert part_lines == single_parts + single_parts
+    assert labor_lines_raw == single_labor + single_labor
+    llm_client.extract_table_from_text.assert_not_called()
+
+
 def test_process_upload_job_falls_back_to_norm_hours_stated_in_repair_order_when_nothing_matched(app):
     """Регрессия по реальным данным заказчика: у "Управление дорог" нет ни
     каталога работ в договоре, ни доступа к AutoData/1С — но исходный

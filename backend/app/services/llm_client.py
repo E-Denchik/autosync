@@ -11,7 +11,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from contextlib import contextmanager
 
 import requests
 
@@ -100,6 +102,60 @@ _REMOTE_LLM_TIMEOUT_SECONDS = 200
 _VSEGPT_STATUS_TIMEOUT_SECONDS = 15
 
 
+class _LlmConcurrencyGate:
+    """Общий на ВЕСЬ процесс лимит одновременных запросов к раннеру —
+    сколько бы независимых пулов потоков ни вызвало _generate() одновременно
+    (файлы каталога договора, куски текста внутри одного из этих файлов,
+    сопоставление запчастей, сопоставление работ, до 2 таких деревьев сразу
+    из job_queue.py) — см. docstring parallel.py про то, почему каждый
+    уровень сам по себе созданный ThreadPoolExecutor(max_workers=llm_workers())
+    не спасает: адаптивный лимит рассчитан как бюджет НА ВЕСЬ процесс, а не
+    на каждый уровень вложенности отдельно, и без общей точки схождения
+    4 уровня по 4 потока дают до 16-32 одновременных запросов к одной и той
+    же модели вместо задуманных 1-4.
+
+    Это счётчик с condition variable, а НЕ общий ThreadPoolExecutor — если
+    бы несколько уровней сами по себе сабмитили задачи в один и тот же
+    пул, поток, уже занявший воркер и ждущий результата ВЛОЖЕННОГО submit
+    в тот же пул, мог бы дедлокнуться (пула не хватит выполнить вложенную
+    задачу, потому что все воркеры заняты ожиданием). Здесь же поток просто
+    блокируется на acquire() — не в каком-то пуле, а сам по себе, — и это
+    безопасно на любую глубину вложенности.
+
+    Лимит читается ЖИВЫМ на каждой попытке взять слот (не сохраняется на
+    момент создания): performance_settings.py может поменять его по ходу
+    дела (adaptive-режим реагирует на свободную память), а parallel.py
+    может понизить его до 1 сразу после обнаружения CPU-only раннера
+    (см. _slow_runner_active) — оба изменения должны сработать немедленно
+    для уже стоящих в очереди запросов, а не только для новых."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._in_flight = 0
+
+    @contextmanager
+    def slot(self):
+        from app.services.parallel import llm_workers
+
+        with self._condition:
+            # wait(timeout=...) вместо голого wait() — лимит мог вырасти,
+            # пока мы ждали (память освободилась, TTL медленного раннера
+            # истёк), а notify() уходит только при release(), которого
+            # может долго не быть, если другие слоты заняты надолго.
+            while self._in_flight >= llm_workers():
+                self._condition.wait(timeout=1.0)
+            self._in_flight += 1
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._in_flight -= 1
+                self._condition.notify()
+
+
+_concurrency_gate = _LlmConcurrencyGate()
+
+
 class LLMClientError(RuntimeError):
     pass
 
@@ -110,7 +166,12 @@ class LLMClient:
     # отдельный, более длинный timeout.
     def __init__(self, base_url: str, timeout: int = _LOCAL_LLM_TIMEOUT_SECONDS):
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        try:
+            from app.services.performance_settings import runtime_settings
+
+            self.timeout = runtime_settings()["settings"]["timeout_seconds"]
+        except RuntimeError:
+            self.timeout = timeout
 
     def list_models(self, vsegpt_api_key: str | None = None) -> dict:
         """Discovery всех LLM-провайдеров, которые видит llm-service: что
@@ -203,11 +264,16 @@ class LLMClient:
         last_exc: requests.exceptions.RequestException | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
-                resp = requests.post(
-                    f"{self.base_url}/generate",
-                    json=payload,
-                    timeout=request_timeout,
-                )
+                # Только сам сетевой запрос — НЕ retry_delay ниже: пока этот
+                # поток спит перед повтором, слот должен освободиться для
+                # чужого запроса, а не простаивать занятым впустую (см.
+                # docstring _LlmConcurrencyGate).
+                with _concurrency_gate.slot():
+                    resp = requests.post(
+                        f"{self.base_url}/generate",
+                        json=payload,
+                        timeout=request_timeout,
+                    )
             except requests.exceptions.Timeout as exc:
                 # Повтор таймаута Ollama обычно только ставит ещё один такой же
                 # тяжёлый запрос в очередь и превращает минуты в часы.
@@ -379,7 +445,7 @@ class LLMClient:
         результат — обрезанный/восстановленный ответ намеренно НЕ
         попадает в кеш, иначе неполный результат застрял бы там навсегда."""
         from app.services import llm_extraction_cache, llm_settings
-        from app.services.parallel import map_with_app_context
+        from app.services.parallel import llm_workers, map_with_app_context
         from app.services.prompt_loader import render_prompt
 
         # Дробим только для ограничения размера ответа, а не на маленькие
@@ -446,7 +512,7 @@ class LLMClient:
         results = map_with_app_context(
             _process_chunk,
             list(enumerate(chunks, start=1)),
-            max_workers=1,
+            max_workers=llm_workers(),
         )
 
         all_rows: list[dict] = []

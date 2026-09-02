@@ -304,6 +304,11 @@ export default function ContractCatalogs() {
                   <td className="text-muted">{c.repair_orders_count}</td>
                   <td>
                     <StatusPill status={c.status} />
+                    {c.status === "parsing" && c.progress && (
+                      <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                        Разобрано {c.progress.current} из {c.progress.total} файлов
+                      </div>
+                    )}
                     {c.error_message && (
                       <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2, maxWidth: 220 }}>
                         {c.error_message}

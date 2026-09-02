@@ -102,7 +102,39 @@ def resolve_hourly_rate(repair_order: RepairOrder) -> float | None:
     return float(repair_order.contragent.hourly_rate) if repair_order.contragent else None
 
 
+def _parse_one_repair_order_file(path: str, llm_client: LLMClient) -> dict:
+    """Разбирает ОДИН приложенный файл заказ-наряда, ничего не пишет в БД —
+    тот же контракт, что и contract_catalog_import._parse_one_contract_file,
+    и по той же причине: это делает разбор нескольких файлов безопасным для
+    параллельного выполнения (см. _parse_repair_order_files ниже)."""
+    export = parse_repair_order_export(path)
+    if export is not None:
+        return {"kind": "export", "export": export}
+    order_lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
+    return {"kind": "order_lines", "order_lines": order_lines}
+
+
 def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[dict, list[dict], list[dict]]:
+    """Несколько приложенных файлов ОДНОГО заказ-наряда (см. "Добавить ещё
+    файлы") раньше разбирались строго по одному, хотя разбор каждого файла
+    независим и настолько же может упереться в OCR/LLM-фоллбэк, как и файлы
+    каталога договора — см. contract_catalog_import.import_contract_files,
+    где ровно эта же проблема уже была исправлена тем же приёмом (несколько
+    файлов заказ-наряда — редкость по сравнению с сотнями файлов каталога,
+    но алгоритм должен быть одинаков для обоих мест, а не только для одного).
+
+    Слияние meta/part_lines/labor_lines_raw остаётся строго последовательным
+    и в исходном порядке paths (map_with_app_context его сохраняет) — важно
+    для meta: "первое непустое значение побеждает" должно быть первым по
+    порядку файлов, а не по порядку завершения потоков."""
+    from app.services.parallel import llm_workers, map_with_app_context
+
+    parsed = map_with_app_context(
+        lambda path: _parse_one_repair_order_file(path, llm_client),
+        paths,
+        max_workers=llm_workers(),
+    )
+
     meta = {
         "order_number": None,
         "order_date": None,
@@ -113,9 +145,9 @@ def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[
     }
     part_lines: list[dict] = []
     labor_lines_raw: list[dict] = []
-    for path in paths:
-        export = parse_repair_order_export(path)
-        if export is not None:
+    for item in parsed:
+        if item["kind"] == "export":
+            export = item["export"]
             for key in meta:
                 meta[key] = meta[key] or export["meta"].get(key)
             part_lines.extend(export["part_lines"])
@@ -125,7 +157,7 @@ def _parse_repair_order_files(paths: list[str], llm_client: LLMClient) -> tuple[
                 if l.get("description")
             )
         else:
-            order_lines = parse_document_with_ocr_fallback(path, llm_client, DOCUMENT_LINE_FIELDS)
+            order_lines = item["order_lines"]
             part_lines.extend(line for line in order_lines if line.get("article"))
             labor_lines_raw.extend(
                 line for line in order_lines if not line.get("article") and line.get("name")

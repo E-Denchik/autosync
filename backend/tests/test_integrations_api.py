@@ -1,5 +1,6 @@
 from app.services.analytics_provider import AnalyticsProvider
 from app.services.autoeuro_client import AutoEuroClient
+from app.services.llm_client import LLMClient
 from app.services.moskvorechye_client import MoskvorechyeClient
 from app.services.ozon_client import OzonClient
 from app.services.rossco_client import RosscoClient
@@ -18,6 +19,7 @@ def test_status_reports_not_configured_by_default(client, admin_headers):
         "rossco": False,
         "autoeuro": False,
         "moskvorechye": False,
+        "vsegpt": False,
     }
     assert all(item["api_base_override"] is None for item in body)
 
@@ -120,6 +122,46 @@ def test_test_connection_moskvorechye_success(client, admin_headers, monkeypatch
     assert body["ok"] is True
 
 
+def test_test_connection_vsegpt_not_configured(client, admin_headers):
+    resp = client.post("/api/integrations/test/vsegpt", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "не задан" in body["message"]
+
+
+def test_test_connection_vsegpt_success(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(
+        LLMClient,
+        "vsegpt_status",
+        lambda self, api_key=None: {"configured": True, "available": True, "balance": 12.5},
+    )
+    client.post("/api/integrations/keys", headers=admin_headers, json={"VSEGPT_API_KEY": "sk-test"})
+    resp = client.post("/api/integrations/test/vsegpt", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert "12.5" in body["message"]
+
+
+def test_test_connection_vsegpt_reports_real_reason_when_balance_not_confirmed(client, admin_headers, monkeypatch):
+    # Ключ сохранён, но vsegpt.ru не подтвердил баланс (неверный ключ,
+    # сеть и т.п.) — сообщение должно называть настоящую причину, а не
+    # обобщённое "не удалось подключиться".
+    monkeypatch.setattr(
+        LLMClient,
+        "vsegpt_status",
+        lambda self, api_key=None: {
+            "configured": True,
+            "available": False,
+            "error": "vsegpt.ru не принял API-ключ",
+        },
+    )
+    client.post("/api/integrations/keys", headers=admin_headers, json={"VSEGPT_API_KEY": "sk-bad"})
+    resp = client.post("/api/integrations/test/vsegpt", headers=admin_headers)
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert body["message"] == "vsegpt.ru не принял API-ключ"
+
+
 def test_save_keys_requires_at_least_one_value(client, admin_headers):
     resp = client.post("/api/integrations/keys", headers=admin_headers, json={})
     assert resp.status_code == 400
@@ -168,3 +210,17 @@ def test_save_keys_status_reflects_saved_keys(client, admin_headers):
     resp = client.get("/api/integrations/status", headers=admin_headers)
     ids = {item["id"]: item["configured"] for item in resp.get_json()}
     assert ids["ozon_seller"] is True
+
+
+def test_save_vsegpt_key_from_integrations_page_applies_immediately(client, admin_headers, app):
+    # Регрессия: ключ vsegpt.ru раньше можно было сохранить только со
+    # страницы «LLM-модель» — тот же общий POST /integrations/keys уже умел
+    # его принимать (VSEGPT_API_KEY в settings_store.ALLOWED_KEYS), но
+    # страница «Интеграции» вообще не показывала vsegpt в списке.
+    resp = client.post("/api/integrations/keys", headers=admin_headers, json={"VSEGPT_API_KEY": "sk-or-abc"})
+    assert resp.status_code == 200
+    assert app.config["VSEGPT_API_KEY"] == "sk-or-abc"
+
+    status_resp = client.get("/api/integrations/status", headers=admin_headers)
+    ids = {item["id"]: item["configured"] for item in status_resp.get_json()}
+    assert ids["vsegpt"] is True
