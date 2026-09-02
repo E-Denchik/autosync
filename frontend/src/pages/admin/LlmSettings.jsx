@@ -144,6 +144,29 @@ export default function LlmSettings() {
         </div>
       )}
 
+      {data.providers.vsegpt?.status && (
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <h3 style={{ marginTop: 0 }}>Состояние аккаунта vsegpt.ru</h3>
+          {!data.providers.vsegpt.status.available ? (
+            <p className="text-muted">
+              {data.providers.vsegpt.status.error || "Не удалось получить статистику аккаунта."}
+            </p>
+          ) : (
+            <div className="llm-stats-grid">
+              <div><strong>Баланс</strong><br />{data.providers.vsegpt.status.balance ?? "—"} {data.providers.vsegpt.status.currency || ""}</div>
+              <div><strong>Запросов через AutoSync</strong><br />{data.providers.vsegpt.status.local_requests ?? 0}</div>
+              <div><strong>Успешно</strong><br />{data.providers.vsegpt.status.local_successes ?? 0}</div>
+              <div><strong>Ошибок</strong><br />{data.providers.vsegpt.status.local_errors ?? 0}</div>
+              {data.providers.vsegpt.status.spent != null && <div><strong>Потрачено</strong><br />{data.providers.vsegpt.status.spent} {data.providers.vsegpt.status.currency || ""}</div>}
+              {data.providers.vsegpt.status.requests_remaining != null && <div><strong>Осталось запросов</strong><br />{data.providers.vsegpt.status.requests_remaining}</div>}
+            </div>
+          )}
+          <p className="text-muted" style={{ marginBottom: 0, fontSize: 12 }}>
+            Баланс и доступные лимиты получены из v1/balance. Счётчики AutoSync относятся к текущему процессу сервиса.
+          </p>
+        </div>
+      )}
+
       {Object.entries(data.providers).map(([provider, info]) => (
         <div className="panel" key={provider} style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -170,7 +193,11 @@ export default function LlmSettings() {
           )}
           {!info.available && provider === "vsegpt" && data.vsegpt_configured && (
             <p className="text-muted">
-              Не удалось получить список моделей{info.error ? `: ${info.error}` : ""} — проверьте ключ.
+              {info.reason === "non_positive_balance"
+                ? "Модели отображаются, но временно заблокированы: баланс vsegpt.ru равен нулю или меньше нуля. Пополните счёт и нажмите «Обновить список»."
+                : info.reason === "balance_unknown"
+                ? "Модели отображаются, но временно заблокированы: баланс vsegpt.ru не удалось подтвердить. Проверьте ключ и нажмите «Обновить список»."
+                : `Не удалось получить список моделей${info.error ? `: ${info.error}` : ""} — проверьте ключ.`}
             </p>
           )}
 
@@ -179,7 +206,7 @@ export default function LlmSettings() {
           )}
 
           {info.models.length > 0 && (
-            <div className="table-wrap">
+            <div className="table-wrap llm-model-list">
               <table>
                 <thead>
                   <tr>
@@ -190,7 +217,9 @@ export default function LlmSettings() {
                 <tbody>
                   {info.models.map((m) => {
                     const key = `${provider}:${m.name}`;
-                    const unavailable = provider === "lmstudio" && info.server_running === false;
+                    const unavailable =
+                      (provider === "lmstudio" && info.server_running === false) ||
+                      (provider === "vsegpt" && info.temporarily_unavailable);
                     return (
                       <tr key={key}>
                         <td>{m.name}</td>
@@ -201,7 +230,13 @@ export default function LlmSettings() {
                             <button
                               className="btn btn-secondary btn-sm"
                               disabled={selecting === key || unavailable}
-                              title={unavailable ? "Включите Local Server в приложении LM Studio" : undefined}
+                              title={
+                                unavailable
+                                  ? provider === "vsegpt"
+                                    ? "Баланс vsegpt.ru не подтверждён или не положительный"
+                                    : "Включите Local Server в приложении LM Studio"
+                                  : undefined
+                              }
                               onClick={() => handleSelect(provider, m.name)}
                             >
                               {selecting === key ? "Выбираем…" : "Использовать"}

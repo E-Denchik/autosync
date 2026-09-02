@@ -190,6 +190,24 @@ def test_generate_retries_transient_network_error_before_succeeding(app, monkeyp
     assert calls["n"] == 3
 
 
+def test_generate_does_not_retry_local_runner_timeout(app, monkeypatch):
+    calls = {"n": 0}
+
+    def always_times_out(url, json=None, timeout=None):
+        calls["n"] += 1
+        assert timeout == 300
+        raise requests.exceptions.Timeout("ollama stalled")
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", always_times_out)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        with pytest.raises(LLMClientError, match="ollama не ответил за 300 с"):
+            client.suggest_price({"name": "x", "sku": "s", "cost_price": 1.0}, {})
+
+    assert calls["n"] == 1
+
+
 def test_generate_raises_after_exhausting_all_retries(app, monkeypatch):
     calls = {"n": 0}
 

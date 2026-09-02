@@ -130,13 +130,22 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
               </div>
             )}
 
+            {data.providers.vsegpt?.status && (
+              <div className={`hint-banner ${data.providers.vsegpt.status.available ? "" : "hint-warning"}`} style={{ marginBottom: 12 }}>
+                vsegpt.ru:{" "}
+                {data.providers.vsegpt.status.balance != null
+                  ? `баланс ${data.providers.vsegpt.status.balance} ${data.providers.vsegpt.status.currency || ""}`
+                  : data.providers.vsegpt.status.error || "статистика недоступна"}
+              </div>
+            )}
+
             {allModels.length === 0 ? (
               <p className="text-muted" style={{ fontSize: 12.5 }}>
                 Не нашлось ни одной модели (Ollama/LM Studio) и ключ vsegpt.ru не настроен. Настройте одно
                 из этого в Администрирование → LLM-модель и нажмите «Обновить», либо продолжите без ИИ.
               </p>
             ) : (
-              <div className="table-wrap" style={{ marginBottom: 14 }}>
+              <div className="table-wrap llm-model-list" style={{ marginBottom: 14 }}>
                 <table>
                   <thead>
                     <tr>
@@ -148,6 +157,9 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
                   <tbody>
                     {allModels.map(({ p, m }) => {
                       const key = `${p}:${m.name}`;
+                      const unavailable =
+                        (p === "lmstudio" && data.providers[p].server_running === false) ||
+                        (p === "vsegpt" && data.providers[p].temporarily_unavailable);
                       return (
                         <tr key={key}>
                           <td>{m.name}</td>
@@ -158,7 +170,14 @@ export default function LlmPreflightModal({ onClose, onContinue }) {
                             ) : (
                               <button
                                 className="btn btn-secondary btn-sm"
-                                disabled={selecting === key}
+                                disabled={selecting === key || unavailable}
+                                title={
+                                  unavailable
+                                    ? p === "vsegpt"
+                                      ? "Баланс vsegpt.ru не подтверждён или не положительный"
+                                      : "Включите Local Server в приложении LM Studio"
+                                    : undefined
+                                }
                                 onClick={() => handleSelect(p, m.name)}
                               >
                                 {selecting === key ? "Выбираем…" : "Использовать"}

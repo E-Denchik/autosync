@@ -51,6 +51,15 @@ def list_models():
     )
 
 
+@bp.get("/vsegpt/status")
+def vsegpt_status():
+    try:
+        status = _client().vsegpt_status(current_app.config.get("VSEGPT_API_KEY", ""))
+    except LLMClientError as exc:
+        return jsonify(error=str(exc)), 502
+    return jsonify(status=status)
+
+
 @bp.post("/select")
 def select_model():
     body = request.get_json(force=True) or {}
@@ -65,6 +74,13 @@ def select_model():
     except LLMClientError as exc:
         return jsonify(error=f"llm-service недоступен: {exc}"), 502
 
+    provider_info = discovery["providers"].get(provider, {})
+    if provider == "vsegpt" and provider_info.get("temporarily_unavailable"):
+        if provider_info.get("reason") == "non_positive_balance":
+            message = "Модели vsegpt.ru временно недоступны: баланс равен нулю или меньше нуля. Пополните счёт и обновите список."
+        else:
+            message = "Модели vsegpt.ru временно недоступны: баланс не удалось подтвердить. Проверьте ключ и обновите список."
+        return jsonify(error=message), 409
     if not llm_settings.is_known_model(discovery, provider, model_name):
         return jsonify(error="Эта модель сейчас недоступна — обновите список и попробуйте снова"), 404
 

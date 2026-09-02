@@ -37,7 +37,7 @@ R = TypeVar("R")
 MAX_WORKERS = 4
 
 
-def map_with_app_context(fn: Callable[[T], R], items: list[T]) -> list[R]:
+def map_with_app_context(fn: Callable[[T], R], items: list[T], max_workers: int = MAX_WORKERS) -> list[R]:
     """list(map(fn, items)), но для >1 элемента — параллельно, каждый в
     своём потоке со своим app_context (Flask-контекст, включая db.session,
     не наследуется дочерними потоками автоматически — тот же приём, что и
@@ -83,5 +83,5 @@ def map_with_app_context(fn: Callable[[T], R], items: list[T]) -> list[R]:
         progress_tracker.report(done, total)
         return result
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="autosync-llm") as executor:
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="autosync-llm") as executor:
         return list(executor.map(_run, items))

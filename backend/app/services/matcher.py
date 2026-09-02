@@ -443,4 +443,5 @@ def match_all_against_contract(
     return map_with_app_context(
         match_line_with_cached_pool,
         order_lines,
+        max_workers=1,
     )

@@ -122,6 +122,8 @@ LMSTUDIO_MODEL_DIRS = [
 _VSEGPT_MIN_INTERVAL_SECONDS = 1.1
 _vsegpt_rate_lock = threading.Lock()
 _vsegpt_last_request_at = 0.0
+_vsegpt_stats_lock = threading.Lock()
+_vsegpt_stats = {"requests": 0, "successes": 0, "errors": 0}
 
 
 def _throttle_vsegpt() -> None:
@@ -143,6 +145,7 @@ def _throttle_vsegpt() -> None:
 # таблицы — 4000 символов исходного текста на кусок, это заведомо меньше,
 # чем 8000 токенов ответа даже для многословного JSON.
 _VSEGPT_MAX_TOKENS = 8000
+_LOCAL_RUNNER_TIMEOUT_SECONDS = int(os.environ.get("AUTOSYNC_LLM_TIMEOUT_SECONDS", "300")) - 5
 
 
 def discover_ollama() -> dict:
@@ -196,20 +199,21 @@ def discover_vsegpt(api_key: str | None) -> dict:
     подписке/балансу этого ключа". Без ключа даже не пробуем сходить в
     сеть — это ожидаемое "не настроено", а не сбой."""
     if not api_key:
-        return {"available": False, "models": []}
+        return {"available": False, "models": [], "configured": False}
 
+    status = get_vsegpt_status(api_key)
     _throttle_vsegpt()
     try:
         resp = requests.get(
             f"{VSEGPT_BASE_URL}/models",
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": "Bearer " + api_key},
             timeout=5,
         )
     except requests.RequestException as exc:
         # Нет сети до vsegpt.ru и т.п. — не роняем discovery целиком
         # (Ollama/LM Studio могли ответить нормально), просто помечаем
         # этот провайдер недоступным с причиной для UI.
-        return {"available": False, "models": [], "error": str(exc)}
+        return {"available": False, "models": [], "configured": True, "error": str(exc), "status": status}
 
     if not resp.ok:
         # Не голое "400 Client Error: Bad Request" (это отдавал бы
@@ -217,15 +221,107 @@ def discover_vsegpt(api_key: str | None) -> dict:
         # реальной генерации (см. _vsegpt_error_message): неверный ключ,
         # кончился баланс и т.п. видно сразу на странице настроек LLM, а
         # не только когда дело дойдёт до первого реального запроса.
-        return {"available": False, "models": [], "error": _vsegpt_error_message(resp.status_code, resp)}
+        return {
+            "available": False,
+            "models": [],
+            "configured": True,
+            "error": _vsegpt_error_message(resp.status_code, resp),
+            "status": status,
+        }
 
     try:
         entries = resp.json().get("data", [])
         models = [{"name": m["id"]} for m in entries if "id" in m]
     except (ValueError, AttributeError, TypeError):
-        return {"available": False, "models": [], "error": "vsegpt.ru вернул неожиданный ответ"}
+        return {
+            "available": False,
+            "models": [],
+            "configured": True,
+            "error": "vsegpt.ru вернул неожиданный ответ",
+            "status": status,
+        }
 
-    return {"available": True, "models": models}
+    balance = status.get("balance")
+    balance_blocked = balance is None or balance <= 0
+    unavailable_reason = "balance_unknown" if balance is None else "non_positive_balance"
+    return {
+        "available": not balance_blocked,
+        "models": models,
+        "configured": True,
+        "temporarily_unavailable": balance_blocked,
+        "reason": unavailable_reason if balance_blocked else None,
+        "error": (
+            "Не удалось подтвердить баланс vsegpt.ru — выбор моделей временно заблокирован"
+            if balance is None
+            else "Баланс vsegpt.ru равен нулю или меньше нуля — выбор моделей временно заблокирован"
+            if balance_blocked
+            else None
+        ),
+        "status": status,
+    }
+
+
+def _number(value):
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def get_vsegpt_status(api_key: str | None) -> dict:
+    """Получает баланс и доступные поля usage из официального v1/balance.
+
+    VseGPT менял форму ответа между версиями API, поэтому сохраняем только
+    известные числовые поля и не возвращаем тело ответа целиком.
+    """
+    if not api_key:
+        return {"configured": False, "available": False}
+    _throttle_vsegpt()
+    try:
+        resp = requests.get(
+            f"{VSEGPT_BASE_URL}/balance",
+            headers={"Authorization": "Bearer " + api_key},
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        return {"configured": True, "available": False, "error": str(exc)}
+    if not resp.ok:
+        return {
+            "configured": True,
+            "available": False,
+            "error": _vsegpt_error_message(resp.status_code, resp),
+        }
+    try:
+        payload = resp.json()
+    except ValueError:
+        return {"configured": True, "available": False, "error": "vsegpt.ru вернул неожиданный ответ"}
+    data = payload.get("data", payload) if isinstance(payload, dict) else {}
+    if not isinstance(data, dict):
+        return {"configured": True, "available": False, "error": "vsegpt.ru вернул неожиданный ответ"}
+    result = {
+        "configured": True,
+        "available": _number(data.get("balance")) is not None,
+        "balance": _number(data.get("balance")),
+        "currency": data.get("currency") or data.get("currency_code") or "RUB",
+        "spent": _number(data.get("spent") if data.get("spent") is not None else data.get("used")),
+        "requests_made": (
+            data.get("requests")
+            if data.get("requests") is not None
+            else data.get("requests_made")
+            if data.get("requests_made") is not None
+            else data.get("total_requests")
+        ),
+        "requests_remaining": (
+            data.get("requests_remaining")
+            if data.get("requests_remaining") is not None
+            else data.get("remaining_requests")
+        ),
+    }
+    with _vsegpt_stats_lock:
+        result["local_requests"] = _vsegpt_stats["requests"]
+        result["local_successes"] = _vsegpt_stats["successes"]
+        result["local_errors"] = _vsegpt_stats["errors"]
+    return result
 
 
 @app.get("/health")
@@ -248,6 +344,11 @@ def models():
     )
 
 
+@app.get("/vsegpt/status")
+def vsegpt_status():
+    return jsonify(get_vsegpt_status(request.headers.get("X-VseGPT-Api-Key")))
+
+
 def _generate_ollama(model: str, prompt: str, json_response: bool) -> str:
     payload = {
         "model": model,
@@ -258,7 +359,9 @@ def _generate_ollama(model: str, prompt: str, json_response: bool) -> str:
     if json_response:
         payload["format"] = "json"
 
-    resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180)
+    resp = requests.post(
+        f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=_LOCAL_RUNNER_TIMEOUT_SECONDS
+    )
     if not resp.ok:
         raise RunnerError(f"ollama -> {resp.status_code}: {_error_detail(resp)}", status_code=resp.status_code)
     return resp.json().get("response", "")
@@ -273,7 +376,9 @@ def _generate_lmstudio(model: str, prompt: str, json_response: bool) -> str:
     if json_response:
         payload["response_format"] = {"type": "json_object"}
 
-    resp = requests.post(f"{LMSTUDIO_BASE_URL}/chat/completions", json=payload, timeout=180)
+    resp = requests.post(
+        f"{LMSTUDIO_BASE_URL}/chat/completions", json=payload, timeout=_LOCAL_RUNNER_TIMEOUT_SECONDS
+    )
     if not resp.ok:
         raise RunnerError(f"lmstudio -> {resp.status_code}: {_error_detail(resp)}", status_code=resp.status_code)
     return resp.json()["choices"][0]["message"]["content"]
@@ -290,14 +395,20 @@ def _generate_vsegpt(model: str, prompt: str, json_response: bool, api_key: str)
         payload["response_format"] = {"type": "json_object"}
 
     _throttle_vsegpt()
+    with _vsegpt_stats_lock:
+        _vsegpt_stats["requests"] += 1
     resp = requests.post(
         f"{VSEGPT_BASE_URL}/chat/completions",
         json=payload,
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={"Authorization": "Bearer " + api_key},
         timeout=180,
     )
     if not resp.ok:
+        with _vsegpt_stats_lock:
+            _vsegpt_stats["errors"] += 1
         raise RunnerError(_vsegpt_error_message(resp.status_code, resp), status_code=resp.status_code)
+    with _vsegpt_stats_lock:
+        _vsegpt_stats["successes"] += 1
     return resp.json()["choices"][0]["message"]["content"]
 
 

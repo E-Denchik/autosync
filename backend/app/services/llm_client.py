@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 
@@ -94,6 +95,9 @@ def _split_into_chunks(text: str, max_chars: int) -> list[str]:
 # позицию/работу в "не найдено" на весь заказ-наряд.
 _MAX_ATTEMPTS = 3
 _RETRY_DELAY_SECONDS = 2.0
+_LOCAL_LLM_TIMEOUT_SECONDS = int(os.environ.get("AUTOSYNC_LLM_TIMEOUT_SECONDS", "300"))
+_REMOTE_LLM_TIMEOUT_SECONDS = 200
+_VSEGPT_STATUS_TIMEOUT_SECONDS = 15
 
 
 class LLMClientError(RuntimeError):
@@ -101,15 +105,10 @@ class LLMClientError(RuntimeError):
 
 
 class LLMClient:
-    # Должен быть БОЛЬШЕ таймаута, с которым llm-service сам ждёт ответа от
-    # Ollama/LM Studio (см. llm-service/server.py: requests.post(..., timeout=180))
-    # — раньше здесь стояло 120, то есть backend сдавался и рвал соединение
-    # РАНЬШЕ, чем llm-service успевал сам получить (или не получить) ответ
-    # от раннера. На медленной машине/холодной загрузке крупной модели это
-    # выглядело как случайное "llm-service недоступен", хотя раннер просто
-    # ещё считал — 200с даёт llm-service возможность честно дождаться своих
-    # 180с и вернуть внятную ошибку вместо обрыва с нашей стороны.
-    def __init__(self, base_url: str, timeout: int = 200):
+    # Локальный раннер получает ограниченное время: после таймаута повторять
+    # такой же тяжёлый запрос бессмысленно. Для vsegpt ниже сохраняется
+    # отдельный, более длинный timeout.
+    def __init__(self, base_url: str, timeout: int = _LOCAL_LLM_TIMEOUT_SECONDS):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
@@ -121,7 +120,25 @@ class LLMClient:
         попадать в URL, который echo'ится в текст сетевых ошибок/логов)."""
         headers = {"X-VseGPT-Api-Key": vsegpt_api_key} if vsegpt_api_key else None
         try:
-            resp = requests.get(f"{self.base_url}/models", headers=headers, timeout=5)
+            # /models для vsegpt внутри llm-service получает сначала баланс,
+            # затем список моделей; один общий timeout backend должен покрывать
+            # оба внешних запроса, иначе discovery ложно выглядит недоступным.
+            resp = requests.get(f"{self.base_url}/models", headers=headers, timeout=_VSEGPT_STATUS_TIMEOUT_SECONDS)
+        except requests.exceptions.RequestException as exc:
+            raise LLMClientError(f"llm-service недоступен: {exc}") from exc
+        if not resp.ok:
+            raise LLMClientError(f"llm-service -> {resp.status_code}: {_llm_service_error_detail(resp)}")
+        return resp.json()
+
+    def vsegpt_status(self, api_key: str | None = None) -> dict:
+        headers = {"X-VseGPT-Api-Key": api_key} if api_key else None
+        try:
+            # llm-service сначала обращается к vsegpt.ru и только затем
+            # возвращает JSON. Не обрываем этот административный запрос раньше
+            # внутреннего timeout шлюза.
+            resp = requests.get(
+                f"{self.base_url}/vsegpt/status", headers=headers, timeout=_VSEGPT_STATUS_TIMEOUT_SECONDS
+            )
         except requests.exceptions.RequestException as exc:
             raise LLMClientError(f"llm-service недоступен: {exc}") from exc
         if not resp.ok:
@@ -165,6 +182,9 @@ class LLMClient:
             "provider": selection.provider,
             "model": selection.model_name,
         }
+        request_timeout = (
+            _REMOTE_LLM_TIMEOUT_SECONDS if selection.provider == "vsegpt" else self.timeout
+        )
         if selection.provider == "vsegpt":
             # Ключ хранится только в backend (БД, см. settings_store.py) —
             # llm-service его нигде не держит, поэтому передаём с каждым
@@ -186,8 +206,15 @@ class LLMClient:
                 resp = requests.post(
                     f"{self.base_url}/generate",
                     json=payload,
-                    timeout=self.timeout,
+                    timeout=request_timeout,
                 )
+            except requests.exceptions.Timeout as exc:
+                # Повтор таймаута Ollama обычно только ставит ещё один такой же
+                # тяжёлый запрос в очередь и превращает минуты в часы.
+                raise LLMClientError(
+                    f"{selection.provider} не ответил за {request_timeout} с — "
+                    "проверьте, что модель помещается в память и раннер не занят"
+                ) from exc
             except requests.exceptions.RequestException as exc:
                 last_exc = exc
                 if attempt < _MAX_ATTEMPTS:
@@ -416,7 +443,11 @@ class LLMClient:
             )
             return [], text, None
 
-        results = map_with_app_context(_process_chunk, list(enumerate(chunks, start=1)))
+        results = map_with_app_context(
+            _process_chunk,
+            list(enumerate(chunks, start=1)),
+            max_workers=1,
+        )
 
         all_rows: list[dict] = []
         failed_chunks = 0

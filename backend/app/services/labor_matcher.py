@@ -132,6 +132,7 @@ def match_all_labor(
     return map_with_app_context(
         lambda desc: match_labor_line(desc, vehicle_make, vehicle_model, autodata_client, llm_client),
         descriptions,
+        max_workers=1,
     )
 
 
@@ -320,6 +321,7 @@ def match_all_labor_against_contract(
     return map_with_app_context(
         lambda desc: match_labor_line_against_contract(desc, contract_id, vehicle_make, vehicle_model, llm_client),
         descriptions,
+        max_workers=1,
     )
 
 

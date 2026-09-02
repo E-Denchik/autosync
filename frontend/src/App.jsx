@@ -10,6 +10,7 @@ import UploadPage from "./pages/repair-orders/UploadPage.jsx";
 import ReviewMatches from "./pages/repair-orders/ReviewMatches.jsx";
 import RepairOrdersList from "./pages/repair-orders/RepairOrdersList.jsx";
 import LlmSettings from "./pages/admin/LlmSettings.jsx";
+import VsegptStats from "./pages/admin/VsegptStats.jsx";
 import History from "./pages/admin/History.jsx";
 import Integrations from "./pages/admin/Integrations.jsx";
 import Contragents from "./pages/admin/Contragents.jsx";
@@ -114,6 +115,9 @@ export default function App() {
           <NavLink to="/admin/llm">
             <CpuIcon /> LLM-модель
           </NavLink>
+          <NavLink to="/admin/vsegpt-stats">
+            <TrendingUpIcon /> Статистика vsegpt
+          </NavLink>
           <NavLink to="/admin/integrations">
             <PlugIcon /> Интеграции
           </NavLink>
@@ -154,6 +158,7 @@ export default function App() {
             <Route path="/admin/document-templates" element={<DocumentTemplates />} />
             <Route path="/admin/company-profile" element={<CompanyProfile />} />
             <Route path="/admin/llm" element={<LlmSettings />} />
+            <Route path="/admin/vsegpt-stats" element={<VsegptStats />} />
             <Route path="/admin/integrations" element={<Integrations />} />
             <Route path="/admin/history" element={<History />} />
             <Route path="/admin/errors" element={<ErrorLog />} />

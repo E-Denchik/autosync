@@ -378,6 +378,26 @@ h3 {
   overflow-y: hidden;
 }
 
+.llm-model-list {
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.llm-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.llm-stats-grid > div {
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
