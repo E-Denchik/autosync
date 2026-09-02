@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from functools import lru_cache
 
 import pandas as pd
 
@@ -548,10 +549,30 @@ def parse_docx(file_path: str) -> list[dict]:
 
 
 def parse_pdf(file_path: str) -> list[dict]:
-    tables = extract_pdf_tables(file_path)
+    try:
+        stat = os.stat(file_path)
+    except OSError:
+        stat = None
+    tables = _parse_pdf_cached(
+        file_path,
+        stat.st_mtime_ns if stat else 0,
+        stat.st_size if stat else 0,
+    )
     if not tables:
         raise DocumentParseError("В PDF не найдено ни одной таблицы")
-    return _tables_to_lines(tables)
+    return [dict(row) for row in tables]
+
+
+@lru_cache(maxsize=32)
+def _parse_pdf_cached(file_path: str, mtime_ns: int, size: int) -> tuple[dict, ...]:
+    """Кеширует тяжёлое извлечение PDF в рамках процесса.
+
+    needs_ocr() и parse_document() вызываются последовательно для одного
+    файла и раньше дважды проходили все страницы. Ключ по размеру и mtime
+    не позволяет использовать старый результат после изменения файла.
+    """
+    tables = extract_pdf_tables(file_path)
+    return tuple(_tables_to_lines(tables))
 
 
 _PARSERS = {

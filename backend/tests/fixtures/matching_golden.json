@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Фильтр масляный двигателя",
+    "candidates": [
+      {"article": "WRONG-1", "name": "Фильтр салона", "price": 100},
+      {"article": "RIGHT-1", "name": "Масляный фильтр двигателя", "price": 200},
+      {"article": "WRONG-2", "name": "Фильтр воздушный", "price": 150}
+    ],
+    "expected_first_article": "RIGHT-1"
+  },
+  {
+    "name": "Кольцо стопорное",
+    "candidates": [
+      {"article": "RIGHT-2", "name": "Стопорное кольцо", "price": 50},
+      {"article": "WRONG-3", "name": "Кольцо уплотнительное", "price": 60},
+      {"article": "WRONG-4", "name": "Болт стопорный", "price": 20}
+    ],
+    "expected_first_article": "RIGHT-2"
+  }
+]

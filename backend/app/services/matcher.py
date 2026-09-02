@@ -15,6 +15,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+import threading
 
 from app.extensions import db
 from app.models import ConfidenceLevel, ContractPart
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 LLM_CANDIDATE_LIMIT = 20
 CONTRACT_CANDIDATE_POOL_LIMIT = 500
+_MATCHING_STOPWORDS = {
+    "и", "для", "с", "со", "на", "по", "из", "в", "во", "шт", "шт.",
+    "комплект", "комплекта", "автомобиля",
+}
 
 # Некоторые источники (замечено в выгрузке 1С заказ-наряда) кладут бренд
 # прямо в поле артикула вида "PN32661 [AUTOWELT]" — для точного совпадения
@@ -86,13 +91,50 @@ def normalize_article(article: str | None) -> str | None:
 def _shortlist_candidates(name: str | None, order_lines: list[dict]) -> list[dict]:
     if not name or len(order_lines) <= LLM_CANDIDATE_LIMIT:
         return order_lines
-    normalized = name.strip().lower()
+
+    def tokens(value: str | None) -> set[str]:
+        if not value:
+            return set()
+        return {
+            token
+            for token in re.findall(r"[0-9a-zа-яё]+", value.casefold().replace("ё", "е"))
+            if len(token) >= 2 and token not in _MATCHING_STOPWORDS
+        }
+
+    normalized = re.sub(r"\s+", " ", name.strip().casefold())
+    target_tokens = tokens(name)
+
+    def score(line: dict) -> float:
+        candidate_name = line.get("name") or ""
+        candidate_normalized = re.sub(r"\s+", " ", candidate_name.strip().casefold())
+        candidate_tokens = tokens(candidate_name)
+        if not target_tokens or not candidate_tokens:
+            token_score = 0.0
+        else:
+            overlap = len(target_tokens & candidate_tokens)
+            token_score = overlap / len(target_tokens | candidate_tokens)
+            # Полезно для случаев "кольцо стопорное" / "стопорное кольцо":
+            # порядок слов не должен ухудшать результат до уровня случайного.
+            if target_tokens <= candidate_tokens:
+                token_score = max(token_score, 0.85)
+        sequence_score = difflib.SequenceMatcher(None, normalized, candidate_normalized).ratio()
+        return 0.6 * token_score + 0.4 * sequence_score
+
     scored = [
-        (difflib.SequenceMatcher(None, normalized, (line.get("name") or "").strip().lower()).ratio(), line)
-        for line in order_lines
+        (score(line), index, line)
+        for index, line in enumerate(order_lines)
     ]
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [line for _, line in scored[:LLM_CANDIDATE_LIMIT]]
+    # Индекс сохраняет стабильный порядок при равных оценках.
+    scored.sort(key=lambda pair: (pair[0], -pair[1]), reverse=True)
+    return [line for _, _, line in scored[:LLM_CANDIDATE_LIMIT]]
+
+
+def _bounded_confidence(value: object, default: float = 0.0) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        score = default
+    return max(0.0, min(1.0, score))
 
 
 def match_line(
@@ -170,7 +212,7 @@ def match_line(
                     "matched_name": candidate.get("name"),
                     "matched_price": candidate.get("price"),
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
-                    "confidence_score": llm_result.get("confidence", 0.0),
+                    "confidence_score": _bounded_confidence(llm_result.get("confidence")),
                     "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
                 }
 
@@ -205,7 +247,7 @@ def _contract_candidate_pool(
     name: str | None,
     vehicle_make: str | None = None,
     limit: int = CONTRACT_CANDIDATE_POOL_LIMIT,
-) -> list[ContractPart]:
+) -> list[dict]:
     base = ContractPart.query.filter_by(contract_id=contract_id)
     # Многобрендовый каталог (см. document_parser.parse_price_catalog_by_brand)
     # хранит запчасти разных марок в одном договоре, помеченные vehicle_make —
@@ -219,11 +261,31 @@ def _contract_candidate_pool(
             | (db.func.lower(ContractPart.vehicle_make) == vehicle_make.lower())
         )
     if name:
-        for word in [w for w in name.strip().split() if len(w) >= 3][:3]:
-            filtered = base.filter(ContractPart.name.ilike(f"%{word}%")).limit(limit).all()
-            if filtered:
-                return filtered
-    return base.limit(limit).all()
+        words = [w for w in re.findall(r"[0-9a-zа-яё]+", name.casefold()) if len(w) >= 3]
+        candidates: list[ContractPart] = []
+        seen_ids: set[int] = set()
+        for word in words[:5]:
+            for candidate in base.filter(ContractPart.name.ilike(f"%{word}%")).limit(limit).all():
+                if candidate.id not in seen_ids:
+                    seen_ids.add(candidate.id)
+                    candidates.append(candidate)
+        if candidates:
+            rows = candidates[:limit]
+        else:
+            rows = base.limit(limit).all()
+    else:
+        rows = base.limit(limit).all()
+    # Не передаём ORM-экземпляры между потоками: SQLAlchemy sessions
+    # привязаны к worker-потоку. Простые словари безопасны и дешевле для
+    # повторного использования в рамках одной операции сопоставления.
+    return [
+        {
+            "article": row.article,
+            "name": row.name,
+            "price": float(row.price) if row.price is not None else None,
+        }
+        for row in rows
+    ]
 
 
 def match_line_against_contract(
@@ -232,6 +294,7 @@ def match_line_against_contract(
     supplier_client: PartsSupplierClient,
     llm_client: LLMClient,
     vehicle_make: str | None = None,
+    candidate_pool_cache: dict[tuple[int, str | None, str | None], list[dict]] | None = None,
 ) -> dict:
     article = order_line.get("article")
     name = order_line.get("name")
@@ -295,13 +358,15 @@ def match_line_against_contract(
                 }
 
     llm_error = None
-    candidates = _contract_candidate_pool(contract_id, name, vehicle_make)
+    pool_key = (contract_id, name, vehicle_make)
+    if candidate_pool_cache is not None and pool_key in candidate_pool_cache:
+        candidates = candidate_pool_cache[pool_key]
+    else:
+        candidates = _contract_candidate_pool(contract_id, name, vehicle_make)
+        if candidate_pool_cache is not None:
+            candidate_pool_cache[pool_key] = candidates
     if candidates:
-        pool = [
-            {"article": c.article, "name": c.name, "price": float(c.price) if c.price is not None else None}
-            for c in candidates
-        ]
-        shortlist = _shortlist_candidates(name, pool)
+        shortlist = _shortlist_candidates(name, candidates)
         try:
             llm_result = llm_client.match_part_by_name(order_line, shortlist)
         except Exception as exc:
@@ -321,7 +386,7 @@ def match_line_against_contract(
                     "matched_name": candidate.get("name"),
                     "matched_price": candidate.get("price"),
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
-                    "confidence_score": llm_result.get("confidence", 0.0),
+                    "confidence_score": _bounded_confidence(llm_result.get("confidence")),
                     "raw_match_data": {"source": "llm_fallback", "reasoning": llm_result.get("reasoning")},
                 }
 
@@ -347,7 +412,35 @@ def match_all_against_contract(
 ) -> list[dict]:
     from app.services.parallel import map_with_app_context
 
+    # Несколько строк заказа часто имеют одно и то же название (например,
+    # одинаковые расходники). Пул каталога неизменен в рамках этой операции,
+    # поэтому не нужно выполнять одинаковый SELECT из каждого worker-потока.
+    candidate_pool_cache: dict[tuple[int, str | None, str | None], list[dict]] = {}
+    cache_lock = threading.Lock()
+
+    def match_line_with_cached_pool(line: dict) -> dict:
+        # Сначала берём кеш под блокировкой, затем сам запрос выполняется
+        # только одним потоком для конкретного ключа.
+        name = line.get("name")
+        key = (contract_id, name, vehicle_make)
+        with cache_lock:
+            cached = candidate_pool_cache.get(key)
+        if cached is None:
+            with cache_lock:
+                cached = candidate_pool_cache.get(key)
+                if cached is None:
+                    cached = _contract_candidate_pool(contract_id, name, vehicle_make)
+                    candidate_pool_cache[key] = cached
+        return match_line_against_contract(
+            line,
+            contract_id,
+            supplier_client,
+            llm_client,
+            vehicle_make,
+            candidate_pool_cache,
+        )
+
     return map_with_app_context(
-        lambda line: match_line_against_contract(line, contract_id, supplier_client, llm_client, vehicle_make),
+        match_line_with_cached_pool,
         order_lines,
     )

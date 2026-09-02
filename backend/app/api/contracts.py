@@ -19,7 +19,7 @@ from app.services.job_queue import enqueue_import_contract
 from app.services.llm_client import LLMClient
 from app.services.ocr import IMAGE_EXTENSIONS
 from app.services.pagination import paginate, paginated_response
-from app.services.upload_helpers import compute_files_hash, display_filename, save_upload
+from app.services.upload_helpers import compute_files_hash, display_filename, save_upload, save_uploads
 
 bp = Blueprint("contracts", __name__)
 
@@ -30,6 +30,12 @@ RATE_TABLE_EXTENSIONS = {".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".docx", ".pd
 
 def _contract_paths(contract: Contract) -> list[str]:
     return [contract.storage_path] + [f.storage_path for f in contract.extra_files]
+
+
+def _remove_paths(paths: list[str]) -> None:
+    for path in paths:
+        if path and os.path.isfile(path):
+            os.remove(path)
 
 
 def _serialize(contract: Contract) -> dict:
@@ -72,7 +78,7 @@ def create_contract():
     vehicle_make = (request.form.get("vehicle_make") or "").strip() or None
 
     try:
-        paths = [save_upload(f) for f in files]
+        paths = save_uploads(files)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
@@ -87,16 +93,20 @@ def create_contract():
         .first()
     )
     if existing is not None:
-        for path in paths:
-            if os.path.isfile(path):
-                os.remove(path)
+        _remove_paths(paths)
         body = _serialize(existing)
         body["reused_existing_contract"] = True
         return jsonify(body), 200
 
+    try:
+        contragent_id_value = int(contragent_id) if contragent_id else None
+    except (TypeError, ValueError):
+        _remove_paths(paths)
+        return jsonify(error="'contragent_id' должен быть числом"), 400
+
     contract = Contract(
         name=name,
-        contragent_id=int(contragent_id) if contragent_id else None,
+        contragent_id=contragent_id_value,
         original_filename=display_filename(files[0].filename),
         storage_path=paths[0],
         content_hash=content_hash,
@@ -127,7 +137,7 @@ def import_more_files(contract_id: int):
     vehicle_make = (request.form.get("vehicle_make") or "").strip() or None
 
     try:
-        paths = [save_upload(f) for f in files]
+        paths = save_uploads(files)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 

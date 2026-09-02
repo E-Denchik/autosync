@@ -23,6 +23,29 @@ def test_exact_operation_name_match(app):
         assert result["norm_hours"] == 0.5
 
 
+def test_operation_with_different_word_order_uses_exact_match(app):
+    with app.app_context():
+        db.session.add(
+            LaborCatalogEntry(
+                vehicle_make="KIA",
+                operation_name="Снятие установка защиты двигателя",
+                norm_hours=0.8,
+            )
+        )
+        db.session.commit()
+
+        result = match_labor_line(
+            "Защиты двигателя установка снятие",
+            "KIA",
+            "Rio",
+            _local_client(),
+            MagicMock(),
+        )
+
+        assert result["confidence_level"] == ConfidenceLevel.EXACT
+        assert result["norm_hours"] == 0.8
+
+
 def test_falls_back_to_llm_for_worded_differently_operation(app):
     with app.app_context():
         db.session.add(
@@ -67,6 +90,7 @@ def test_no_entries_for_make_at_all_still_tries_llm_with_other_makes(app):
         assert result["confidence_level"] == ConfidenceLevel.LLM_GUESS
         assert result["norm_hours"] == 0.5
         assert result["raw_match_data"]["source"] == "llm_fallback_cross_make"
+        assert result["confidence_score"] <= 0.6
 
 
 def test_no_entries_at_all_still_reports_no_match_found_not_crash(app):

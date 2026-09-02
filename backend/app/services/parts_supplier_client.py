@@ -12,10 +12,19 @@ autoeuro_client.py, moskvorechye_client.py) — у каждого свой пр�
 from __future__ import annotations
 
 import logging
+import re
+import threading
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+def _lookup_key(value: str | None) -> str:
+    """Canonical key for deduplicating equivalent supplier lookups."""
+    if not value:
+        return ""
+    return re.sub(r"[^0-9a-zа-яё]+", "", value.casefold())
 
 
 class PartsSupplierError(RuntimeError):
@@ -84,23 +93,46 @@ class AggregatedPartsSupplierClient:
 
     def __init__(self, clients: list) -> None:
         self._clients = clients
+        self._cross_reference_cache: dict[tuple[str, str], list[dict]] = {}
+        self._cross_reference_cache_lock = threading.Lock()
+        self._cross_reference_key_locks: dict[tuple[str, str], threading.Lock] = {}
 
     def find_cross_references(self, article: str, brand: str | None = None) -> list[dict]:
-        seen = set()
-        merged: list[dict] = []
-        for client in self._clients:
-            try:
-                refs = client.find_cross_references(article, brand=brand)
-            except Exception as exc:
-                logger.warning("%s.find_cross_references(%r) упал: %s", type(client).__name__, article, exc)
-                continue
-            for ref in refs:
-                key = ref.get("article")
-                if not key or key in seen:
+        # Один и тот же артикул нередко повторяется в заказ-наряде. Клиент
+        # создаётся на одну обработку заказа, поэтому такой кеш не устаревает
+        # между заказами и безопасно уменьшает дублирующие запросы.
+        cache_key = (_lookup_key(article), _lookup_key(brand))
+        with self._cross_reference_cache_lock:
+            cached = self._cross_reference_cache.get(cache_key)
+            key_lock = self._cross_reference_key_locks.setdefault(cache_key, threading.Lock())
+        if cached is not None:
+            return [dict(item) for item in cached]
+
+        # Отдельная блокировка на ключ не мешает параллельному поиску разных
+        # артикулов, но не допускает двойного запроса для одного артикула.
+        with key_lock:
+            with self._cross_reference_cache_lock:
+                cached = self._cross_reference_cache.get(cache_key)
+            if cached is not None:
+                return [dict(item) for item in cached]
+
+            seen = set()
+            merged: list[dict] = []
+            for client in self._clients:
+                try:
+                    refs = client.find_cross_references(article, brand=brand)
+                except Exception as exc:
+                    logger.warning("%s.find_cross_references(%r) упал: %s", type(client).__name__, article, exc)
                     continue
-                seen.add(key)
-                merged.append(ref)
-        return merged
+                for ref in refs:
+                    key = ref.get("article")
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(ref)
+            with self._cross_reference_cache_lock:
+                self._cross_reference_cache[cache_key] = [dict(item) for item in merged]
+            return merged
 
 
 def build_configured_supplier_client(cfg) -> AggregatedPartsSupplierClient:

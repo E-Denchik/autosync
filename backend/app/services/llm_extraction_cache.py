@@ -36,3 +36,24 @@ def set(cache_key: str, rows: list[dict]) -> None:
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
+
+
+def set_many(entries: list[tuple[str, list[dict]]]) -> None:
+    """Сохраняет несколько результатов одной транзакцией.
+
+    Запись выполняется в потоке обработки заказа, а не в worker-потоках:
+    это заметно уменьшает блокировки SQLite при параллельной обработке чанков.
+    """
+    if not entries:
+        return
+    for cache_key, rows in entries:
+        db.session.add(LlmExtractionCache(cache_key=cache_key, rows=rows))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Часть записей могла быть добавлена другим параллельным запуском.
+        # Откатываем пакет и сохраняем только отсутствующие ключи по одному.
+        db.session.rollback()
+        for cache_key, rows in entries:
+            if get(cache_key) is None:
+                set(cache_key, rows)

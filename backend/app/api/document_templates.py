@@ -69,7 +69,11 @@ def preview_rendered():
         template_id = request.form.get("template_id")
         if not template_id:
             return jsonify(error="Нужен 'file' или 'template_id'"), 400
-        template = db.get_or_404(DocumentTemplate, int(template_id))
+        try:
+            template_id_value = int(template_id)
+        except (TypeError, ValueError):
+            return jsonify(error="'template_id' должен быть числом"), 400
+        template = db.get_or_404(DocumentTemplate, template_id_value)
         if not os.path.isfile(template.storage_path):
             return jsonify(error="Файл не найден на диске"), 404
         template_path = template.storage_path

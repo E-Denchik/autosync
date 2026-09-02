@@ -5,8 +5,10 @@ class _StubClient:
     def __init__(self, refs=None, error=None):
         self._refs = refs or []
         self._error = error
+        self.calls = 0
 
     def find_cross_references(self, article, brand=None):
+        self.calls += 1
         if self._error:
             raise self._error
         return self._refs
@@ -44,6 +46,22 @@ def test_aggregated_client_skips_a_failing_supplier_without_raising():
     )
     refs = client.find_cross_references("333114")
     assert refs == [{"article": "A-2", "brand": "Sachs"}]
+
+
+def test_aggregated_client_caches_repeated_cross_reference_lookup():
+    first = _StubClient(refs=[{"article": "A-1", "brand": "Bosch"}])
+    second = _StubClient(refs=[])
+    client = AggregatedPartsSupplierClient([first, second])
+
+    assert client.find_cross_references(" A-1 ", brand=" Bosch ") == [
+        {"article": "A-1", "brand": "Bosch"}
+    ]
+    assert client.find_cross_references("A1", brand="BOSCH") == [
+        {"article": "A-1", "brand": "Bosch"}
+    ]
+    # The normalized key makes the second call a cache hit.
+    assert first.calls == 1
+    assert second.calls == 1
 
 
 def test_build_configured_supplier_client_only_includes_configured_suppliers():

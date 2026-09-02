@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from app.extensions import db
 from app.models import ConfidenceLevel, ContractLaborNorm
@@ -10,6 +11,29 @@ from app.services.llm_client import LLMClient
 logger = logging.getLogger(__name__)
 
 
+def _normalize_operation_text(value: str | None) -> str:
+    """Нормализует только форму записи, не приравнивая разные операции."""
+    tokens = re.findall(r"[0-9a-zа-яё]+", (value or "").casefold().replace("ё", "е"))
+    return " ".join(sorted(tokens))
+
+
+def _find_exact_operation(candidates: list[dict], description: str) -> dict | None:
+    normalized = _normalize_operation_text(description)
+    if not normalized:
+        return None
+    matches = [c for c in candidates if _normalize_operation_text(c.get("operation_name")) == normalized]
+    distinct_hours = {c["norm_hours"] for c in matches}
+    return matches[0] if len(matches) == 1 or len(distinct_hours) == 1 and matches else None
+
+
+def _bounded_confidence(value: object, default: float = 0.0) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        score = default
+    return max(0.0, min(1.0, score))
+
+
 def match_labor_line(
     description: str,
     vehicle_make: str | None,
@@ -17,24 +41,22 @@ def match_labor_line(
     autodata_client: AutoDataClient,
     llm_client: LLMClient,
 ) -> dict:
-    normalized = (description or "").strip().lower()
-
     try:
         candidates = autodata_client.find_norm_hours(vehicle_make or "", vehicle_model)
     except AutoDataError as exc:
         candidates = []
         logger.warning("AutoData недоступен для %r: %s", description, exc)
 
-    for candidate in candidates:
-        if candidate["operation_name"].strip().lower() == normalized:
-            return {
-                "description": description,
-                "matched_operation_name": candidate["operation_name"],
-                "norm_hours": candidate["norm_hours"],
-                "confidence_level": ConfidenceLevel.EXACT,
-                "confidence_score": 1.0,
-                "raw_match_data": {"source": "autodata_exact"},
-            }
+    candidate = _find_exact_operation(candidates, description)
+    if candidate:
+        return {
+            "description": description,
+            "matched_operation_name": candidate["operation_name"],
+            "norm_hours": candidate["norm_hours"],
+            "confidence_level": ConfidenceLevel.EXACT,
+            "confidence_score": 1.0,
+            "raw_match_data": {"source": "autodata_exact"},
+        }
 
     # Точной марки в справочнике нет вовсе (частый случай для бизнеса без
     # 1С/AutoData, который только начал вести свой список) — раньше это
@@ -71,7 +93,9 @@ def match_labor_line(
                     "matched_operation_name": candidate["operation_name"],
                     "norm_hours": candidate["norm_hours"],
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
-                    "confidence_score": llm_result.get("confidence", 0.0),
+                    "confidence_score": min(_bounded_confidence(llm_result.get("confidence")), 0.6)
+                    if cross_make
+                    else _bounded_confidence(llm_result.get("confidence")),
                     "raw_match_data": {
                         "source": source,
                         "reasoning": llm_result.get("reasoning"),
@@ -214,13 +238,10 @@ def match_labor_line_against_contract(
     vehicle_model: str | None,
     llm_client: LLMClient,
 ) -> dict:
-    normalized = (description or "").strip().lower()
     candidates = _contract_labor_candidates(contract_id, vehicle_make, vehicle_model)
 
-    exact_matches = [c for c in candidates if c["operation_name"].strip().lower() == normalized]
-    distinct_hours = {c["norm_hours"] for c in exact_matches}
-    if len(distinct_hours) == 1:
-        candidate = exact_matches[0]
+    candidate = _find_exact_operation(candidates, description)
+    if candidate:
         return {
             "description": description,
             "matched_operation_name": candidate["operation_name"],
@@ -258,7 +279,11 @@ def match_labor_line_against_contract(
                     "matched_operation_name": candidate["operation_name"],
                     "norm_hours": candidate["norm_hours"],
                     "confidence_level": ConfidenceLevel.LLM_GUESS,
-                    "confidence_score": llm_result.get("confidence", 0.0),
+                    # Перенос нормы между марками — только подсказка, даже
+                    # если модель необоснованно вернула высокий confidence.
+                    "confidence_score": min(float(llm_result.get("confidence", 0.0)), 0.6)
+                    if cross_make
+                    else float(llm_result.get("confidence", 0.0)),
                     "raw_match_data": {
                         "source": source,
                         "reasoning": llm_result.get("reasoning"),

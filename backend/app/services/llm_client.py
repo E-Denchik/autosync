@@ -355,7 +355,12 @@ class LLMClient:
         from app.services.parallel import map_with_app_context
         from app.services.prompt_loader import render_prompt
 
-        chunk_chars = 4000 if len(fields) <= 5 else 2200
+        # Дробим только для ограничения размера ответа, а не на маленькие
+        # фиксированные блоки.  llm-service задаёт max_tokens=8000 для vsegpt,
+        # поэтому более крупные входные куски заметно уменьшают число
+        # сетевых запросов и оплату за повторные prompt-токены.  Для широких
+        # таблиц оставляем запас, чтобы JSON-ответ не упирался в лимит.
+        chunk_chars = 7000 if len(fields) <= 5 else 3200
         chunks = _split_into_chunks(raw_text, chunk_chars)
         total = len(chunks)
         # Без выбранной модели закешировать нечего осмысленно (ключ должен
@@ -364,7 +369,7 @@ class LLMClient:
         # выбрана" на первом же кэш-промахе, отдельно проверять не нужно.
         selection = llm_settings.get_selection()
 
-        def _process_chunk(item: tuple[int, str]) -> tuple[list[dict], str | None]:
+        def _process_chunk(item: tuple[int, str]) -> tuple[list[dict], str | None, tuple[str, list[dict]] | None]:
             idx, chunk = item
 
             cache_key = None
@@ -379,16 +384,15 @@ class LLMClient:
                         idx,
                         total,
                     )
-                    return cached_rows, None
+                    return cached_rows, None, None
 
             prompt = render_prompt("ocr_table_extraction.md", raw_text=chunk, fields=fields)
             text = self._generate(prompt, json_response=True)
             try:
                 parsed = json.loads(text)
                 rows = parsed.get("rows") or []
-                if cache_key is not None:
-                    llm_extraction_cache.set(cache_key, rows)
-                return rows, None
+                cache_entry = (cache_key, rows) if cache_key is not None else None
+                return rows, None, cache_entry
             except json.JSONDecodeError:
                 pass
 
@@ -403,28 +407,32 @@ class LLMClient:
                     total,
                     len(recovered),
                 )
-                return recovered, None
+                return recovered, None, None
 
             logger.warning(
                 "Не удалось разобрать кусок текста %s/%s при извлечении таблицы — пропускаем, продолжаем с остальными",
                 idx,
                 total,
             )
-            return [], text
+            return [], text, None
 
         results = map_with_app_context(_process_chunk, list(enumerate(chunks, start=1)))
 
         all_rows: list[dict] = []
         failed_chunks = 0
         last_failed_text = ""
-        for rows, failed_text in results:
+        cache_entries: list[tuple[str, list[dict]]] = []
+        for rows, failed_text, cache_entry in results:
             all_rows.extend(rows)
+            if cache_entry is not None:
+                cache_entries.append(cache_entry)
             if failed_text is not None:
                 failed_chunks += 1
                 last_failed_text = failed_text
 
         if not all_rows and failed_chunks:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {last_failed_text!r}")
+        llm_extraction_cache.set_many(cache_entries)
         return [{field: row.get(field) for field in fields} for row in all_rows]
 
     def match_part_by_name(self, contract_line: dict, candidates: list[dict]) -> dict:

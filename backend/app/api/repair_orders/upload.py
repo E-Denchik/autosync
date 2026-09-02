@@ -18,9 +18,15 @@ from app.services.history import log_change
 from app.services.job_queue import enqueue_process_upload
 from app.services.pagination import paginate, paginated_response
 from app.services import progress_tracker
-from app.services.upload_helpers import compute_files_hash, display_filename, save_upload as _save_upload
+from app.services.upload_helpers import compute_files_hash, display_filename, save_uploads
 
 bp = Blueprint("repair_orders_upload", __name__)
+
+
+def _remove_files(paths: list[str]) -> None:
+    for path in paths:
+        if os.path.isfile(path):
+            os.remove(path)
 
 
 @bp.post("")
@@ -37,22 +43,31 @@ def upload_documents():
     if not existing_contract_id and not contract_files:
         return jsonify(error="Нужен либо файл contract, либо contract_id уже загруженного договора"), 400
 
+    contract_paths: list[str] = []
     try:
-        order_paths = [_save_upload(f) for f in order_files]
+        order_paths = save_uploads(order_files)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
     reused_existing_contract = False
     if existing_contract_id:
-        contract = db.session.get(Contract, int(existing_contract_id))
+        try:
+            contract_id = int(existing_contract_id)
+        except (TypeError, ValueError):
+            _remove_files(order_paths)
+            return jsonify(error="'contract_id' должен быть числом"), 400
+        contract = db.session.get(Contract, contract_id)
         if not contract:
+            _remove_files(order_paths)
             return jsonify(error="Указанный договор не найден"), 404
         if contract.status != DocumentProcessingStatus.PARSED:
+            _remove_files(order_paths)
             return jsonify(error="Указанный договор ещё не разобран — подождите и попробуйте снова"), 409
     else:
         try:
-            contract_paths = [_save_upload(f) for f in contract_files]
+            contract_paths = save_uploads(contract_files)
         except ValueError as exc:
+            _remove_files(order_paths)
             return jsonify(error=str(exc)), 400
 
         # Тот же набор файлов уже когда-то загружали ("Новый файл" выбран по
@@ -87,12 +102,19 @@ def upload_documents():
                 )
 
     contragent_id = request.form.get("contragent_id")
+    try:
+        contragent_id_value = int(contragent_id) if contragent_id else None
+        vehicle_year_value = int(request.form["vehicle_year"]) if request.form.get("vehicle_year") else None
+    except (TypeError, ValueError):
+        _remove_files(order_paths + contract_paths)
+        return jsonify(error="'contragent_id' и 'vehicle_year' должны быть числами"), 400
+
     repair_order = RepairOrder(
         contract_id=contract.id,
-        contragent_id=int(contragent_id) if contragent_id else None,
+        contragent_id=contragent_id_value,
         vehicle_make=(request.form.get("vehicle_make") or "").strip() or None,
         vehicle_model=(request.form.get("vehicle_model") or "").strip() or None,
-        vehicle_year=int(request.form["vehicle_year"]) if request.form.get("vehicle_year") else None,
+        vehicle_year=vehicle_year_value,
         vehicle_vin=(request.form.get("vehicle_vin") or "").strip() or None,
         original_filename=display_filename(order_files[0].filename),
         storage_path=order_paths[0],
@@ -184,7 +206,10 @@ def update_repair_order(repair_order_id: int):
 
     if "contragent_id" in body:
         contragent_id = body.get("contragent_id")
-        repair_order.contragent_id = int(contragent_id) if contragent_id else None
+        try:
+            repair_order.contragent_id = int(contragent_id) if contragent_id else None
+        except (TypeError, ValueError):
+            return jsonify(error="'contragent_id' должен быть числом"), 400
     if "vehicle_make" in body:
         repair_order.vehicle_make = (body.get("vehicle_make") or "").strip() or None
     if "vehicle_model" in body:
