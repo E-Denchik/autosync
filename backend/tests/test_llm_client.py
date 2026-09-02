@@ -240,6 +240,15 @@ def test_generate_does_not_retry_local_runner_timeout(app, monkeypatch):
         raise requests.exceptions.Timeout("ollama stalled")
 
     monkeypatch.setattr("app.services.llm_client.requests.post", always_times_out)
+    # LLMClient.__init__ читает таймаут из runtime_settings() (адаптивный
+    # режим, зависит от свободной RAM машины, где запущены тесты — см.
+    # performance_settings.recommendation) — без фиксации значения здесь
+    # тест был бы недетерминированным между машинами (300с при <5.5 ГБ
+    # свободной памяти, иначе 180с), что и ловилось в CI, но не локально.
+    monkeypatch.setattr(
+        "app.services.performance_settings.runtime_settings",
+        lambda: {"settings": {"mode": "auto", "workers": 4, "timeout_seconds": 300}},
+    )
 
     with app.app_context():
         client = LLMClient("http://llm-service:8000")
