@@ -29,12 +29,15 @@ Backend (llm_client.py) обращается сюда по HTTP, а не к Olla
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import threading
 import time
 
 import requests
 from flask import Flask, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -308,14 +311,45 @@ def get_vsegpt_status(api_key: str | None) -> dict:
         payload = resp.json()
     except ValueError:
         return {"configured": True, "available": False, "error": "vsegpt.ru вернул неожиданный ответ"}
+    if isinstance(payload, dict) and payload.get("status") == "error":
+        # /v1/balance — единственный эндпоинт vsegpt.ru, где отказ (например,
+        # несуществующий ключ) приходит с HTTP 200 вместо кода ошибки: то же
+        # самое "User with this API key not found" на /v1/chat/completions
+        # отдаётся с honest 400 и уже нормально ловится веткой `not resp.ok`
+        # ниже по коду (см. _vsegpt_error_message). Без этой проверки такой
+        # ответ тихо падал в balance=None и превращался в бессмысленное
+        # "не удалось подтвердить баланс" без единой причины.
+        reason = payload.get("reason")
+        return {
+            "configured": True,
+            "available": False,
+            "error": f"vsegpt.ru отклонил запрос: {reason}" if reason else "vsegpt.ru отклонил запрос баланса",
+        }
     data = payload.get("data", payload) if isinstance(payload, dict) else {}
     if not isinstance(data, dict):
         return {"configured": True, "available": False, "error": "vsegpt.ru вернул неожиданный ответ"}
     balance = _number(data.get("credits") if data.get("credits") is not None else data.get("balance"))
+    if balance is None:
+        # Ключ принят (иначе выше уже вернули бы _vsegpt_error_message на
+        # non-2xx), но ни "credits", ни "balance" не удалось разобрать в
+        # число — раньше это тихо превращалось в голое "available": False
+        # без единой зацепки, почему (integrations.py показывал пользователю
+        # только заглушку "Не удалось подтвердить баланс vsegpt.ru"). Логируем
+        # сырой ответ для диагностики и, если сам vsegpt.ru прислал
+        # человеко-читаемое пояснение (user_status_text — например, про
+        # неактивную подписку), показываем его вместо голой заглушки.
+        logger.warning("vsegpt.ru /v1/balance: не удалось получить числовой баланс, сырой ответ: %r", data)
     result = {
         "configured": True,
         "available": balance is not None,
         "balance": balance,
+        "error": (
+            f"Не удалось получить баланс vsegpt.ru из ответа сервера ({data.get('user_status_text')})"
+            if balance is None and data.get("user_status_text")
+            else "Не удалось получить баланс vsegpt.ru из ответа сервера"
+            if balance is None
+            else None
+        ),
         # 0/1/2 — тот же светофор ("зелёный"/"жёлтый"/"красный"), что
         # показан в профиле на vsegpt.ru; user_status_text — их же
         # человеко-читаемое пояснение (например, "Less than 500 credits on

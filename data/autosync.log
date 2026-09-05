@@ -2079,3 +2079,23 @@ webview.errors.WebViewException: You must have either QT or GTK with Python exte
 2026-09-02 23:37:01,964 ERROR pywebview: Error while processing window.native.widget: unable to get the value
 2026-09-02 23:38:46,093 WARNING app.services.parallel: Первый запрос занял 74.1с (порог 20с) — похоже, раннер считает на CPU без ускорителя. Остальные 213 элементов идут последовательно вместо 4 параллельных потоков, чтобы не делить CPU и не множить таймауты. Следующие 300с это же будут знать все остальные пачки (файлы/куски текста/сопоставление), не только эта.
 2026-09-02 23:48:58,421 INFO autosync.native: Окно закрыто — завершение работы AutoSync
+2026-09-05 21:33:04,772 INFO autosync.native: AutoSync запускается, каталог данных: /home/kali/Рабочий стол/projects/autosync/data
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.schemas
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.tables
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.types
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.constraints
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.defaults
+2026-09-05 21:33:05,210 INFO alembic.runtime.plugins: setup plugin alembic.autogenerate.comments
+2026-09-05 21:33:05,629 INFO numexpr.utils: NumExpr defaulting to 8 threads.
+2026-09-05 21:33:06,164 INFO autosync.native: llm-service слушает на 127.0.0.1:8001
+2026-09-05 21:33:06,181 INFO apscheduler.scheduler: Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-05 21:33:06,181 INFO apscheduler.scheduler: Added job "start_scheduler.<locals>._sync_job" to job store "default"
+2026-09-05 21:33:06,181 INFO apscheduler.scheduler: Scheduler started
+2026-09-05 21:33:06,181 INFO autosync.native: backend слушает на 127.0.0.1:5000
+2026-09-05 21:33:06,189 INFO autosync.native: Открываю окно AutoSync: http://127.0.0.1:5000/
+2026-09-05 21:33:07,801 ERROR pywebview: Error while processing window.native.bin: unable to get the value
+2026-09-05 21:33:07,802 ERROR pywebview: Error while processing window.native.container: unable to get the value
+2026-09-05 21:33:07,832 ERROR pywebview: Error while processing window.native.parent_instance: unable to get the value
+2026-09-05 21:33:07,849 ERROR pywebview: Error while processing window.native.widget: unable to get the value
+2026-09-05 21:36:12,520 WARNING app.services.parallel: Первый запрос занял 73.1с (порог 20с) — похоже, раннер считает на CPU без ускорителя. Остальные 178 элементов идут последовательно вместо 4 параллельных потоков, чтобы не делить CPU и не множить таймауты. Следующие 300с это же будут знать все остальные пачки (файлы/куски текста/сопоставление), не только эта.
+2026-09-05 21:38:02,053 INFO autosync.native: Окно закрыто — завершение работы AutoSync
