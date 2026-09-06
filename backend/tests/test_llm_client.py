@@ -160,6 +160,37 @@ def test_suggest_price_uses_dedicated_prompt_with_cost_price(app, monkeypatch):
     assert "bullets" not in prompt
 
 
+def test_generate_repair_instructions_uses_dedicated_prompt_with_operation_and_vehicle(app, monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["payload"] = json
+        return _FakeResponse(True, {"text": '{"steps": ["Шаг 1", "Шаг 2"], "note": null}'})
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", fake_post)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        result = client.generate_repair_instructions("замена колодок", vehicle_make="Kia", vehicle_model="Sportage")
+
+    assert result == {"steps": ["Шаг 1", "Шаг 2"], "note": None}
+    prompt = captured["payload"]["prompt"]
+    assert "замена колодок" in prompt
+    assert "Kia" in prompt and "Sportage" in prompt
+
+
+def test_generate_repair_instructions_raises_on_invalid_json(app, monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(True, {"text": "не JSON вообще"})
+
+    monkeypatch.setattr("app.services.llm_client.requests.post", fake_post)
+
+    with app.app_context():
+        client = LLMClient("http://llm-service:8000")
+        with pytest.raises(LLMClientError, match="невалидный JSON"):
+            client.generate_repair_instructions("замена колодок")
+
+
 def test_generate_card_content_still_uses_card_generation_prompt(app, monkeypatch):
     captured = {}
 

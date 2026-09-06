@@ -7,6 +7,8 @@ import Spinner from "../../components/Spinner.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import MatchEditModal from "../../components/MatchEditModal.jsx";
 import LaborEditModal from "../../components/LaborEditModal.jsx";
+import InlineCorrection from "../../components/InlineCorrection.jsx";
+import RepairInstructionsModal from "../../components/RepairInstructionsModal.jsx";
 import FilePreviewModal from "../../components/FilePreviewModal.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
 import SupplierSearchModal from "../../components/SupplierSearchModal.jsx";
@@ -130,6 +132,7 @@ export default function ReviewMatches() {
   const [laborSelected, setLaborSelected] = useState(new Set());
   const [editingMatch, setEditingMatch] = useState(null);
   const [editingLaborLine, setEditingLaborLine] = useState(null);
+  const [instructionsFor, setInstructionsFor] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [generatedPreview, setGeneratedPreview] = useState(null);
@@ -320,32 +323,46 @@ export default function ReviewMatches() {
     }
   };
 
-  const handleSaveEdit = async (patch) => {
-    setBusyId(editingMatch.id);
+  // Общий путь для правки одной позиции — и через модалку поиска
+  // (MatchEditModal), и через InlineCorrection прямо в таблице. Возвращает
+  // true/false, чтобы вызывающий код (например, модалка) знал, закрываться
+  // ли ему после сохранения.
+  const applyMatchEdit = async (matchId, patch, { toastMessage } = {}) => {
+    setBusyId(matchId);
     try {
-      const updated = await api.editMatch(editingMatch.id, patch);
+      const updated = await api.editMatch(matchId, patch);
       setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-      toast.success("Сопоставление обновлено вручную");
-      setEditingMatch(null);
+      toast.success(toastMessage || "Сопоставление обновлено вручную");
+      return true;
     } catch (e) {
       toast.error(e.message);
+      return false;
     } finally {
       setBusyId(null);
     }
   };
 
-  const handleSaveLaborEdit = async (patch) => {
-    setLaborBusyId(editingLaborLine.id);
+  const applyLaborEdit = async (laborLineId, patch, { toastMessage } = {}) => {
+    setLaborBusyId(laborLineId);
     try {
-      const updated = await api.editLaborLine(editingLaborLine.id, patch);
+      const updated = await api.editLaborLine(laborLineId, patch);
       setLaborLines((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      toast.success("Работа обновлена вручную");
-      setEditingLaborLine(null);
+      toast.success(toastMessage || "Работа обновлена вручную");
+      return true;
     } catch (e) {
       toast.error(e.message);
+      return false;
     } finally {
       setLaborBusyId(null);
     }
+  };
+
+  const handleSaveEdit = async (patch) => {
+    if (await applyMatchEdit(editingMatch.id, patch)) setEditingMatch(null);
+  };
+
+  const handleSaveLaborEdit = async (patch) => {
+    if (await applyLaborEdit(editingLaborLine.id, patch)) setEditingLaborLine(null);
   };
 
   const handleAddLaborLine = async (patch) => {
@@ -475,9 +492,9 @@ export default function ReviewMatches() {
         <div>
           <h2>Проверка сопоставлений</h2>
           <p>
-            Позиции с меткой «догадка LLM» — это предположение модели по названию, а не подтверждённое
-            совпадение. Проверьте их вручную: примите, отклоните или подберите правильную позицию через
-            поиск.
+            Позиции с меткой «догадка» — это предположение модели, а не подтверждённое совпадение.
+            Проверьте их вручную: примите, отклоните, впишите вариант прямо в таблице или подберите
+            правильную позицию через поиск.
           </p>
           {orderInfo && (orderInfo.order_number || orderInfo.contragent_name || orderInfo.vehicle_make) && (
             <p className="text-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
@@ -504,6 +521,15 @@ export default function ReviewMatches() {
             </button>
             <button className="btn btn-secondary" onClick={() => setAddingLaborLine(true)}>
               <SearchIcon /> Добавить работу вручную
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() =>
+                setInstructionsFor({ operationName: "", vehicleMake: orderInfo?.vehicle_make, vehicleModel: orderInfo?.vehicle_model })
+              }
+              title="Получить пошаговую инструкцию по произвольной работе"
+            >
+              <SparklesIcon /> Расписать работу
             </button>
             {matches.length > 0 && (
               <button className="btn btn-secondary" disabled={exporting} onClick={handleExportCsv}>
@@ -728,15 +754,25 @@ export default function ReviewMatches() {
                           {m.nomenclature_warehouse && ` · ${m.nomenclature_warehouse}`}
                         </div>
                       )}
+                      {!m.is_verified && (
+                        <InlineCorrection
+                          fields={[{ key: "matched_name", placeholder: "Добавить вариант самостоятельно", required: true }]}
+                          saving={busyId === m.id}
+                          onSave={(values) =>
+                            applyMatchEdit(m.id, { matched_name: values.matched_name }, { toastMessage: "Вариант сохранён" })
+                          }
+                        />
+                      )}
                     </td>
                     <td>{m.contract_qty ?? 1}</td>
                     <td>{m.matched_price ?? "—"}</td>
                     <td>{m.matched_price != null ? formatRub(m.matched_price * (m.contract_qty ?? 1)) : "—"}</td>
                     <td>
                       <ConfidenceBadge
+                        isVerified={m.is_verified}
+                        matchCategory={m.match_category}
                         level={m.confidence_level}
                         score={m.confidence_score}
-                        belowThreshold={m.below_confidence_threshold}
                       />
                     </td>
                     <td>
@@ -900,6 +936,22 @@ export default function ReviewMatches() {
                             (ручная правка)
                           </span>
                         )}
+                        {!l.is_verified && (
+                          <InlineCorrection
+                            fields={[
+                              { key: "matched_operation_name", placeholder: "Добавить вариант самостоятельно", required: true },
+                              { key: "norm_hours", placeholder: "Нормо-часы", type: "number", required: true },
+                            ]}
+                            saving={laborBusyId === l.id}
+                            onSave={(values) =>
+                              applyLaborEdit(
+                                l.id,
+                                { matched_operation_name: values.matched_operation_name, norm_hours: values.norm_hours },
+                                { toastMessage: "Вариант сохранён" }
+                              )
+                            }
+                          />
+                        )}
                       </td>
                       <td>
                         {editingHoursId === l.id ? (
@@ -966,9 +1018,10 @@ export default function ReviewMatches() {
                       <td>{l.total_cost ?? "—"}</td>
                       <td>
                         <ConfidenceBadge
+                          isVerified={l.is_verified}
+                          matchCategory={l.match_category}
                           level={l.confidence_level}
                           score={l.confidence_score}
-                          belowThreshold={l.below_confidence_threshold}
                         />
                       </td>
                       <td>
@@ -989,6 +1042,19 @@ export default function ReviewMatches() {
                             title="Подобрать операцию из справочника или вписать вручную"
                           >
                             <EditIcon /> Изменить
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() =>
+                              setInstructionsFor({
+                                operationName: l.matched_operation_name || l.description,
+                                vehicleMake: orderInfo?.vehicle_make,
+                                vehicleModel: orderInfo?.vehicle_model,
+                              })
+                            }
+                            title="Получить пошаговую инструкцию по выполнению этой работы"
+                          >
+                            <SparklesIcon /> Расписать
                           </button>
                           {l.review_status === "pending" && (
                             <>
@@ -1065,6 +1131,15 @@ export default function ReviewMatches() {
           saving={laborBusyId === editingLaborLine.id}
           onClose={() => setEditingLaborLine(null)}
           onSave={handleSaveLaborEdit}
+        />
+      )}
+
+      {instructionsFor && (
+        <RepairInstructionsModal
+          initialOperationName={instructionsFor.operationName}
+          vehicleMake={instructionsFor.vehicleMake}
+          vehicleModel={instructionsFor.vehicleModel}
+          onClose={() => setInstructionsFor(null)}
         />
       )}
 

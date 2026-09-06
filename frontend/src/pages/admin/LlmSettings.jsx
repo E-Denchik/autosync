@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client.js";
 import Spinner from "../../components/Spinner.jsx";
 import HowToUse from "../../components/HowToUse.jsx";
+import ModelFitBadge from "../../components/ModelFitBadge.jsx";
 import { useToast } from "../../context/ToastContext.jsx";
-import { RefreshIcon } from "../../components/icons.jsx";
+import { AlertCircleIcon, RefreshIcon } from "../../components/icons.jsx";
 
 const PROVIDER_LABELS = {
   ollama: "Ollama",
@@ -167,6 +168,19 @@ export default function LlmSettings() {
         </div>
       )}
 
+      {data.cpu_only_suspected && (
+        <div className="panel" style={{ marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <AlertCircleIcon style={{ flexShrink: 0, marginTop: 2 }} />
+          <p style={{ margin: 0 }}>
+            На этой машине раннер недавно вёл себя как CPU-only (без ускорения GPU) — крупные модели
+            будут работать заметно медленнее, чем можно ожидать по их размеру. Если в компьютере есть
+            видеокарта, проверьте, что Ollama/LM Studio реально её использует (драйвер, <code>nvidia-smi</code>).
+            Подробнее — на странице{" "}
+            <Link to="/admin/llm-guide">Справка по моделям</Link>.
+          </p>
+        </div>
+      )}
+
       {Object.entries(data.providers).map(([provider, info]) => (
         <div className="panel" key={provider} style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -205,12 +219,19 @@ export default function LlmSettings() {
             <p className="text-muted">Модели не найдены.</p>
           )}
 
+          {provider === "vsegpt" && info.models.length > 0 && (
+            <p className="text-muted" style={{ marginTop: 0 }}>
+              {info.models[0].capability?.note}
+            </p>
+          )}
+
           {info.models.length > 0 && (
             <div className="table-wrap llm-model-list">
               <table>
                 <thead>
                   <tr>
                     <th>Модель</th>
+                    {provider !== "vsegpt" && <th>Совместимость с этим компьютером</th>}
                     <th></th>
                   </tr>
                 </thead>
@@ -222,7 +243,19 @@ export default function LlmSettings() {
                       (provider === "vsegpt" && info.temporarily_unavailable);
                     return (
                       <tr key={key}>
-                        <td>{m.name}</td>
+                        <td>
+                          {m.name}
+                          {m.capability?.label && (
+                            <span className="text-muted" style={{ fontSize: 11.5, marginLeft: 6 }}>
+                              ({m.capability.label})
+                            </span>
+                          )}
+                        </td>
+                        {provider !== "vsegpt" && (
+                          <td>
+                            <ModelFitBadge fit={m.fit} capabilityNote={m.capability?.note} />
+                          </td>
+                        )}
                         <td style={{ textAlign: "right" }}>
                           {isSelected(provider, m.name) ? (
                             <span className="status-pill status-approved">выбрана</span>

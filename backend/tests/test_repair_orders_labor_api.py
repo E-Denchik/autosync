@@ -154,6 +154,70 @@ def test_match_category_classification(
     assert body[0]["match_category"] == expected_category
 
 
+@pytest.mark.parametrize(
+    "raw_match_data,confidence_score,norm_hours,review_status,manually_edited,expected_is_verified",
+    [
+        (None, 1.0, 1.0, ReviewStatus.PENDING, False, True),  # exact
+        ({"source": "llm_fallback"}, 0.9, 1.0, ReviewStatus.PENDING, False, True),  # llm_guess above threshold
+        ({"source": "llm_fallback"}, 0.4, 1.0, ReviewStatus.PENDING, False, False),  # llm_guess below threshold
+        ({"source": "llm_fallback"}, 0.4, 1.0, ReviewStatus.PENDING, True, True),  # ручная правка
+        # cross_make_estimate/suggested_addition/from_repair_order — всегда
+        # "догадка", даже при высокой уверенности: во фронте и так помечены
+        # как требующие особого внимания (см. confidence_display.py).
+        ({"source": "llm_fallback_cross_make"}, 0.95, 1.0, ReviewStatus.PENDING, False, False),
+        ({"source": "llm_suggested_addition"}, 0.95, 1.0, ReviewStatus.PENDING, False, False),
+        ({"source": "repair_order_stated_value"}, 0.95, 1.0, ReviewStatus.PENDING, False, False),
+    ],
+)
+def test_is_verified_classification(
+    client,
+    admin_headers,
+    app,
+    raw_match_data,
+    confidence_score,
+    norm_hours,
+    review_status,
+    manually_edited,
+    expected_is_verified,
+):
+    confidence_level = ConfidenceLevel.EXACT if raw_match_data is None else ConfidenceLevel.LLM_GUESS
+    with app.app_context():
+        repair_order_id = _make_repair_order(app)
+        _make_labor_line(
+            app,
+            repair_order_id,
+            norm_hours=norm_hours,
+            confidence_level=confidence_level,
+            confidence_score=confidence_score,
+            review_status=review_status,
+            manually_edited=manually_edited,
+            raw_match_data=raw_match_data,
+        )
+
+    body = client.get(f"/api/repair-orders/labor/{repair_order_id}", headers=admin_headers).get_json()
+    assert body[0]["is_verified"] is expected_is_verified
+
+
+def test_is_verified_false_when_edited_without_norm_hours(client, admin_headers, app):
+    """Регрессия-ловушка: edit_labor_line можно вызвать с одним
+    matched_operation_name, оставив norm_hours пустым — такая строка не
+    должна выглядеть "проверено", хотя manually_edited=True и review_status
+    станет "approved" (см. confidence_display.is_verified: has_value)."""
+    with app.app_context():
+        order_id = _make_repair_order(app)
+        line_id = _make_labor_line(app, order_id, norm_hours=None, confidence_score=0.0)
+
+    resp = client.patch(
+        f"/api/repair-orders/labor/{line_id}",
+        headers=admin_headers,
+        json={"matched_operation_name": "Диагностика"},
+    )
+    body = resp.get_json()
+    assert body["manually_edited"] is True
+    assert body["norm_hours"] is None
+    assert body["is_verified"] is False
+
+
 def test_list_sorts_pending_low_confidence_first(client, admin_headers, app):
     with app.app_context():
         order_id = _make_repair_order(app)

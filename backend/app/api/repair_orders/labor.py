@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app.extensions import db
 from app.models import ConfidenceLevel, LaborLine, RepairOrder, ReviewStatus
+from app.services.confidence_display import is_verified
 from app.services.history import log_change
 from app.services.repair_order_processor import resolve_hourly_rate
 
@@ -35,6 +36,7 @@ def _labor_category(line: LaborLine) -> str:
 
 def _serialize(line: LaborLine) -> dict:
     threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
+    category = _labor_category(line)
     return {
         "id": line.id,
         "repair_order_id": line.repair_order_id,
@@ -46,6 +48,15 @@ def _serialize(line: LaborLine) -> dict:
         "confidence_level": line.confidence_level.value,
         "confidence_score": line.confidence_score,
         "below_confidence_threshold": line.confidence_score is not None and line.confidence_score < threshold,
+        # См. тот же комментарий в api/repair_orders/matching.py::_serialize.
+        "is_verified": is_verified(
+            match_category=category,
+            confidence_score=line.confidence_score,
+            review_status=line.review_status.value,
+            manually_edited=line.manually_edited,
+            threshold=threshold,
+            has_value=line.norm_hours is not None,
+        ),
         "review_status": line.review_status.value,
         "manually_edited": line.manually_edited,
         # Регрессия: раньше проверялся только один из двух возможных
@@ -82,7 +93,7 @@ def _serialize(line: LaborLine) -> dict:
             if line.raw_match_data and line.raw_match_data.get("source") == "llm_error"
             else None
         ),
-        "match_category": _labor_category(line),
+        "match_category": category,
     }
 
 

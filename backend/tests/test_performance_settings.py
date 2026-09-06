@@ -10,6 +10,7 @@ def test_performance_endpoint_returns_system_and_recommendation(client):
     assert body["settings"]["workers"] >= 1
     assert body["recommendation"]["workers"] >= 1
     assert "cpu_count" in body["system"]
+    assert "cpu_only_suspected" in body
 
 
 def test_performance_manual_settings_are_persisted(client):
@@ -70,3 +71,50 @@ def test_recommendation_no_ram_warning_when_model_fits_easily():
     result = performance_settings.recommendation(info, model_size_bytes=9 * 1024**3)
 
     assert result["warnings"] == []
+
+
+_ROOMY_INFO = {
+    "platform": "Linux",
+    "cpu_count": 8,
+    "memory_total_bytes": 32 * 1024**3,
+    "memory_available_bytes": 20 * 1024**3,
+}
+
+_TIGHT_INFO = {
+    "platform": "Linux",
+    "cpu_count": 4,
+    "memory_total_bytes": 8 * 1024**3,
+    "memory_available_bytes": 6 * 1024**3,
+}
+
+
+def test_fit_for_model_unknown_when_size_missing():
+    assert performance_settings.fit_for_model(_ROOMY_INFO, None) == {"status": "unknown", "note": None}
+    assert performance_settings.fit_for_model(_ROOMY_INFO, 0) == {"status": "unknown", "note": None}
+
+
+def test_fit_for_model_comfortable_when_well_within_ram():
+    result = performance_settings.fit_for_model(_ROOMY_INFO, 9 * 1024**3)
+    assert result["status"] == "comfortable"
+    assert result["note"] is None
+
+
+def test_fit_for_model_tight_when_close_to_available_ram():
+    # 6 ГБ доступно, порог tight — 70% от доступного (4.2 ГБ).
+    result = performance_settings.fit_for_model(_TIGHT_INFO, 5 * 1024**3)
+    assert result["status"] == "tight"
+    assert "медлен" in result["note"] or "свободно" in result["note"]
+
+
+def test_fit_for_model_too_big_when_over_total_ram_threshold():
+    # 8 ГБ всего, порог too_big — 85% от общего (6.8 ГБ).
+    result = performance_settings.fit_for_model(_TIGHT_INFO, 9 * 1024**3)
+    assert result["status"] == "too_big"
+    assert "RAM" in result["note"]
+
+
+def test_fit_for_model_too_big_takes_priority_over_tight():
+    """too_big проверяется раньше tight — модель, не влезающая даже в
+    ВЕСЬ объём RAM, не должна ошибочно попасть в менее тревожный "tight"."""
+    result = performance_settings.fit_for_model(_TIGHT_INFO, 9 * 1024**3)
+    assert result["status"] == "too_big"

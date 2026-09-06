@@ -518,6 +518,20 @@ thead .preview-row-gutter {
   background: currentColor;
 }
 
+/* Свёрнутые состояния колонки "Уверенность" в ConfidenceBadge (verified/
+   guess/no_match) — то, что видит оператор в таблице по умолчанию.
+   Подробные badge-* ниже (exact/cross_ref/llm_guess/...) обслуживают
+   отдельную, более гранулярную сводку CategoryBreakdown над таблицей. */
+.badge-verified {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.badge-guess {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .badge-exact {
   background: var(--success-soft);
   color: var(--success-text);

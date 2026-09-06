@@ -42,9 +42,71 @@ def test_llm_models_lists_ollama_and_lmstudio_when_vsegpt_not_configured(client,
     resp = client.get("/api/llm/models", headers=admin_headers)
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body["providers"]["ollama"]["models"] == [{"name": "qwen2.5:7b"}]
-    assert body["providers"]["lmstudio"]["models"] == [{"name": "local-model"}]
+    # Список моделей обогащается capability/fit (см. list_models) — сверяем
+    # конкретные поля, а не весь словарь целиком на равенство.
+    assert body["providers"]["ollama"]["models"][0]["name"] == "qwen2.5:7b"
+    assert body["providers"]["lmstudio"]["models"][0]["name"] == "local-model"
     assert body["vsegpt_configured"] is False
+
+
+def test_llm_models_enriches_local_models_with_capability_and_fit(client, admin_headers, monkeypatch):
+    """Регрессия по цели этой фичи: оператор должен видеть не только имя
+    модели, но и грубую оценку возможностей + поместится ли она в память
+    этого компьютера (см. model_capability.py/performance_settings.fit_for_model),
+    без единого нового сетевого запроса к llm-service."""
+    _mock_discovery(monkeypatch)
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    body = resp.get_json()
+
+    ollama_model = body["providers"]["ollama"]["models"][0]
+    assert ollama_model["capability"]["tier"] in ("tiny", "small", "medium", "large", "unknown")
+    assert "note" in ollama_model["capability"]
+    assert ollama_model["fit"]["status"] in ("comfortable", "tight", "too_big", "unknown")
+    # Мок DISCOVERY не даёт ни parameter_size, ни size — оценка идёт по
+    # имени модели ("llama3.2:3b" -> 3B, а не unknown).
+    assert ollama_model["capability"]["source"] == "name_guess"
+    # Без size вовсе — вердикт по памяти не может быть ничем, кроме unknown.
+    assert ollama_model["fit"]["status"] == "unknown"
+
+
+def test_llm_models_vsegpt_carries_capability_but_no_fit_key(client, admin_headers, monkeypatch):
+    """vsegpt — облачные модели: "fit" по RAM для них не имеет смысла и
+    ключ должен ОТСУТСТВОВАТЬ, а не быть null — фронт должен различать
+    "неприменимо" и "неизвестно"."""
+    discovery = {
+        "providers": {
+            "ollama": {"available": False, "models": []},
+            "lmstudio": {"available": False, "server_running": False, "models": []},
+            "vsegpt": {
+                "available": True,
+                "configured": True,
+                "models": [{"name": "openai/gpt-4o-mini"}, {"name": "openai/o3"}],
+            },
+        }
+    }
+    _mock_discovery(monkeypatch, discovery)
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    body = resp.get_json()
+
+    vsegpt_models = body["providers"]["vsegpt"]["models"]
+    for model in vsegpt_models:
+        assert model["capability"]["tier"] == "cloud"
+        assert "fit" not in model
+    # Общий текст одинаков независимо от конкретной модели (см. докстринг
+    # capability_for_cloud_model — намеренно не пытаемся ранжировать 30+
+    # моделей vsegpt по названию).
+    assert vsegpt_models[0]["capability"]["note"] == vsegpt_models[1]["capability"]["note"]
+
+
+def test_llm_models_top_level_carries_cpu_only_and_system_info(client, admin_headers, monkeypatch):
+    _mock_discovery(monkeypatch)
+    resp = client.get("/api/llm/models", headers=admin_headers)
+    body = resp.get_json()
+
+    assert isinstance(body["cpu_only_suspected"], bool)
+    assert "cpu_count" in body["system"]
+    assert "memory_total_bytes" in body["system"]
+    assert "memory_available_bytes" in body["system"]
 
 
 def test_llm_service_unavailable_returns_502(client, admin_headers, monkeypatch):
@@ -126,6 +188,44 @@ def test_llm_test_endpoint_reports_success_when_model_responds(client, admin_hea
     body = resp.get_json()
     assert body["ok"] is True
     assert "отвечает" in body["message"]
+
+
+def test_repair_instructions_returns_steps_from_llm_client(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(
+        LLMClient,
+        "generate_repair_instructions",
+        lambda self, operation_name, vehicle_make=None, vehicle_model=None: {
+            "steps": ["Поднять автомобиль на подъёмнике", "Снять колесо"],
+            "note": None,
+        },
+    )
+    resp = client.post(
+        "/api/llm/repair-instructions",
+        headers=admin_headers,
+        json={"operation_name": "замена колодок", "vehicle_make": "Kia", "vehicle_model": "Sportage"},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["steps"] == ["Поднять автомобиль на подъёмнике", "Снять колесо"]
+    assert body["note"] is None
+
+
+def test_repair_instructions_requires_operation_name(client, admin_headers):
+    resp = client.post("/api/llm/repair-instructions", headers=admin_headers, json={})
+    assert resp.status_code == 400
+    assert "operation_name" in resp.get_json()["error"]
+
+
+def test_repair_instructions_reports_llm_client_error_as_502(client, admin_headers, monkeypatch):
+    def _raise(self, operation_name, vehicle_make=None, vehicle_model=None):
+        raise LLMClientError("Модель ИИ не выбрана — откройте Администрирование → LLM-модель и выберите модель.")
+
+    monkeypatch.setattr(LLMClient, "generate_repair_instructions", _raise)
+    resp = client.post(
+        "/api/llm/repair-instructions", headers=admin_headers, json={"operation_name": "замена колодок"}
+    )
+    assert resp.status_code == 502
+    assert "не выбрана" in resp.get_json()["error"]
 
 
 def test_vsegpt_configured_false_by_default(client, admin_headers, monkeypatch):

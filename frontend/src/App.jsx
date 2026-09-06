@@ -10,6 +10,7 @@ import UploadPage from "./pages/repair-orders/UploadPage.jsx";
 import ReviewMatches from "./pages/repair-orders/ReviewMatches.jsx";
 import RepairOrdersList from "./pages/repair-orders/RepairOrdersList.jsx";
 import LlmSettings from "./pages/admin/LlmSettings.jsx";
+import LlmModelGuide from "./pages/admin/LlmModelGuide.jsx";
 import VsegptStats from "./pages/admin/VsegptStats.jsx";
 import History from "./pages/admin/History.jsx";
 import Integrations from "./pages/admin/Integrations.jsx";
@@ -39,6 +40,7 @@ import {
   BoxIcon,
   FileTextIcon,
   AlertCircleIcon,
+  InfoIcon,
 } from "./components/icons.jsx";
 
 export default function App() {
@@ -116,6 +118,9 @@ export default function App() {
           <NavLink to="/admin/llm">
             <CpuIcon /> LLM-модель
           </NavLink>
+          <NavLink to="/admin/llm-guide">
+            <InfoIcon /> Справка по моделям
+          </NavLink>
           <NavLink to="/admin/performance">
             <CpuIcon /> Производительность
           </NavLink>
@@ -162,6 +167,7 @@ export default function App() {
             <Route path="/admin/document-templates" element={<DocumentTemplates />} />
             <Route path="/admin/company-profile" element={<CompanyProfile />} />
             <Route path="/admin/llm" element={<LlmSettings />} />
+            <Route path="/admin/llm-guide" element={<LlmModelGuide />} />
             <Route path="/admin/performance" element={<PerformanceSettings />} />
             <Route path="/admin/vsegpt-stats" element={<VsegptStats />} />
             <Route path="/admin/integrations" element={<Integrations />} />

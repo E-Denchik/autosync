@@ -15,6 +15,7 @@ from app.models import (
     RepairOrderStatus,
     ReviewStatus,
 )
+from app.services.confidence_display import is_verified
 from app.services.history import log_change
 
 bp = Blueprint("repair_orders_matching", __name__)
@@ -40,6 +41,7 @@ def _match_category(match: PartMatch) -> str:
 
 def _serialize(match: PartMatch) -> dict:
     threshold = current_app.config["MATCH_CONFIDENCE_THRESHOLD"]
+    category = _match_category(match)
     return {
         "id": match.id,
         "repair_order_id": match.repair_order_id,
@@ -54,6 +56,18 @@ def _serialize(match: PartMatch) -> dict:
         "confidence_level": match.confidence_level.value,
         "confidence_score": match.confidence_score,
         "below_confidence_threshold": match.confidence_score is not None and match.confidence_score < threshold,
+        # Свёрнутый статус для оператора: "проверено" или "догадка" — см.
+        # confidence_display.is_verified. Не путать с review_status:
+        # is_verified описывает, насколько само сопоставление выглядит
+        # надёжным, а review_status — принял ли его кто-то из людей.
+        "is_verified": is_verified(
+            match_category=category,
+            confidence_score=match.confidence_score,
+            review_status=match.review_status.value,
+            manually_edited=match.manually_edited,
+            threshold=threshold,
+            has_value=match.matched_name is not None,
+        ),
         "review_status": match.review_status.value,
         "manually_edited": match.manually_edited,
         # Обогащение из внутренней номенклатуры заказчика (см. NomenclatureEntry) —
@@ -89,7 +103,7 @@ def _serialize(match: PartMatch) -> dict:
             if match.raw_match_data and match.raw_match_data.get("source") == "llm_error"
             else None
         ),
-        "match_category": _match_category(match),
+        "match_category": category,
     }
 
 

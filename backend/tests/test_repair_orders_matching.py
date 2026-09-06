@@ -142,6 +142,71 @@ def test_match_category_classification(
     assert body[0]["match_category"] == expected_category
 
 
+@pytest.mark.parametrize(
+    "confidence_level,confidence_score,review_status,manually_edited,raw_match_data,expected_is_verified",
+    [
+        (ConfidenceLevel.EXACT, 1.0, ReviewStatus.PENDING, False, {"source": "exact_article_match"}, True),
+        (ConfidenceLevel.CROSS_REF, 0.9, ReviewStatus.PENDING, False, {"source": "parts_supplier_cross_reference"}, True),
+        (ConfidenceLevel.LLM_GUESS, 0.9, ReviewStatus.PENDING, False, {"source": "llm_fallback"}, True),
+        (ConfidenceLevel.LLM_GUESS, 0.4, ReviewStatus.PENDING, False, {"source": "llm_fallback"}, False),
+        (ConfidenceLevel.LLM_GUESS, 0.4, ReviewStatus.PENDING, True, {"source": "llm_fallback"}, True),
+    ],
+)
+def test_is_verified_classification(
+    client,
+    admin_headers,
+    app,
+    confidence_level,
+    confidence_score,
+    review_status,
+    manually_edited,
+    raw_match_data,
+    expected_is_verified,
+):
+    with app.app_context():
+        order_id = _make_bare_repair_order(app)
+        db.session.add(
+            PartMatch(
+                repair_order_id=order_id,
+                contract_name="Деталь",
+                matched_name="Деталь найденная",
+                confidence_level=confidence_level,
+                confidence_score=confidence_score,
+                review_status=review_status,
+                manually_edited=manually_edited,
+                raw_match_data=raw_match_data,
+            )
+        )
+        db.session.commit()
+
+    body = client.get(f"/api/repair-orders/matching/{order_id}", headers=admin_headers).get_json()
+    assert body[0]["is_verified"] is expected_is_verified
+
+
+def test_is_verified_false_when_approved_but_no_value_set(client, admin_headers, app):
+    """Регрессия-ловушка: approve_match не проверяет, что matched_name
+    заполнен — простое "Принять" на пустой позиции не должно делать её
+    "проверено" в бейдже уверенности."""
+    with app.app_context():
+        order_id = _make_bare_repair_order(app)
+        match = PartMatch(
+            repair_order_id=order_id,
+            contract_name="Деталь",
+            matched_name=None,
+            confidence_level=ConfidenceLevel.LLM_GUESS,
+            confidence_score=0.0,
+            review_status=ReviewStatus.PENDING,
+            raw_match_data={"source": "no_match_found"},
+        )
+        db.session.add(match)
+        db.session.commit()
+        match_id = match.id
+
+    resp = client.post(f"/api/repair-orders/matching/{match_id}/approve", headers=admin_headers)
+    assert resp.get_json()["review_status"] == "approved"
+    assert resp.get_json()["is_verified"] is False
+
+
 def test_list_candidates_returns_contract_catalog_not_repair_order_lines(
     client, admin_headers, repair_order_with_matches, app
 ):

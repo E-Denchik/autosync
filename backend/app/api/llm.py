@@ -9,6 +9,9 @@ from flask import Blueprint, current_app, jsonify, request
 from app.services import llm_settings
 from app.services.history import log_change
 from app.services.llm_client import LLMClient, LLMClientError
+from app.services.model_capability import capability_for_cloud_model, capability_for_local_model
+from app.services.parallel import cpu_only_suspected
+from app.services.performance_settings import fit_for_model, system_info
 
 bp = Blueprint("llm", __name__)
 
@@ -43,11 +46,45 @@ def list_models():
             previous_selection = {"provider": selection.provider, "model": selection.model_name}
             llm_settings.clear_selection()
 
+    # Обогащение списка подсказками про возможности модели и вероятную
+    # совместимость с этим компьютером (см. Администрирование → LLM-модель/
+    # Справка по моделям) — без единого нового сетевого запроса: _client()
+    # выше и так уже сходил в llm-service один раз, всё остальное здесь —
+    # локальные вычисления (system_info() читает /proc/meminfo один раз,
+    # cpu_only_suspected() — сравнение с уже посчитанным monotonic-таймером).
+    info = system_info()
+    for provider_name in ("ollama", "lmstudio"):
+        provider = discovery["providers"].get(provider_name)
+        if not provider:
+            continue
+        for model in provider.get("models", []):
+            model["capability"] = capability_for_local_model(
+                parameter_size=model.get("parameter_size"),
+                name=model["name"],
+                size_bytes=model.get("size"),
+            )
+            model["fit"] = fit_for_model(info, model.get("size"))
+
+    vsegpt_provider = discovery["providers"].get("vsegpt")
+    if vsegpt_provider:
+        # Облачные модели: только capability (общий текст про оплату за
+        # запрос) — "fit" по RAM для них не имеет смысла вовсе, поэтому
+        # ключ намеренно отсутствует, а не равен null (фронт должен читать
+        # его отсутствие как "неприменимо", а не "неизвестно").
+        for model in vsegpt_provider.get("models", []):
+            model["capability"] = capability_for_cloud_model(model["name"])
+
     return jsonify(
         providers=discovery["providers"],
         selected=selected,
         previous_selection=previous_selection,
         vsegpt_configured=bool(vsegpt_api_key),
+        cpu_only_suspected=cpu_only_suspected(),
+        system={
+            "cpu_count": info.get("cpu_count"),
+            "memory_total_bytes": info.get("memory_total_bytes"),
+            "memory_available_bytes": info.get("memory_available_bytes"),
+        },
     )
 
 
@@ -106,3 +143,28 @@ def test_model():
     except LLMClientError as exc:
         return jsonify(ok=False, error=str(exc))
     return jsonify(ok=True, message=message)
+
+
+@bp.post("/repair-instructions")
+def repair_instructions():
+    """Пошаговая инструкция по выполнению произвольной работы (например,
+    "замена колодок") — по запросу оператора со страницы проверки
+    заказ-наряда. Не привязано к конкретному заказ-наряду/работе на
+    уровне API: и кнопка в строке работы, и отдельное поле для
+    произвольного запроса (см. ReviewMatches.jsx) используют один и тот же
+    stateless-эндпоинт."""
+    body = request.get_json(force=True) or {}
+    operation_name = (body.get("operation_name") or "").strip()
+    if not operation_name:
+        return jsonify(error="'operation_name' обязателен"), 400
+
+    try:
+        result = _client().generate_repair_instructions(
+            operation_name,
+            vehicle_make=body.get("vehicle_make"),
+            vehicle_model=body.get("vehicle_model"),
+        )
+    except LLMClientError as exc:
+        return jsonify(error=str(exc)), 502
+
+    return jsonify(steps=result.get("steps") or [], note=result.get("note"))

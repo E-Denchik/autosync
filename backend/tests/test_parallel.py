@@ -19,6 +19,14 @@ def _reset_slow_runner_state():
     parallel._slow_runner_detected_until = 0.0
 
 
+def test_cpu_only_suspected_reflects_slow_runner_flag_and_ttl():
+    assert parallel.cpu_only_suspected() is False
+    parallel._mark_slow_runner()
+    assert parallel.cpu_only_suspected() is True
+    parallel._slow_runner_detected_until = time.monotonic() - 1
+    assert parallel.cpu_only_suspected() is False
+
+
 def test_map_with_app_context_preserves_order(app):
     with app.app_context():
         result = map_with_app_context(lambda x: x * 2, [1, 2, 3, 4, 5])

@@ -553,6 +553,31 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
 
+    def generate_repair_instructions(
+        self, operation_name: str, vehicle_make: str | None = None, vehicle_model: str | None = None
+    ) -> dict:
+        """Пошаговая инструкция по выполнению работы (например, "замена
+        колодок") — по запросу оператора, а не часть автосопоставления.
+        Использует уже выбранный провайдер (локальный Ollama/LM Studio или
+        vsegpt.ru) через тот же _generate(), без отдельного выбора модели
+        для этой конкретной фичи.
+
+        Возвращает {"steps": [str, ...], "note": str | None}.
+        """
+        from app.services.prompt_loader import render_prompt
+
+        prompt = render_prompt(
+            "repair_instructions.md",
+            operation_name=operation_name,
+            vehicle_make=vehicle_make,
+            vehicle_model=vehicle_model,
+        )
+        text = self._generate(prompt, json_response=True)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"llm-service вернул невалидный JSON: {text!r}") from exc
+
     def normalize_brand_labels(self, labels: list[str]) -> dict[str, str | None]:
         """Марки из каталога заказчика, которых нет в справочнике BrandAlias
         (см. app/models/brand_alias.py) — просим ИИ привести к каноничному

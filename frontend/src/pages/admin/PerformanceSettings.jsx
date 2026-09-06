@@ -69,6 +69,12 @@ export default function PerformanceSettings() {
           <p className="text-muted">Выбранная модель: <strong>{data.selected_model}</strong>{data.model_size_bytes ? ` (${formatBytes(data.model_size_bytes)})` : ""}</p>
         )}
         <p className="text-muted" style={{ marginBottom: 0 }}>{recommendation.reason}</p>
+        {data.cpu_only_suspected && (
+          <p className="text-muted" style={{ marginBottom: 0, marginTop: 8 }}>
+            ⚠ Раннер недавно вёл себя как CPU-only (без ускорения GPU) — крупные модели будут работать
+            заметно медленнее, чем можно ожидать по их размеру.
+          </p>
+        )}
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>

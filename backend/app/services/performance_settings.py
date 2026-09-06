@@ -124,6 +124,44 @@ def recommendation(info: dict, model_size_bytes: int | None = None) -> dict:
     }
 
 
+def fit_for_model(info: dict, size_bytes: int | None) -> dict:
+    """Вердикт "поместится ли" для ЛЮБОЙ модели из списка — до того, как её
+    выбрали (см. Администрирование → LLM-модель/Справка по моделям). Не
+    путать с recommendation(): та считает workers/timeout только для уже
+    ВЫБРАННОЙ модели, здесь же переиспользуются те же самые пороги 0.7/0.85,
+    чтобы не заводить вторую, чуть другую политику "помещается/не помещается".
+
+    Возвращает {"status": "comfortable"|"tight"|"too_big"|"unknown", "note": str|None}.
+    """
+    if not size_bytes:
+        return {"status": "unknown", "note": None}
+
+    total = info.get("memory_total_bytes") or 0
+    if total and size_bytes > total * 0.85:
+        return {
+            "status": "too_big",
+            "note": (
+                f"Весит {size_bytes / 1024**3:.1f} ГБ — больше, чем есть RAM на этом "
+                f"компьютере ({total / 1024**3:.1f} ГБ) даже без учёта остальных "
+                "программ. Скорее всего будет работать в разы медленнее из-за "
+                "постоянного свопирования."
+            ),
+        }
+
+    available = info.get("memory_available_bytes") or 0
+    if available and size_bytes > available * 0.7:
+        return {
+            "status": "tight",
+            "note": (
+                f"Весит {size_bytes / 1024**3:.1f} ГБ — близко к тому, сколько сейчас "
+                f"свободно ({available / 1024**3:.1f} ГБ). Может быть медленно, "
+                "особенно вместе с другими запущенными программами."
+            ),
+        }
+
+    return {"status": "comfortable", "note": None}
+
+
 def effective_settings() -> dict:
     manual = _read_manual()
     info = system_info()
@@ -157,11 +195,14 @@ def _compose_effective(manual: dict, info: dict, recommended: dict, model_size: 
     else:
         workers = recommended["workers"]
         timeout = recommended["timeout_seconds"]
+    from app.services.parallel import cpu_only_suspected
+
     return {
         "settings": {"mode": manual["mode"], "workers": workers, "timeout_seconds": timeout},
         "system": info,
         "recommendation": recommended,
         "model_size_bytes": model_size,
+        "cpu_only_suspected": cpu_only_suspected(),
     }
 
 

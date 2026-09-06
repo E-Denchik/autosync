@@ -158,10 +158,23 @@ def discover_ollama() -> dict:
     except requests.RequestException:
         return {"available": False, "models": []}
 
-    models = [
-        {"name": m["name"], "size": m.get("size"), "modified_at": m.get("modified_at")}
-        for m in resp.json().get("models", [])
-    ]
+    models = []
+    for m in resp.json().get("models", []):
+        # "details" — реальные метаданные модели (параметры, квантование),
+        # которые Ollama отдаёт в /api/tags, но не гарантированно на всех
+        # версиях/форматах моделей — .get() дважды, без исключений: backend
+        # (см. model_capability.py) сам умеет откатиться на оценку по имени,
+        # если parameter_size здесь пуст.
+        details = m.get("details") or {}
+        models.append(
+            {
+                "name": m["name"],
+                "size": m.get("size"),
+                "modified_at": m.get("modified_at"),
+                "parameter_size": details.get("parameter_size"),
+                "quantization_level": details.get("quantization_level"),
+            }
+        )
     return {"available": True, "models": models}
 
 
